@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { listMyOfferings } from "../../lib/academicApi";
@@ -10,14 +11,34 @@ import {
   updateQuestionBankQuestion,
 } from "../../lib/questionBankApi";
 
+const technicalTypes = new Set(["CSharp", "SQL"]);
+
+const starterTemplates = {
+  CSharp: `using System;
+
+public class Solution
+{
+    public static void Main()
+    {
+        // Write your solution here
+    }
+}`,
+  SQL: `SELECT
+    *
+FROM
+    table_name;`,
+};
+
 const EMPTY_FORM = {
   offeringId: "",
   text: "",
   type: "MCQ",
-  difficulty: "Medium",
   points: 10,
   correctAnswer: "",
   options: ["", ""],
+  starterCode: starterTemplates.CSharp,
+  sqlSchema: "",
+  expectedAnswer: "",
 };
 
 export default function QuestionBankEditorPage() {
@@ -36,6 +57,8 @@ export default function QuestionBankEditorPage() {
   const [error, setError] = useState("");
 
   const isEdit = Boolean(questionId);
+  const isTechnicalQuestion = technicalTypes.has(form.type);
+  const editorLanguage = form.type === "SQL" ? "sql" : "csharp";
 
   useEffect(() => {
     let active = true;
@@ -56,12 +79,14 @@ export default function QuestionBankEditorPage() {
 
           setForm({
             offeringId: question.courseOfferingId,
-            text: question.text || "",
+            text: extractPrompt(question.text || ""),
             type: question.type || "MCQ",
-            difficulty: question.difficulty || "Medium",
             points: Number(question.points) || 10,
-            correctAnswer: question.correctAnswer || "",
+            correctAnswer: !technicalTypes.has(question.type) ? (question.correctAnswer || "") : "",
             options: Array.isArray(question.options) && question.options.length > 0 ? question.options : ["", ""],
+            starterCode: extractStarterCode(question.text || "", question.type || "MCQ"),
+            sqlSchema: extractSqlSchema(question.text || ""),
+            expectedAnswer: technicalTypes.has(question.type) ? (question.correctAnswer || "") : "",
           });
         } else if (!searchParams.get("offeringId") && nextOfferings[0]?.id) {
           setForm((current) => ({ ...current, offeringId: current.offeringId || nextOfferings[0].id }));
@@ -101,6 +126,17 @@ export default function QuestionBankEditorPage() {
     }));
   }
 
+  function onTypeChange(nextType) {
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      correctAnswer: technicalTypes.has(nextType) ? "" : current.correctAnswer,
+      starterCode: technicalTypes.has(nextType) ? (current.starterCode || starterTemplates[nextType] || "") : current.starterCode,
+      sqlSchema: nextType === "SQL" ? current.sqlSchema : "",
+      expectedAnswer: technicalTypes.has(nextType) ? current.expectedAnswer : "",
+    }));
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     if (!form.offeringId) return;
@@ -110,11 +146,10 @@ export default function QuestionBankEditorPage() {
       setError("");
 
       const payload = {
-        text: form.text.trim(),
+        text: buildQuestionText(form),
         type: form.type,
-        difficulty: form.difficulty || null,
         points: Number(form.points) || 0,
-        correctAnswer: form.correctAnswer.trim(),
+        correctAnswer: technicalTypes.has(form.type) ? form.expectedAnswer.trim() : form.correctAnswer.trim(),
         options: form.type === "MCQ" ? form.options : [],
       };
 
@@ -197,25 +232,13 @@ export default function QuestionBankEditorPage() {
                   <select
                     className="input"
                     value={form.type}
-                    onChange={(e) => setForm((current) => ({ ...current, type: e.target.value }))}
+                    onChange={(e) => onTypeChange(e.target.value)}
                     disabled={saving}
                   >
                     <option value="MCQ">MCQ</option>
                     <option value="Text">{t("common.text")}</option>
-                  </select>
-                </div>
-
-                <div className="field">
-                  <label className="label">{t("questionBank.difficulty")}</label>
-                  <select
-                    className="input"
-                    value={form.difficulty}
-                    onChange={(e) => setForm((current) => ({ ...current, difficulty: e.target.value }))}
-                    disabled={saving}
-                  >
-                    <option value="Easy">{t("questionBank.difficulties.easy")}</option>
-                    <option value="Medium">{t("questionBank.difficulties.medium")}</option>
-                    <option value="Hard">{t("questionBank.difficulties.hard")}</option>
+                    <option value="CSharp">C#</option>
+                    <option value="SQL">SQL</option>
                   </select>
                 </div>
 
@@ -231,6 +254,68 @@ export default function QuestionBankEditorPage() {
                   />
                 </div>
               </div>
+
+              {isTechnicalQuestion ? (
+                <div className="technicalQuestionPanel">
+                  <div className="technicalQuestionHeader">
+                    <div>
+                      <h4>{form.type === "SQL" ? "SQL editor" : "C# editor"}</h4>
+                      <p>
+                        Use structured input for technical question bank entries so they can be reused consistently in generated or manual exams.
+                      </p>
+                    </div>
+                    <span className="statusPill statusDraft">{form.type === "CSharp" ? "C#" : form.type}</span>
+                  </div>
+
+                  {form.type === "SQL" ? (
+                    <div className="field">
+                      <label className="label">Database schema or table context</label>
+                      <textarea
+                        className="input textarea textareaCompact"
+                        value={form.sqlSchema}
+                        onChange={(e) => setForm((current) => ({ ...current, sqlSchema: e.target.value }))}
+                        disabled={saving}
+                        placeholder="Example: Students(Id, FullName, YearOfStudy), Exams(Id, Title, StartsAt)"
+                        rows={4}
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="field">
+                    <label className="label">
+                      {form.type === "SQL" ? "Starter SQL" : "Starter C# code"}
+                    </label>
+                    <div className="monacoShell">
+                      <Editor
+                        height="280px"
+                        language={editorLanguage}
+                        theme="vs-dark"
+                        value={form.starterCode}
+                        onChange={(value) => setForm((current) => ({ ...current, starterCode: value || "" }))}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          wordWrap: "on",
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Expected answer or grading note</label>
+                    <textarea
+                      className="input textarea textareaCompact"
+                      value={form.expectedAnswer}
+                      onChange={(e) => setForm((current) => ({ ...current, expectedAnswer: e.target.value }))}
+                      disabled={saving}
+                      placeholder="Describe the expected output, query result, or grading criteria."
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               {form.type === "MCQ" ? (
                 <div className="stackLg">
@@ -283,7 +368,7 @@ export default function QuestionBankEditorPage() {
                     </select>
                   </div>
                 </div>
-              ) : (
+              ) : form.type === "Text" ? (
                 <div className="field">
                   <label className="label">{t("questionBank.modelAnswer")}</label>
                   <textarea
@@ -295,7 +380,7 @@ export default function QuestionBankEditorPage() {
                     placeholder={t("questionBank.editor.modelAnswerPlaceholder")}
                   />
                 </div>
-              )}
+              ) : null}
 
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button className="btn btnPrimary" type="submit" disabled={saving || !form.offeringId || !form.text.trim()}>
@@ -316,4 +401,63 @@ function formatOffering(offering) {
   const term = offering.term?.code || offering.term?.name || "";
   const section = offering.sectionCode || "-";
   return [code && name ? `${code} - ${name}` : code || name, term, `Section ${section}`].filter(Boolean).join(" | ");
+}
+
+function buildQuestionText(form) {
+  if (!technicalTypes.has(form.type)) {
+    return form.text.trim();
+  }
+
+  const sections = [
+    `Prompt:\n${form.text.trim()}`,
+  ];
+
+  if (form.type === "SQL" && form.sqlSchema.trim()) {
+    sections.push(`Schema:\n${form.sqlSchema.trim()}`);
+  }
+
+  if (form.starterCode.trim()) {
+    sections.push(`${form.type === "SQL" ? "Starter SQL" : "Starter C# code"}:\n${form.starterCode.trim()}`);
+  }
+
+  return sections.join("\n\n---\n\n");
+}
+
+function extractPrompt(text) {
+  const sections = splitTechnicalSections(text);
+  return sections.prompt || text || "";
+}
+
+function extractSqlSchema(text) {
+  const sections = splitTechnicalSections(text);
+  return sections.schema || "";
+}
+
+function extractStarterCode(text, type) {
+  const sections = splitTechnicalSections(text);
+  if (sections.code) return sections.code;
+  return starterTemplates[type] || starterTemplates.CSharp;
+}
+
+function splitTechnicalSections(text) {
+  const result = {
+    prompt: "",
+    schema: "",
+    code: "",
+  };
+
+  const sections = String(text || "").split("\n\n---\n\n");
+  for (const section of sections) {
+    if (section.startsWith("Prompt:\n")) {
+      result.prompt = section.replace("Prompt:\n", "").trim();
+    } else if (section.startsWith("Schema:\n")) {
+      result.schema = section.replace("Schema:\n", "").trim();
+    } else if (section.startsWith("Starter SQL:\n")) {
+      result.code = section.replace("Starter SQL:\n", "").trim();
+    } else if (section.startsWith("Starter C# code:\n")) {
+      result.code = section.replace("Starter C# code:\n", "").trim();
+    }
+  }
+
+  return result;
 }

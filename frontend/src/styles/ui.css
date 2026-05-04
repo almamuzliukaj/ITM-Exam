@@ -1341,6 +1341,20 @@
   line-height: 1.6;
 }
 
+.technicalCodeBlock{
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  padding: 12px;
+  background: #111827;
+  color: #e5edf7;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .questionBankActions{
   gap: 10px;
 }

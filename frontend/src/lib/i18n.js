@@ -171,15 +171,13 @@ const resources = {
         deleteConfirm: "Delete this question from the question bank?",
         badge: "Question bank",
         title: "Question bank",
-        subtitle: "Manage course-based MCQ and text questions per assigned offering.",
+        subtitle: "Manage course-based MCQ, text, C#, and SQL questions per assigned offering.",
         create: "Create question",
         filters: "Filters",
         offering: "Course offering",
         selectOffering: "Select offering",
         type: "Type",
         allTypes: "All types",
-        difficulty: "Difficulty",
-        allDifficulties: "All difficulties",
         search: "Search",
         searchPlaceholder: "Search by prompt or answer",
         selectedOffering: "Working in: {{offering}}",
@@ -188,19 +186,13 @@ const resources = {
         emptyOfferingTitle: "No offering selected.",
         emptyOfferingText: "Choose one of your assigned offerings to start authoring questions.",
         emptyTitle: "No questions yet.",
-        emptyText: "Create the first MCQ or text question for this offering.",
+        emptyText: "Create the first MCQ, text, C#, or SQL question for this offering.",
         pointsValue: "{{count}} pts",
-        noDifficulty: "No difficulty",
         correctTag: "(correct)",
         modelAnswer: "Model answer",
         cardHint: "Edit the question or keep building the course question bank.",
         edit: "Edit",
         delete: "Delete",
-        difficulties: {
-          easy: "Easy",
-          medium: "Medium",
-          hard: "Hard"
-        },
         editor: {
           loading: "Loading question bank editor...",
           loadContextError: "Question bank context could not be loaded.",
@@ -365,7 +357,7 @@ const resources = {
           stats: {
             assignedCourses: { label: "Assigned courses", meta: "Across Years 1-3" },
             draftExams: { label: "Draft exams", meta: "Awaiting completion" },
-            questionBank: { label: "Question bank", meta: "Tagged by difficulty" },
+            questionBank: { label: "Question bank", meta: "Ready for course-based authoring" },
             grading: { label: "Pending grading", meta: "Assistant-linked included" }
           },
           quickActions: {
@@ -659,15 +651,13 @@ const resources = {
         deleteConfirm: "A dëshiron ta fshish këtë pyetje nga banka e pyetjeve?",
         badge: "Banka e pyetjeve",
         title: "Banka e pyetjeve",
-        subtitle: "Menaxho pyetjet MCQ dhe Text sipas offering-ut të lëndës.",
+        subtitle: "Menaxho pyetjet MCQ, Text, C#, dhe SQL sipas offering-ut të lëndës.",
         create: "Krijo pyetje",
         filters: "Filtrat",
         offering: "Ofrimi i lëndës",
         selectOffering: "Zgjidh offering-un",
         type: "Lloji",
         allTypes: "Të gjitha llojet",
-        difficulty: "Vështirësia",
-        allDifficulties: "Të gjitha nivelet",
         search: "Kërko",
         searchPlaceholder: "Kërko sipas pyetjes ose përgjigjes",
         selectedOffering: "Po punon në: {{offering}}",
@@ -676,19 +666,13 @@ const resources = {
         emptyOfferingTitle: "Nuk është zgjedhur offering.",
         emptyOfferingText: "Zgjidh një nga offering-et e tua për të nisur authoring-un e pyetjeve.",
         emptyTitle: "Ende nuk ka pyetje.",
-        emptyText: "Krijo pyetjen e parë MCQ ose Text për këtë offering.",
+        emptyText: "Krijo pyetjen e parë MCQ, Text, C#, ose SQL për këtë offering.",
         pointsValue: "{{count}} pikë",
-        noDifficulty: "Pa vështirësi",
         correctTag: "(sakta)",
         modelAnswer: "Përgjigjja model",
         cardHint: "Ndrysho pyetjen ose vazhdo ndërtimin e bankës së lëndës.",
         edit: "Ndrysho",
         delete: "Fshi",
-        difficulties: {
-          easy: "E lehtë",
-          medium: "Mesatare",
-          hard: "E vështirë"
-        },
         editor: {
           loading: "Duke u ngarkuar edituesi i bankës së pyetjeve...",
           loadContextError: "Konteksti i bankës së pyetjeve nuk u ngarkua.",
@@ -853,7 +837,7 @@ const resources = {
           stats: {
             assignedCourses: { label: "Lëndë të caktuara", meta: "Në vitet 1-3" },
             draftExams: { label: "Provime draft", meta: "Në pritje të plotësimit" },
-            questionBank: { label: "Banka e pyetjeve", meta: "Të etiketuar sipas vështirësisë" },
+            questionBank: { label: "Banka e pyetjeve", meta: "Gati për authoring sipas lëndës" },
             grading: { label: "Notime në pritje", meta: "Përfshirë ato të lidhura me asistentë" }
           },
           quickActions: {

@@ -68,6 +68,7 @@ const resources = {
         subtitle: "A role-based workspace designed for real academic operations, exam preparation, and secure assessment delivery.",
         examWorkspace: "Exam workspace",
         academicSetup: "Academic setup",
+        enrollmentControl: "Enrollment control",
         userManagement: "User management",
         badges: {
           Admin: "Admin dashboard",
@@ -98,10 +99,15 @@ const resources = {
         loading: "Loading creation workspace...",
         userError: "Unable to load user profile.",
         error: "Unable to create the exam right now.",
+        offeringsError: "Assigned course offerings could not be loaded.",
         badge: "Exam authoring",
         title: "Create exam",
         subtitle: "Set the assessment foundation first. Question selection, scheduling, and publishing will build on this record.",
         configuration: "Exam configuration",
+        loadingOfferings: "Loading assigned course offerings...",
+        noOfferingsTitle: "No assigned course offerings.",
+        noOfferingsText: "Ask an administrator or primary professor to assign you to an offering before creating an exam.",
+        offeringLabel: "Course offering",
         titleLabel: "Title",
         durationLabel: "Duration in minutes",
         descriptionLabel: "Description",
@@ -294,6 +300,7 @@ const resources = {
         nav: {
           adminOverview: "Overview",
           adminAcademic: "Academic",
+          adminEnrollments: "Enrollments",
           adminUsers: "Users",
           adminExams: "Exams",
           professorOverview: "Overview",
@@ -421,6 +428,25 @@ const resources = {
                 "Live monitoring and violation logs will appear here once the proctoring module is implemented."
               ]
             }
+          },
+          offerings: {
+            title: "Assigned support offerings",
+            subtitle: "Only course offerings where your assistant assignment is active are shown.",
+            loading: "Loading assigned support offerings...",
+            error: "Assigned support offerings could not be loaded.",
+            emptyTitle: "No support offerings assigned yet.",
+            emptyText: "Ask an administrator or primary professor to assign you to an active course offering.",
+            total: "{{count}} assigned",
+            groupTitle: "Year {{year}}, Semester {{semester}}",
+            groupCount: "{{count}} support offerings",
+            section: "Section {{section}}",
+            term: "Term",
+            delivery: "Delivery",
+            capacity: "Capacity",
+            responsibility: "Responsibility",
+            responsibilityValue: "Exam support and grading coordination",
+            courseFallback: "Unnamed course",
+            termFallback: "No term"
           }
         },
         student: {
@@ -521,6 +547,7 @@ const resources = {
         subtitle: "Një hapësirë me role për operacione reale akademike, përgatitje provimesh dhe zhvillim të sigurt të vlerësimit.",
         examWorkspace: "Hapësira e provimeve",
         academicSetup: "Konfigurimi akademik",
+        enrollmentControl: "Menaxhimi i regjistrimeve",
         userManagement: "Menaxhimi i përdoruesve",
         badges: {
           Admin: "Paneli i adminit",
@@ -551,10 +578,15 @@ const resources = {
         loading: "Duke u ngarkuar hapësira e krijimit...",
         userError: "Profili i përdoruesit nuk mund të ngarkohet.",
         error: "Për momentin provimi nuk mund të krijohet.",
+        offeringsError: "Ofrimet e caktuara nuk u ngarkuan.",
         badge: "Krijimi i provimit",
         title: "Krijo provim",
         subtitle: "Vendos fillimisht bazën e vlerësimit. Përzgjedhja e pyetjeve, orari dhe publikimi do të ndërtohen mbi këtë regjistër.",
         configuration: "Konfigurimi i provimit",
+        loadingOfferings: "Duke u ngarkuar ofrimet e caktuara...",
+        noOfferingsTitle: "Nuk ka ofrime te caktuara.",
+        noOfferingsText: "Kerko nga administratori ose profesori kryesor te te caktoje ne nje ofrim para se te krijosh provim.",
+        offeringLabel: "Ofrimi i lendes",
         titleLabel: "Titulli",
         durationLabel: "Kohëzgjatja në minuta",
         descriptionLabel: "Përshkrimi",
@@ -747,6 +779,7 @@ const resources = {
         nav: {
           adminOverview: "Përmbledhje",
           adminAcademic: "Akademike",
+          adminEnrollments: "Regjistrimet",
           adminUsers: "Përdoruesit",
           adminExams: "Provimet",
           professorOverview: "Përmbledhje",
@@ -874,6 +907,25 @@ const resources = {
                 "Monitorimi live dhe logjet e shkeljeve do të shfaqen këtu pasi të implementohet moduli i proctoring."
               ]
             }
+          },
+          offerings: {
+            title: "Ofrimet mbeshtetese te caktuara",
+            subtitle: "Shfaqen vetem ofrimet ku caktimi yt si asistent eshte aktiv.",
+            loading: "Duke u ngarkuar ofrimet mbeshtetese...",
+            error: "Ofrimet mbeshtetese nuk u ngarkuan.",
+            emptyTitle: "Ende nuk ke ofrime mbeshtetese te caktuara.",
+            emptyText: "Kerko nga administratori ose profesori kryesor te te caktoje ne nje ofrim aktiv.",
+            total: "{{count}} te caktuara",
+            groupTitle: "Viti {{year}}, Semestri {{semester}}",
+            groupCount: "{{count}} ofrime mbeshtetese",
+            section: "Grupi {{section}}",
+            term: "Afati",
+            delivery: "Lloji",
+            capacity: "Kapaciteti",
+            responsibility: "Pergjegjesia",
+            responsibilityValue: "Mbeshtetje provimi dhe koordinim notimi",
+            courseFallback: "Lende pa emer",
+            termFallback: "Pa afat"
           }
         },
         student: {

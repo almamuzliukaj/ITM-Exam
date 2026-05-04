@@ -3,8 +3,27 @@ import { addQuestion, getExam } from "../../lib/examsApi";
 import { canManageExams } from "../../lib/permissions";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import AppShell from "../../components/AppShell";
+import Editor from "@monaco-editor/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+const technicalTypes = new Set(["CSharp", "SQL"]);
+
+const starterTemplates = {
+  CSharp: `using System;
+
+public class Solution
+{
+    public static void Main()
+    {
+        // Write your solution here
+    }
+}`,
+  SQL: `SELECT
+    *
+FROM
+    table_name;`,
+};
 
 export default function QuestionCreatePage() {
   const { t } = useTranslation();
@@ -16,12 +35,17 @@ export default function QuestionCreatePage() {
     text: "",
     type: "MCQ",
     points: 10,
+    starterCode: starterTemplates.CSharp,
+    sqlSchema: "",
+    expectedAnswer: "",
   });
   const [loadingExam, setLoadingExam] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const canEdit = useMemo(() => canManageExams(user?.role), [user?.role]);
+  const isTechnicalQuestion = technicalTypes.has(form.type);
+  const editorLanguage = form.type === "SQL" ? "sql" : "csharp";
 
   useEffect(() => {
     if (!examId) return;
@@ -42,12 +66,17 @@ export default function QuestionCreatePage() {
   async function onSubmit(e) {
     e.preventDefault();
     if (!examId || !canEdit || !form.text.trim()) return;
+    const validationError = validateQuestionForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     try {
       setSaving(true);
       setError("");
       await addQuestion(examId, {
-        text: form.text.trim(),
+        text: buildQuestionText(form),
         type: form.type,
         points: Number(form.points) || 0,
       });
@@ -62,6 +91,15 @@ export default function QuestionCreatePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function onTypeChange(nextType) {
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      starterCode: starterTemplates[nextType] || current.starterCode,
+      sqlSchema: nextType === "SQL" ? current.sqlSchema : "",
+    }));
   }
 
   if (userLoading) {
@@ -89,7 +127,9 @@ export default function QuestionCreatePage() {
             {error ? <div className="alert">{error}</div> : null}
             <form className="stackLg" onSubmit={onSubmit}>
               <div className="field">
-                <label className="label">{t("questionCreate.prompt")}</label>
+                <label className="label">
+                  {isTechnicalQuestion ? "Question prompt" : t("questionCreate.prompt")}
+                </label>
                 <textarea
                   className="input textarea"
                   value={form.text}
@@ -105,14 +145,77 @@ export default function QuestionCreatePage() {
                 <select
                   className="input"
                   value={form.type}
-                  onChange={(e) => setForm((current) => ({ ...current, type: e.target.value }))}
+                  onChange={(e) => onTypeChange(e.target.value)}
                   disabled={saving || loadingExam}
                 >
                   <option value="MCQ">MCQ</option>
                   <option value="Text">{t("common.text")}</option>
-                  <option value="Code">{t("common.code")}</option>
+                  <option value="CSharp">C#</option>
+                  <option value="SQL">SQL</option>
                 </select>
               </div>
+
+              {isTechnicalQuestion ? (
+                <div className="technicalQuestionPanel">
+                  <div className="technicalQuestionHeader">
+                    <div>
+                      <h4>{form.type === "SQL" ? "SQL editor" : "C# editor"}</h4>
+                      <p>
+                        Use structured input for technical questions. The editor content is saved together with the prompt.
+                      </p>
+                    </div>
+                    <span className="statusPill statusDraft">{form.type}</span>
+                  </div>
+
+                  {form.type === "SQL" ? (
+                    <div className="field">
+                      <label className="label">Database schema or table context</label>
+                      <textarea
+                        className="input textarea textareaCompact"
+                        value={form.sqlSchema}
+                        onChange={(e) => setForm((current) => ({ ...current, sqlSchema: e.target.value }))}
+                        disabled={saving || loadingExam}
+                        placeholder="Example: Students(Id, FullName, YearOfStudy), Exams(Id, Title, StartsAt)"
+                        rows={4}
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="field">
+                    <label className="label">
+                      {form.type === "SQL" ? "Starter SQL" : "Starter C# code"}
+                    </label>
+                    <div className="monacoShell">
+                      <Editor
+                        height="280px"
+                        language={editorLanguage}
+                        theme="vs-dark"
+                        value={form.starterCode}
+                        onChange={(value) => setForm((current) => ({ ...current, starterCode: value || "" }))}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          wordWrap: "on",
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Expected answer or grading note</label>
+                    <textarea
+                      className="input textarea textareaCompact"
+                      value={form.expectedAnswer}
+                      onChange={(e) => setForm((current) => ({ ...current, expectedAnswer: e.target.value }))}
+                      disabled={saving || loadingExam}
+                      placeholder="Describe the expected output, query result, or grading criteria."
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="field">
                 <label className="label">{t("questionCreate.points")}</label>
@@ -137,4 +240,44 @@ export default function QuestionCreatePage() {
       </section>
     </AppShell>
   );
+}
+
+function validateQuestionForm(form) {
+  if (!technicalTypes.has(form.type)) {
+    return "";
+  }
+
+  if (!form.starterCode.trim()) {
+    return "Starter code is required for C# and SQL questions.";
+  }
+
+  if (form.type === "SQL" && !form.sqlSchema.trim()) {
+    return "Database schema or table context is required for SQL questions.";
+  }
+
+  return "";
+}
+
+function buildQuestionText(form) {
+  if (!technicalTypes.has(form.type)) {
+    return form.text.trim();
+  }
+
+  const sections = [
+    `Prompt:\n${form.text.trim()}`,
+  ];
+
+  if (form.type === "SQL" && form.sqlSchema.trim()) {
+    sections.push(`Schema:\n${form.sqlSchema.trim()}`);
+  }
+
+  if (form.starterCode.trim()) {
+    sections.push(`${form.type === "SQL" ? "Starter SQL" : "Starter C# code"}:\n${form.starterCode.trim()}`);
+  }
+
+  if (form.expectedAnswer.trim()) {
+    sections.push(`Expected answer / grading note:\n${form.expectedAnswer.trim()}`);
+  }
+
+  return sections.join("\n\n---\n\n");
 }

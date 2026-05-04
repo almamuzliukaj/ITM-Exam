@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { listExams } from "../../lib/examsApi";
-import { canManageExams } from "../../lib/permissions";
+import { listExams, publishExam } from "../../lib/examsApi";
+import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,6 +11,7 @@ export default function ExamsListPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [publishingId, setPublishingId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,7 +43,30 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
-  const canCreate = canManageExams(user.role);
+  const canCreate = canCreateExams(user.role);
+
+  async function onPublish(examId) {
+    try {
+      setPublishingId(examId);
+      setError("");
+      await publishExam(examId);
+      setExams((current) =>
+        current.map((exam) =>
+          exam.id === examId
+            ? { ...exam, isPublished: true, status: "Published" }
+            : exam
+        )
+      );
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to publish exam.");
+    } finally {
+      setPublishingId("");
+    }
+  }
 
   return (
     <AppShell
@@ -91,7 +115,14 @@ export default function ExamsListPage() {
                 <p>{exam.description || t("examsList.noDescription")}</p>
                 <div className="resourceFooter">
                   <div className="small">{t("examsList.openHint")}</div>
-                  <Link className="btn" to={`/exams/${exam.id}`}>{t("examsList.open")}</Link>
+                  <div className="resourceActionGroup">
+                    {canCreate && !exam.isPublished ? (
+                      <button className="btn btnPrimary" type="button" onClick={() => onPublish(exam.id)} disabled={publishingId === exam.id}>
+                        {publishingId === exam.id ? "Publishing..." : "Publish"}
+                      </button>
+                    ) : null}
+                    <Link className="btn" to={`/exams/${exam.id}`}>{t("examsList.open")}</Link>
+                  </div>
                 </div>
               </article>
             ))}

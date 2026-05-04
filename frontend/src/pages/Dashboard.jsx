@@ -27,6 +27,7 @@ export default function Dashboard() {
         <div className="dashboardHeaderActions">
           {!isAdmin(user.role) ? <Link className="btn" to="/exams">{t("dashboard.examWorkspace")}</Link> : null}
           {isAdmin(user.role) ? <Link className="btn dashboardHeaderBtn" to="/admin/academic">{t("dashboard.academicSetup")}</Link> : null}
+          {isAdmin(user.role) ? <Link className="btn dashboardHeaderBtn" to="/admin/enrollments">{t("dashboard.enrollmentControl")}</Link> : null}
           {isAdmin(user.role) ? <Link className="btn btnPrimary dashboardHeaderBtn" to="/admin/users">{t("dashboard.userManagement")}</Link> : null}
         </div>
       }

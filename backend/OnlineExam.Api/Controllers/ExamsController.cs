@@ -381,9 +381,6 @@ public class ExamsController : ControllerBase
         if (dto.CourseId != Guid.Empty)
             query = query.Where(q => q.CourseId == dto.CourseId);
 
-        if (!string.IsNullOrWhiteSpace(dto.Difficulty))
-            query = query.Where(q => q.Difficulty != null && q.Difficulty.ToLower() == dto.Difficulty.ToLower());
-
         if (!string.IsNullOrWhiteSpace(dto.Type))
             query = query.Where(q => q.Type.ToLower() == dto.Type.ToLower());
 

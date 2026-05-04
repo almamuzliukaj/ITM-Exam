@@ -7,7 +7,6 @@ public class Question
     public Guid? CourseId { get; set; }
     public string? OptionsJson { get; set; }
     public string Type { get; set; } = null!;
-    public string? Difficulty { get; set; }
     public string? CorrectAnswer { get; set; }
     public string Text { get; set; } = null!;
     public int Points { get; set; }

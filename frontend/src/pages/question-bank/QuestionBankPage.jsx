@@ -17,7 +17,6 @@ export default function QuestionBankPage() {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({
     type: "",
-    difficulty: "",
     search: "",
   });
 
@@ -154,21 +153,8 @@ export default function QuestionBankPage() {
                   <option value="">{t("questionBank.allTypes")}</option>
                   <option value="MCQ">MCQ</option>
                   <option value="Text">{t("common.text")}</option>
-                </select>
-              </div>
-
-              <div className="field questionBankField">
-                <label className="label">{t("questionBank.difficulty")}</label>
-                <select
-                  className="input"
-                  value={filters.difficulty}
-                  onChange={(e) => setFilters((current) => ({ ...current, difficulty: e.target.value }))}
-                  disabled={!selectedOfferingId}
-                >
-                  <option value="">{t("questionBank.allDifficulties")}</option>
-                  <option value="Easy">{t("questionBank.difficulties.easy")}</option>
-                  <option value="Medium">{t("questionBank.difficulties.medium")}</option>
-                  <option value="Hard">{t("questionBank.difficulties.hard")}</option>
+                  <option value="CSharp">C#</option>
+                  <option value="SQL">SQL</option>
                 </select>
               </div>
 
@@ -209,11 +195,10 @@ export default function QuestionBankPage() {
             {questions.map((question) => (
               <article key={question.id} className="resourceCard questionBankCard">
                 <div className="resourceMetaRow">
-                  <span className={`statusPill ${question.type === "MCQ" ? "statusLive" : "statusDraft"}`}>{question.type}</span>
+                  <span className={`statusPill ${question.type === "MCQ" ? "statusLive" : "statusDraft"}`}>{formatQuestionType(question.type)}</span>
                   <span className="small">{t("questionBank.pointsValue", { count: question.points })}</span>
                 </div>
-                <h3>{question.text}</h3>
-                <p>{question.difficulty || t("questionBank.noDifficulty")}</p>
+                <h3>{extractPrompt(question)}</h3>
 
                 {question.type === "MCQ" ? (
                   <div className="bulletStack compactStack">
@@ -224,6 +209,8 @@ export default function QuestionBankPage() {
                       </div>
                     ))}
                   </div>
+                ) : isTechnicalQuestion(question) ? (
+                  <TechnicalQuestionPreview question={question} />
                 ) : question.correctAnswer ? (
                   <div className="questionBankModelAnswer">
                     <strong>{t("questionBank.modelAnswer")}:</strong> {question.correctAnswer}
@@ -256,4 +243,77 @@ function formatOffering(offering) {
   const term = offering.term?.code || offering.term?.name || "";
   const section = offering.sectionCode || "-";
   return [code && name ? `${code} - ${name}` : code || name, term, `Section ${section}`].filter(Boolean).join(" | ");
+}
+
+function TechnicalQuestionPreview({ question }) {
+  const parsed = parseTechnicalQuestion(question.text, question.type);
+
+  return (
+    <div className="stackLg">
+      {parsed.schema ? (
+        <div className="questionBankModelAnswer">
+          <strong>Schema:</strong> {parsed.schema}
+        </div>
+      ) : null}
+
+      {parsed.code ? (
+        <div className="questionBankModelAnswer">
+          <strong>{question.type === "SQL" ? "Starter SQL" : "Starter C# code"}:</strong>
+          <pre className="technicalCodeBlock">{parsed.code}</pre>
+        </div>
+      ) : null}
+
+      {question.correctAnswer ? (
+        <div className="questionBankModelAnswer">
+          <strong>Expected answer / grading note:</strong> {question.correctAnswer}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function isTechnicalQuestion(question) {
+  return question.type === "CSharp" || question.type === "SQL";
+}
+
+function formatQuestionType(type) {
+  if (type === "CSharp") return "C#";
+  return type;
+}
+
+function extractPrompt(question) {
+  if (!isTechnicalQuestion(question)) return question.text;
+  return parseTechnicalQuestion(question.text, question.type).prompt || question.text;
+}
+
+function parseTechnicalQuestion(text, type) {
+  const result = {
+    prompt: "",
+    schema: "",
+    code: "",
+  };
+
+  if (type !== "CSharp" && type !== "SQL") {
+    result.prompt = text;
+    return result;
+  }
+
+  const sections = String(text || "").split("\n\n---\n\n");
+  for (const section of sections) {
+    if (section.startsWith("Prompt:\n")) {
+      result.prompt = section.replace("Prompt:\n", "").trim();
+    } else if (section.startsWith("Schema:\n")) {
+      result.schema = section.replace("Schema:\n", "").trim();
+    } else if (section.startsWith("Starter SQL:\n")) {
+      result.code = section.replace("Starter SQL:\n", "").trim();
+    } else if (section.startsWith("Starter C# code:\n")) {
+      result.code = section.replace("Starter C# code:\n", "").trim();
+    }
+  }
+
+  if (!result.prompt) {
+    result.prompt = text;
+  }
+
+  return result;
 }

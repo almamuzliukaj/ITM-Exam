@@ -15,7 +15,7 @@ namespace OnlineExam.Api.Controllers;
 public class QuestionsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
-    private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text"];
+    private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text", "CSharp", "SQL"];
     private readonly AppDbContext _context;
 
     public QuestionsController(AppDbContext context)
@@ -54,7 +54,6 @@ public class QuestionsController : ControllerBase
             Type = dto.Type,
             CourseId = dto.CourseId,
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
-            Difficulty = dto.Difficulty,
             CorrectAnswer = dto.CorrectAnswer,
             Points = dto.Points,
             ExamId = examId
@@ -95,7 +94,6 @@ public class QuestionsController : ControllerBase
         existing.Type = dto.Type;
         existing.CourseId = dto.CourseId;
         existing.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
-        existing.Difficulty = dto.Difficulty;
         existing.CorrectAnswer = dto.CorrectAnswer;
         existing.Points = dto.Points;
 
@@ -152,7 +150,7 @@ public class QuestionsController : ControllerBase
 
     [HttpGet("/api/question-bank/{offeringId:guid}/questions")]
     [Authorize(Roles = "Professor,Assistant")]
-    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? difficulty, [FromQuery] string? search)
+    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? search)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -172,12 +170,6 @@ public class QuestionsController : ControllerBase
         {
             var normalizedType = type.Trim();
             query = query.Where(x => x.Type == normalizedType);
-        }
-
-        if (!string.IsNullOrWhiteSpace(difficulty))
-        {
-            var normalizedDifficulty = difficulty.Trim().ToLower();
-            query = query.Where(x => x.Difficulty != null && x.Difficulty.ToLower() == normalizedDifficulty);
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -245,7 +237,6 @@ public class QuestionsController : ControllerBase
             CourseId = offering.CourseId,
             Text = dto.Text.Trim(),
             Type = NormalizeQuestionType(dto.Type),
-            Difficulty = NormalizeOptionalValue(dto.Difficulty),
             CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer),
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
             Points = dto.Points
@@ -283,7 +274,6 @@ public class QuestionsController : ControllerBase
         var options = NormalizeOptions(dto.Options);
         question.Text = dto.Text.Trim();
         question.Type = NormalizeQuestionType(dto.Type);
-        question.Difficulty = NormalizeOptionalValue(dto.Difficulty);
         question.CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer);
         question.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
         question.Points = dto.Points;
@@ -419,7 +409,7 @@ public class QuestionsController : ControllerBase
 
         var normalizedType = NormalizeQuestionType(dto.Type);
         if (!AllowedQuestionBankTypes.Contains(normalizedType))
-            return "Only MCQ and Text questions are supported in this question bank.";
+            return "Only MCQ, Text, C#, and SQL questions are supported in this question bank.";
 
         if (normalizedType == "MCQ")
         {
@@ -446,6 +436,13 @@ public class QuestionsController : ControllerBase
 
         if (string.Equals(normalized, "MCQ", StringComparison.OrdinalIgnoreCase))
             return "MCQ";
+
+        if (string.Equals(normalized, "CSharp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "C#", StringComparison.OrdinalIgnoreCase))
+            return "CSharp";
+
+        if (string.Equals(normalized, "SQL", StringComparison.OrdinalIgnoreCase))
+            return "SQL";
 
         return normalized;
     }
@@ -483,7 +480,6 @@ public class QuestionsController : ControllerBase
             CourseId = question.CourseId,
             Text = question.Text,
             Type = question.Type,
-            Difficulty = question.Difficulty,
             CorrectAnswer = question.CorrectAnswer,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points

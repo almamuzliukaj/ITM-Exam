@@ -47,9 +47,14 @@ public class ExamsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
+ feat/sprint-11-monaco-editor
             var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId.Value);
+
+            var offeringIds = await GetEligibleOfferingIdsAsync(userId.Value);
+ main
             query = query.Where(x =>
                 x.IsPublished &&
+                x.Status == "Published" &&
                 x.CourseOfferingId.HasValue &&
                 offeringIds.Contains(x.CourseOfferingId.Value));
         }
@@ -399,7 +404,7 @@ public class ExamsController : ControllerBase
 
     private async Task<bool> CanStudentAccessExamAsync(Guid userId, Exam exam)
     {
-        if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
+        if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return false;
 
         var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>

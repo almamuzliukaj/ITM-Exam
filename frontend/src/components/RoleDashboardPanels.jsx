@@ -1,9 +1,15 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+ feat/sprint-11-monaco-editor
 import { listMyOfferings } from "../lib/academicApi";
 import { getDashboardSummary } from "../lib/dashboardApi";
 import { getMyEligibilityDashboard } from "../lib/studentApi";
+
+import { getMyEligibilityDashboard } from "../lib/studentApi";
+import { listMyOfferings } from "../lib/academicApi";
+import { getDashboardSummary } from "../lib/dashboardApi";
+main
 
 export default function RoleDashboardPanels({ role = "Student" }) {
   const { t } = useTranslation();
@@ -220,6 +226,7 @@ function StudentEligibilityPanel({ config }) {
         </div>
         <div className="heroStats">
           {stats.map((stat) => (
+ feat/sprint-11-monaco-editor
             <article key={stat.label} className="metricCard">
               <div className="metricValue">{stat.value}</div>
               <div className="metricLabel">{stat.label}</div>
@@ -371,6 +378,7 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
         <div className="heroStats">
           {config.stats.map((stat) => (
+ main
             <article key={stat.label} className="metricCard">
               <div className="metricValue">{stat.value}</div>
               <div className="metricLabel">{stat.label}</div>
@@ -380,6 +388,139 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
       </section>
 
+ feat/sprint-11-monaco-editor
+
+      <section className="dashboardGrid">
+        <article className="surfaceCard">
+          <div className="sectionHeader">
+            <h3>Current semester courses</h3>
+          </div>
+          <div className="sectionBody">
+            {courses.length ? (
+              <div className="studentItemList">
+                {courses.map((course) => (
+                  <div key={course.enrollmentId} className="studentItemRow">
+                    <div>
+                      <strong>{course.courseCode} - {course.courseName}</strong>
+                      <span>Year {course.yearOfStudy}, semester {course.semesterNo}, section {course.sectionCode}</span>
+                    </div>
+                    <span className="statusPill statusLive">{course.enrollmentSource}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="emptyState">No eligible current-semester courses are visible yet.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="surfaceCard">
+          <div className="sectionHeader">
+            <h3>Visible exams</h3>
+          </div>
+          <div className="sectionBody">
+            {exams.length ? (
+              <div className="studentItemList">
+                {exams.map((exam) => (
+                  <div key={exam.id} className="studentItemRow">
+                    <div>
+                      <strong>{exam.title}</strong>
+                      <span>{exam.courseCode} - {formatDateTime(exam.startsAt)} / {exam.durationMinutes} min</span>
+                    </div>
+                    <Link className="btn" to={`/exams/${exam.id}`}>
+                      Open
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="emptyState">No published exams are visible for your eligible courses.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="surfaceCard">
+          <div className="sectionHeader">
+            <h3>Carry-over courses</h3>
+          </div>
+          <div className="sectionBody">
+            {carryOvers.length ? (
+              <div className="studentItemList">
+                {carryOvers.map((item) => (
+                  <div key={item.id} className="studentItemRow">
+                    <div>
+                      <strong>{item.courseCode} - {item.courseName}</strong>
+                      <span>{item.reason} from semester {item.originSemesterNo}{item.originTerm ? `, ${item.originTerm}` : ""}</span>
+                    </div>
+                    <span className="statusPill statusDraft">{item.status}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="emptyState">No open carry-over courses are currently assigned.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="surfaceCard">
+          <div className="sectionHeader">
+            <h3>Visibility rules</h3>
+          </div>
+          <div className="sectionBody">
+            <div className="bulletStack">
+              <div className="listRow">
+                <span className="listDot" />
+                <span>Only eligible enrollments from the current term are shown.</span>
+              </div>
+              <div className="listRow">
+                <span className="listDot" />
+                <span>Exams must be published and linked to an eligible course offering.</span>
+              </div>
+              <div className="listRow">
+                <span className="listDot" />
+                <span>Carry-over courses appear separately until they are closed or cancelled.</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
+  const groups = groupOfferingsByYearSemester(offerings);
+
+  return (
+    <div className="stackXl">
+      {summaryError ? <div className="alert">{summaryError}</div> : null}
+      {offeringsError ? <div className="alert">{offeringsError}</div> : null}
+
+      <section className="heroPanel">
+        <div className="heroCopy">
+          <div className="eyebrow">{config.badge}</div>
+          <h2 className="heroTitle">{config.heroTitle}</h2>
+          <p className="heroText">{config.heroText}</p>
+          <div className="heroActions">
+            {config.quickActions.map((action) => (
+              <Link key={action.to} className="btn btnPrimary" to={action.to}>
+                {action.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="heroStats">
+          {config.stats.map((stat) => (
+            <article key={stat.label} className="metricCard">
+              <div className="metricValue">{stat.value}</div>
+              <div className="metricLabel">{stat.label}</div>
+              <div className="metricMeta">{stat.meta}</div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+ main
       <section className="surfaceCard professorOfferingsSurface">
         <div className="sectionHeader professorOfferingsHeader">
           <div>
@@ -446,6 +587,7 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
   );
 }
 
+ feat/sprint-11-monaco-editor
 function DefaultDashboard({ config, error }) {
   return (
     <div className="stackXl">
@@ -498,6 +640,7 @@ function DefaultDashboard({ config, error }) {
   );
 }
 
+ main
 function formatDateTime(value) {
   if (!value) return "No schedule";
   return new Intl.DateTimeFormat(undefined, {

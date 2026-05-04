@@ -68,6 +68,7 @@ const resources = {
         subtitle: "A role-based workspace designed for real academic operations, exam preparation, and secure assessment delivery.",
         examWorkspace: "Exam workspace",
         academicSetup: "Academic setup",
+        enrollmentControl: "Enrollment control",
         userManagement: "User management",
         badges: {
           Admin: "Admin dashboard",
@@ -230,6 +231,7 @@ const resources = {
         nav: {
           adminOverview: "Overview",
           adminAcademic: "Academic",
+          adminEnrollments: "Enrollments",
           adminUsers: "Users",
           adminExams: "Exams",
           professorOverview: "Overview",
@@ -455,6 +457,7 @@ const resources = {
         subtitle: "Një hapësirë me role për operacione reale akademike, përgatitje provimesh dhe zhvillim të sigurt të vlerësimit.",
         examWorkspace: "Hapësira e provimeve",
         academicSetup: "Konfigurimi akademik",
+        enrollmentControl: "Menaxhimi i regjistrimeve",
         userManagement: "Menaxhimi i përdoruesve",
         badges: {
           Admin: "Paneli i adminit",
@@ -617,6 +620,7 @@ const resources = {
         nav: {
           adminOverview: "Përmbledhje",
           adminAcademic: "Akademike",
+          adminEnrollments: "Regjistrimet",
           adminUsers: "Përdoruesit",
           adminExams: "Provimet",
           professorOverview: "Përmbledhje",

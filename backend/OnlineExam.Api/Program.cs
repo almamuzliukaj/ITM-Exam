@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
+using OnlineExam.Api.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 
@@ -18,7 +20,12 @@ if (string.IsNullOrEmpty(jwtIssuer))
     throw new Exception("JWT Issuer is missing in appsettings.json");
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 builder.Services.AddEndpointsApiExplorer();
 
 // ================= SWAGGER JWT AUTH ======================
@@ -99,6 +106,7 @@ using (var scope = app.Services.CreateScope())
 
 if (app.Environment.IsDevelopment())
 {
+    EnsureDemoUsers(app);
     app.UseSwagger();
     app.UseSwaggerUI(); // <-- Kjo është për Swagger!
 }
@@ -111,3 +119,45 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
+
+static void EnsureDemoUsers(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    var demoUsers = new[]
+    {
+        new { Id = Guid.Parse("f9635e15-1d90-4e3b-b722-331a8fc2fbe9"), FullName = "Admin User", Email = "admin@onlineexam.com", Password = "Password123!", Role = "Admin" },
+        new { Id = Guid.Parse("b5769729-e575-4789-b6e7-f7327ede1acc"), FullName = "Professor", Email = "prof@onlineexam.com", Password = "Password123!", Role = "Professor" },
+        new { Id = Guid.Parse("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"), FullName = "Student", Email = "student@onlineexam.com", Password = "Password123!", Role = "Student" }
+    };
+
+    foreach (var demo in demoUsers)
+    {
+        var user = db.Users.FirstOrDefault(x => x.Email == demo.Email);
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(demo.Password);
+
+        if (user is null)
+        {
+            db.Users.Add(new User
+            {
+                Id = demo.Id,
+                FullName = demo.FullName,
+                Email = demo.Email,
+                PasswordHash = passwordHash,
+                Role = demo.Role,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            continue;
+        }
+
+        user.FullName = demo.FullName;
+        user.Role = demo.Role;
+        user.IsActive = true;
+        user.PasswordHash = passwordHash;
+    }
+
+    db.SaveChanges();
+}

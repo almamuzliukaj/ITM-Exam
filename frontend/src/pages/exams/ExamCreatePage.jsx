@@ -56,7 +56,7 @@ export default function ExamCreatePage() {
     };
   }, [t]);
 
-  async function onSubmit(e) {
+  async function saveExam(e, publishNow = false) {
     e.preventDefault();
     setError("");
 
@@ -66,7 +66,8 @@ export default function ExamCreatePage() {
         title: form.title,
         description: form.description,
         durationMinutes: Number(form.durationMinutes) || 60,
-        courseOfferingId: form.courseOfferingId,
+        courseOfferingId: form.courseOfferingId || null,
+        isPublished: publishNow,
       });
       nav("/exams");
     } catch (err) {
@@ -110,7 +111,7 @@ export default function ExamCreatePage() {
                 <p>{t("examCreate.noOfferingsText")}</p>
               </div>
             ) : null}
-            <form className="stackLg" onSubmit={onSubmit}>
+            <form className="stackLg" onSubmit={(e) => saveExam(e, false)}>
               <div className="field">
                 <label className="label">{t("examCreate.offeringLabel")}</label>
                 <select
@@ -160,10 +161,23 @@ export default function ExamCreatePage() {
                 />
               </div>
 
+              <div className="publishNotice">
+                <strong>Draft and publish workflow</strong>
+                <span>Save as draft while preparing questions, or publish immediately when the exam is ready for eligible students.</span>
+              </div>
+
               <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
-                <button className="btn btnPrimary" type="submit" disabled={!canSubmit}>
-                  {saving ? t("examCreate.creating") : t("examCreate.create")}
+                <button className="btn" type="submit" disabled={!canSubmit}>
+                  {saving ? t("examCreate.creating") : "Save draft"}
+                </button>
+                <button
+                  className="btn btnPrimary"
+                  type="button"
+                  disabled={!canSubmit}
+                  onClick={(e) => saveExam(e, true)}
+                >
+                  {saving ? t("examCreate.creating") : "Publish exam"}
                 </button>
               </div>
             </form>

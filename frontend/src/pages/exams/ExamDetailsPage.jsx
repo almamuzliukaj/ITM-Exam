@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
-import { getExam, listQuestions } from "../../lib/examsApi";
+import { getExam, listQuestions, publishExam } from "../../lib/examsApi";
+import { listMyOfferings } from "../../lib/academicApi";
 import { canManageExams } from "../../lib/permissions";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import AppShell from "../../components/AppShell";
@@ -12,8 +13,12 @@ export default function ExamDetailsPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exam, setExam] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [offerings, setOfferings] = useState([]);
+  const [selectedOfferingId, setSelectedOfferingId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  const canEdit = canManageExams(user?.role);
 
   useEffect(() => {
     if (!examId) return;
@@ -27,6 +32,7 @@ export default function ExamDetailsPage() {
         const [examData, questionData] = await Promise.all([getExam(examId), listQuestions(examId)]);
         if (!active) return;
         setExam(examData);
+        setSelectedOfferingId(examData?.courseOfferingId || "");
         setQuestions(Array.isArray(questionData) ? questionData : []);
       } catch {
         if (active) setError(t("examDetails.error"));
@@ -40,6 +46,27 @@ export default function ExamDetailsPage() {
     };
   }, [examId, t]);
 
+  useEffect(() => {
+    if (!canEdit) return;
+
+    let active = true;
+
+    async function loadOfferings() {
+      try {
+        const data = await listMyOfferings();
+        if (active) setOfferings(Array.isArray(data) ? data : []);
+      } catch {
+        if (active) setOfferings([]);
+      }
+    }
+
+    loadOfferings();
+
+    return () => {
+      active = false;
+    };
+  }, [canEdit]);
+
   if (userLoading) {
     return <div className="pageState">{t("examDetails.loading")}</div>;
   }
@@ -48,7 +75,28 @@ export default function ExamDetailsPage() {
     return <div className="pageState">{userError || t("examDetails.userError")}</div>;
   }
 
-  const canEdit = canManageExams(user.role);
+  const isDraft = canEdit && exam && !exam.isPublished;
+
+  async function onPublish() {
+    if (!examId || !isDraft) return;
+
+    try {
+      setPublishing(true);
+      setError("");
+      await publishExam(examId, selectedOfferingId ? { courseOfferingId: selectedOfferingId } : {});
+      const updated = await getExam(examId);
+      setExam(updated);
+      setSelectedOfferingId(updated?.courseOfferingId || "");
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to publish exam.");
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   return (
     <AppShell
@@ -59,6 +107,11 @@ export default function ExamDetailsPage() {
       actions={
         <>
           <Link className="btn" to="/exams">{t("examDetails.backToExams")}</Link>
+          {isDraft ? (
+            <button className="btn btnPrimary" type="button" onClick={onPublish} disabled={publishing || (!exam?.courseOfferingId && !selectedOfferingId)}>
+              {publishing ? "Publishing..." : "Publish exam"}
+            </button>
+          ) : null}
           {canEdit && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
         </>
       }
@@ -85,6 +138,33 @@ export default function ExamDetailsPage() {
               </article>
             </section>
 
+            {isDraft && !exam?.courseOfferingId ? (
+              <section className="surfaceCard">
+                <div className="sectionHeader">
+                  <h3>Publish setup</h3>
+                  <span className="small">Link this draft to a course offering before publishing.</span>
+                </div>
+                <div className="sectionBody">
+                  <div className="field">
+                    <label className="label">Course offering</label>
+                    <select
+                      className="input"
+                      value={selectedOfferingId}
+                      onChange={(e) => setSelectedOfferingId(e.target.value)}
+                      disabled={publishing}
+                    >
+                      <option value="">Select course offering</option>
+                      {offerings.map((offering) => (
+                        <option key={offering.id} value={offering.id}>
+                          {formatOfferingLabel(offering)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             <section className="surfaceCard">
               <div className="sectionHeader">
                 <h3>{t("examDetails.coverage")}</h3>
@@ -99,16 +179,7 @@ export default function ExamDetailsPage() {
                 ) : (
                   <div className="questionList">
                     {questions.map((question, index) => (
-                      <article key={question.id} className="questionCard">
-                        <div className="questionIndex">{String(index + 1).padStart(2, "0")}</div>
-                        <div className="questionBody">
-                          <strong>{question.text || "(no text)"}</strong>
-                          <div className="questionMeta">
-                            <span>{question.type ? `${t("examDetails.type")}: ${question.type}` : `${t("examDetails.type")}: -`}</span>
-                            <span>{typeof question.points === "number" ? `${t("examDetails.points")}: ${question.points}` : `${t("examDetails.points")}: -`}</span>
-                          </div>
-                        </div>
-                      </article>
+                      <QuestionPreview key={question.id} question={question} index={index} t={t} />
                     ))}
                   </div>
                 )}
@@ -119,4 +190,102 @@ export default function ExamDetailsPage() {
       </div>
     </AppShell>
   );
+}
+
+function QuestionPreview({ question, index, t }) {
+  const parsed = parseTechnicalQuestion(question);
+
+  return (
+    <article className="questionCard">
+      <div className="questionIndex">{String(index + 1).padStart(2, "0")}</div>
+      <div className="questionBody">
+        <strong>{parsed.prompt || question.text || "(no text)"}</strong>
+        <div className="questionMeta">
+          <span>{question.type ? `${t("examDetails.type")}: ${formatQuestionType(question.type)}` : `${t("examDetails.type")}: -`}</span>
+          <span>{typeof question.points === "number" ? `${t("examDetails.points")}: ${question.points}` : `${t("examDetails.points")}: -`}</span>
+        </div>
+
+        {parsed.isTechnical ? (
+          <div className="technicalQuestionPreview">
+            {parsed.schema ? (
+              <div>
+                <span className="summaryLabel">Schema / context</span>
+                <pre>{parsed.schema}</pre>
+              </div>
+            ) : null}
+            {parsed.code ? (
+              <div>
+                <span className="summaryLabel">{question.type === "SQL" ? "Starter SQL" : "Starter C# code"}</span>
+                <pre>{parsed.code}</pre>
+              </div>
+            ) : null}
+            {parsed.expected ? (
+              <div>
+                <span className="summaryLabel">Expected answer / grading note</span>
+                <pre>{parsed.expected}</pre>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function formatQuestionType(type) {
+  if (type === "CSharp") return "C#";
+  return type;
+}
+
+function parseTechnicalQuestion(question) {
+  const isTechnical = question.type === "CSharp" || question.type === "SQL";
+  if (!isTechnical) {
+    return {
+      isTechnical: false,
+      prompt: question.text || "",
+      schema: "",
+      code: "",
+      expected: "",
+    };
+  }
+
+  const sections = String(question.text || "")
+    .split(/\n---\n/g)
+    .map((section) => section.trim())
+    .filter(Boolean);
+
+  const result = {
+    isTechnical: true,
+    prompt: "",
+    schema: "",
+    code: "",
+    expected: "",
+  };
+
+  for (const section of sections) {
+    if (section.startsWith("Prompt:\n")) {
+      result.prompt = section.replace("Prompt:\n", "").trim();
+    } else if (section.startsWith("Schema:\n")) {
+      result.schema = section.replace("Schema:\n", "").trim();
+    } else if (section.startsWith("Starter SQL:\n")) {
+      result.code = section.replace("Starter SQL:\n", "").trim();
+    } else if (section.startsWith("Starter C# code:\n")) {
+      result.code = section.replace("Starter C# code:\n", "").trim();
+    } else if (section.startsWith("Expected answer / grading note:\n")) {
+      result.expected = section.replace("Expected answer / grading note:\n", "").trim();
+    }
+  }
+
+  return result;
+}
+
+function formatOfferingLabel(offering) {
+  const code = offering.course?.code || "Course";
+  const name = offering.course?.name || "";
+  const term = offering.term?.name || "Term";
+  const year = offering.yearOfStudy ? `Year ${offering.yearOfStudy}` : "Year -";
+  const semester = offering.semesterNo ? `Semester ${offering.semesterNo}` : "Semester -";
+  const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
+
+  return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
 }

@@ -1,9 +1,15 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+ feat/sprint-11-monaco-editor
+import { listMyOfferings } from "../lib/academicApi";
+import { getDashboardSummary } from "../lib/dashboardApi";
+import { getMyEligibilityDashboard } from "../lib/studentApi";
+
 import { getMyEligibilityDashboard } from "../lib/studentApi";
 import { listMyOfferings } from "../lib/academicApi";
 import { getDashboardSummary } from "../lib/dashboardApi";
+main
 
 export default function RoleDashboardPanels({ role = "Student" }) {
   const { t } = useTranslation();
@@ -18,7 +24,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
   useEffect(() => {
     let active = true;
 
-    (async () => {
+    async function loadSummary() {
       try {
         setLoading(true);
         setError("");
@@ -29,7 +35,9 @@ export default function RoleDashboardPanels({ role = "Student" }) {
       } finally {
         if (active) setLoading(false);
       }
-    })();
+    }
+
+    loadSummary();
 
     return () => {
       active = false;
@@ -46,7 +54,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
 
     let active = true;
 
-    (async () => {
+    async function loadOfferings() {
       try {
         setOfferingsLoading(true);
         setOfferingsError("");
@@ -57,7 +65,9 @@ export default function RoleDashboardPanels({ role = "Student" }) {
       } finally {
         if (active) setOfferingsLoading(false);
       }
-    })();
+    }
+
+    loadOfferings();
 
     return () => {
       active = false;
@@ -67,58 +77,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
   const config = getDashboardConfig(roleKey, t, summary?.metrics, loading, Boolean(error));
 
   if (roleKey === "admin") {
-    return (
-      <div className="stackXl">
-        <section className="adminDashboardHero">
-          <div className="adminDashboardHeroCopy">
-            <div className="adminHeroBrand">
-              <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
-              <span>Administration Portal</span>
-            </div>
-            <div className="eyebrow">{config.badge}</div>
-            <h2 className="heroTitle">{config.heroTitle}</h2>
-            <p className="heroText">{config.heroText}</p>
-          </div>
-          <div className="adminHeroActions">
-            {config.quickActions.map((action) => (
-              <Link key={action.to} className="btn btnPrimary" to={action.to}>
-                {action.label}
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className="adminMetricGrid">
-          {config.stats.map((stat) => (
-            <article key={stat.label} className="adminMetricCard">
-              <span className="summaryLabel">{stat.label}</span>
-              <strong>{stat.value}</strong>
-              <p>{stat.meta}</p>
-            </article>
-          ))}
-        </section>
-
-        <section className="adminSectionGrid">
-          {config.sections.map((section) => (
-            <article key={section.title} className="surfaceCard adminSectionCard">
-              <div className="sectionHeader">
-                <h3>{section.title}</h3>
-              </div>
-              <div className="sectionBody">
-                <div className="bulletStack adminList">
-                  {section.items.map((item) => (
-                    <div key={item} className="listRow">
-                      <span className="listDot" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </article>
-          ))}
-        </section>
-      </div>
-    );
+    return <AdminDashboard config={config} />;
   }
 
   if (roleKey === "student") {
@@ -153,42 +112,49 @@ export default function RoleDashboardPanels({ role = "Student" }) {
     );
   }
 
+  return <DefaultDashboard config={config} error={error} />;
+}
+
+function AdminDashboard({ config }) {
   return (
     <div className="stackXl">
-      {error ? <div className="alert">{error}</div> : null}
-
-      <section className="heroPanel">
-        <div className="heroCopy">
+      <section className="adminDashboardHero">
+        <div className="adminDashboardHeroCopy">
+          <div className="adminHeroBrand">
+            <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
+            <span>Administration Portal</span>
+          </div>
           <div className="eyebrow">{config.badge}</div>
           <h2 className="heroTitle">{config.heroTitle}</h2>
           <p className="heroText">{config.heroText}</p>
-          <div className="heroActions">
-            {config.quickActions.map((action) => (
-              <Link key={action.to} className="btn btnPrimary" to={action.to}>
-                {action.label}
-              </Link>
-            ))}
-          </div>
         </div>
-        <div className="heroStats">
-          {config.stats.map((stat) => (
-            <article key={stat.label} className="metricCard">
-              <div className="metricValue">{stat.value}</div>
-              <div className="metricLabel">{stat.label}</div>
-              <div className="metricMeta">{stat.meta}</div>
-            </article>
+        <div className="adminHeroActions">
+          {config.quickActions.map((action) => (
+            <Link key={action.to} className="btn btnPrimary" to={action.to}>
+              {action.label}
+            </Link>
           ))}
         </div>
       </section>
 
-      <section className="dashboardGrid">
+      <section className="adminMetricGrid">
+        {config.stats.map((stat) => (
+          <article key={stat.label} className="adminMetricCard">
+            <span className="summaryLabel">{stat.label}</span>
+            <strong>{stat.value}</strong>
+            <p>{stat.meta}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="adminSectionGrid">
         {config.sections.map((section) => (
-          <article key={section.title} className="surfaceCard">
+          <article key={section.title} className="surfaceCard adminSectionCard">
             <div className="sectionHeader">
               <h3>{section.title}</h3>
             </div>
             <div className="sectionBody">
-              <div className="bulletStack">
+              <div className="bulletStack adminList">
                 {section.items.map((item) => (
                   <div key={item} className="listRow">
                     <span className="listDot" />
@@ -210,37 +176,30 @@ function StudentEligibilityPanel({ config }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let ignore = false;
+    let active = true;
 
     async function loadDashboard() {
       try {
         setLoading(true);
         setError("");
         const result = await getMyEligibilityDashboard();
-        if (!ignore) setDashboard(result);
+        if (active) setDashboard(result);
       } catch (err) {
-        if (!ignore) {
-          setError(err?.response?.data?.message || "Failed to load student eligibility.");
-        }
+        if (active) setError(err?.response?.data?.message || "Failed to load student eligibility.");
       } finally {
-        if (!ignore) setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadDashboard();
 
     return () => {
-      ignore = true;
+      active = false;
     };
   }, []);
 
-  if (loading) {
-    return <div className="pageStateCard">Loading student eligibility...</div>;
-  }
-
-  if (error) {
-    return <div className="alert">{error}</div>;
-  }
+  if (loading) return <div className="pageStateCard">Loading student eligibility...</div>;
+  if (error) return <div className="alert">{error}</div>;
 
   const summary = dashboard?.summary || {};
   const currentTerm = dashboard?.currentTerm;
@@ -250,26 +209,10 @@ function StudentEligibilityPanel({ config }) {
   const carryOvers = dashboard?.carryOvers || [];
 
   const stats = [
-    {
-      label: "Eligible courses",
-      value: summary.eligibleCourses ?? 0,
-      meta: currentTerm ? currentTerm.name : "No current term"
-    },
-    {
-      label: "Visible exams",
-      value: summary.visibleExams ?? 0,
-      meta: "Published and eligible only"
-    },
-    {
-      label: "Upcoming exams",
-      value: summary.upcomingExams ?? 0,
-      meta: "Next 7 days"
-    },
-    {
-      label: "Carry-over items",
-      value: summary.openCarryOvers ?? 0,
-      meta: "Open or assigned"
-    }
+    { label: "Eligible courses", value: summary.eligibleCourses ?? 0, meta: currentTerm ? currentTerm.name : "No current term" },
+    { label: "Visible exams", value: summary.visibleExams ?? 0, meta: "Published and eligible only" },
+    { label: "Upcoming exams", value: summary.upcomingExams ?? 0, meta: "Next 7 days" },
+    { label: "Carry-over items", value: summary.openCarryOvers ?? 0, meta: "Open or assigned" },
   ];
 
   return (
@@ -298,6 +241,7 @@ function StudentEligibilityPanel({ config }) {
         </div>
         <div className="heroStats">
           {stats.map((stat) => (
+ feat/sprint-11-monaco-editor
             <article key={stat.label} className="metricCard">
               <div className="metricValue">{stat.value}</div>
               <div className="metricLabel">{stat.label}</div>
@@ -306,6 +250,160 @@ function StudentEligibilityPanel({ config }) {
           ))}
         </div>
       </section>
+
+      <section className="dashboardGrid">
+        <StudentCoursesCard courses={courses} />
+        <StudentExamsCard exams={exams} />
+        <StudentCarryOversCard carryOvers={carryOvers} />
+        <VisibilityRulesCard />
+      </section>
+    </div>
+  );
+}
+
+function StudentCoursesCard({ courses }) {
+  return (
+    <article className="surfaceCard">
+      <div className="sectionHeader">
+        <h3>Current semester courses</h3>
+      </div>
+      <div className="sectionBody">
+        {courses.length ? (
+          <div className="studentItemList">
+            {courses.map((course) => (
+              <div key={course.enrollmentId} className="studentItemRow">
+                <div>
+                  <strong>{course.courseCode} - {course.courseName}</strong>
+                  <span>Year {course.yearOfStudy}, semester {course.semesterNo}, section {course.sectionCode}</span>
+                </div>
+                <span className="statusPill statusLive">{course.enrollmentSource}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyState">No eligible current-semester courses are visible yet.</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function StudentExamsCard({ exams }) {
+  return (
+    <article className="surfaceCard">
+      <div className="sectionHeader">
+        <h3>Visible exams</h3>
+      </div>
+      <div className="sectionBody">
+        {exams.length ? (
+          <div className="studentItemList">
+            {exams.map((exam) => (
+              <div key={exam.id} className="studentItemRow">
+                <div>
+                  <strong>{exam.title}</strong>
+                  <span>{exam.courseCode} - {formatDateTime(exam.startsAt)} / {exam.durationMinutes} min</span>
+                </div>
+                <Link className="btn" to={`/exams/${exam.id}`}>
+                  Open
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyState">No published exams are visible for your eligible courses.</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function StudentCarryOversCard({ carryOvers }) {
+  return (
+    <article className="surfaceCard">
+      <div className="sectionHeader">
+        <h3>Carry-over courses</h3>
+      </div>
+      <div className="sectionBody">
+        {carryOvers.length ? (
+          <div className="studentItemList">
+            {carryOvers.map((item) => (
+              <div key={item.id} className="studentItemRow">
+                <div>
+                  <strong>{item.courseCode} - {item.courseName}</strong>
+                  <span>{item.reason} from semester {item.originSemesterNo}{item.originTerm ? `, ${item.originTerm}` : ""}</span>
+                </div>
+                <span className="statusPill statusDraft">{item.status}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyState">No open carry-over courses are currently assigned.</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function VisibilityRulesCard() {
+  return (
+    <article className="surfaceCard">
+      <div className="sectionHeader">
+        <h3>Visibility rules</h3>
+      </div>
+      <div className="sectionBody">
+        <div className="bulletStack">
+          <div className="listRow">
+            <span className="listDot" />
+            <span>Only eligible enrollments from the current term are shown.</span>
+          </div>
+          <div className="listRow">
+            <span className="listDot" />
+            <span>Exams must be published and linked to an eligible course offering.</span>
+          </div>
+          <div className="listRow">
+            <span className="listDot" />
+            <span>Carry-over courses appear separately until they are closed or cancelled.</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
+  const groups = groupOfferingsByYearSemester(offerings);
+
+  return (
+    <div className="stackXl">
+      {summaryError ? <div className="alert">{summaryError}</div> : null}
+      {offeringsError ? <div className="alert">{offeringsError}</div> : null}
+
+      <section className="heroPanel">
+        <div className="heroCopy">
+          <div className="eyebrow">{config.badge}</div>
+          <h2 className="heroTitle">{config.heroTitle}</h2>
+          <p className="heroText">{config.heroText}</p>
+          <div className="heroActions">
+            {config.quickActions.map((action) => (
+              <Link key={action.to} className="btn btnPrimary" to={action.to}>
+                {action.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="heroStats">
+          {config.stats.map((stat) => (
+ main
+            <article key={stat.label} className="metricCard">
+              <div className="metricValue">{stat.value}</div>
+              <div className="metricLabel">{stat.label}</div>
+              <div className="metricMeta">{stat.meta}</div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+ feat/sprint-11-monaco-editor
 
       <section className="dashboardGrid">
         <article className="surfaceCard">
@@ -438,6 +536,7 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
       </section>
 
+ main
       <section className="surfaceCard professorOfferingsSurface">
         <div className="sectionHeader professorOfferingsHeader">
           <div>
@@ -532,11 +631,65 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
   );
 }
 
+ feat/sprint-11-monaco-editor
+function DefaultDashboard({ config, error }) {
+  return (
+    <div className="stackXl">
+      {error ? <div className="alert">{error}</div> : null}
+
+      <section className="heroPanel">
+        <div className="heroCopy">
+          <div className="eyebrow">{config.badge}</div>
+          <h2 className="heroTitle">{config.heroTitle}</h2>
+          <p className="heroText">{config.heroText}</p>
+          <div className="heroActions">
+            {config.quickActions.map((action) => (
+              <Link key={action.to} className="btn btnPrimary" to={action.to}>
+                {action.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="heroStats">
+          {config.stats.map((stat) => (
+            <article key={stat.label} className="metricCard">
+              <div className="metricValue">{stat.value}</div>
+              <div className="metricLabel">{stat.label}</div>
+              <div className="metricMeta">{stat.meta}</div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboardGrid">
+        {config.sections.map((section) => (
+          <article key={section.title} className="surfaceCard">
+            <div className="sectionHeader">
+              <h3>{section.title}</h3>
+            </div>
+            <div className="sectionBody">
+              <div className="bulletStack">
+                {section.items.map((item) => (
+                  <div key={item} className="listRow">
+                    <span className="listDot" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+ main
 function formatDateTime(value) {
   if (!value) return "No schedule";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
   }).format(new Date(value));
 }
 

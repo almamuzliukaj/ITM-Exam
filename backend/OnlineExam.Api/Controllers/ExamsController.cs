@@ -13,6 +13,7 @@ namespace OnlineExam.Api.Controllers;
 [Authorize]
 public class ExamsController : ControllerBase
 {
+    private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private readonly AppDbContext _context;
 
     public ExamsController(AppDbContext context)
@@ -26,7 +27,9 @@ public class ExamsController : ControllerBase
         if (User.IsInRole("Admin"))
             return Forbid();
 
-        IQueryable<Exam> query = _context.Exams.Include(x => x.CourseOffering);
+        IQueryable<Exam> query = _context.Exams
+            .Include(x => x.CourseOffering)
+            .Where(x => !x.Description.StartsWith(QuestionBankMarker));
 
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
         {
@@ -65,6 +68,9 @@ public class ExamsController : ControllerBase
 
         var exam = await _context.Exams.Include(x => x.CourseOffering).FirstOrDefaultAsync(x => x.Id == id);
         if (exam == null)
+            return NotFound();
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
@@ -157,6 +163,9 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound();
 
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
         var userId = GetCurrentUserId();
         if (userId == null)
             return Unauthorized();
@@ -193,6 +202,9 @@ public class ExamsController : ControllerBase
     {
         var exam = await _context.Exams.FindAsync(id);
         if (exam == null)
+            return NotFound();
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
         var userId = GetCurrentUserId();
@@ -283,6 +295,9 @@ public class ExamsController : ControllerBase
     {
         var exam = await _context.Exams.FindAsync(id);
         if (exam == null)
+            return NotFound();
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
         exam.Status = "Published";

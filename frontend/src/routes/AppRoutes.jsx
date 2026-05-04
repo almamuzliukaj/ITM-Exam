@@ -12,6 +12,8 @@ import ExamDetailsPage from "../pages/exams/ExamDetailsPage";
 import QuestionCreatePage from "../pages/exams/QuestionCreatePage";
 import AdminUsersPage from "../pages/admin/AdminUsersPage";
 import AdminAcademicStructurePage from "../pages/admin/AdminAcademicStructurePage";
+import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
+import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
 
 export default function AppRoutes() {
   return (
@@ -32,6 +34,9 @@ export default function AppRoutes() {
         </Route>
 
         <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>
+          <Route path="/question-bank" element={<QuestionBankPage />} />
+          <Route path="/question-bank/new" element={<QuestionBankEditorPage />} />
+          <Route path="/question-bank/questions/:questionId/edit" element={<QuestionBankEditorPage />} />
           <Route path="/exams/new" element={<ExamCreatePage />} />
           <Route path="/exams/:examId/questions/new" element={<QuestionCreatePage />} />
         </Route>

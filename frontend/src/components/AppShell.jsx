@@ -7,6 +7,7 @@ const navigationByRole = {
   Admin: [
     { to: "/dashboard", labelKey: "shell.nav.adminOverview" },
     { to: "/admin/academic", labelKey: "shell.nav.adminAcademic" },
+    { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments" },
     { to: "/admin/users", labelKey: "shell.nav.adminUsers" },
   ],
   Professor: [

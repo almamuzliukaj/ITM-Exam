@@ -37,7 +37,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
   }, [t]);
 
   useEffect(() => {
-    if (roleKey !== "professor") {
+    if (roleKey !== "professor" && roleKey !== "assistant") {
       setOfferings([]);
       setOfferingsError("");
       setOfferingsLoading(false);
@@ -53,7 +53,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
         const data = await listMyOfferings();
         if (active) setOfferings(Array.isArray(data) ? data : []);
       } catch {
-        if (active) setOfferingsError(t("rolePanels.professor.offerings.error"));
+        if (active) setOfferingsError(t(`rolePanels.${roleKey}.offerings.error`));
       } finally {
         if (active) setOfferingsLoading(false);
       }
@@ -133,6 +133,21 @@ export default function RoleDashboardPanels({ role = "Student" }) {
         offeringsLoading={offeringsLoading}
         offeringsError={offeringsError}
         summaryError={error}
+        roleKey="professor"
+        t={t}
+      />
+    );
+  }
+
+  if (roleKey === "assistant") {
+    return (
+      <ProfessorDashboard
+        config={config}
+        offerings={offerings}
+        offeringsLoading={offeringsLoading}
+        offeringsError={offeringsError}
+        summaryError={error}
+        roleKey="assistant"
         t={t}
       />
     );
@@ -390,8 +405,9 @@ function StudentEligibilityPanel({ config }) {
   );
 }
 
-function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
+function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, roleKey, t }) {
   const groups = groupOfferingsByYearSemester(offerings);
+  const offeringTextKey = `rolePanels.${roleKey}.offerings`;
 
   return (
     <div className="stackXl">
@@ -425,20 +441,20 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
       <section className="surfaceCard professorOfferingsSurface">
         <div className="sectionHeader professorOfferingsHeader">
           <div>
-            <h3>{t("rolePanels.professor.offerings.title")}</h3>
-            <span className="small">{t("rolePanels.professor.offerings.subtitle")}</span>
+            <h3>{t(`${offeringTextKey}.title`)}</h3>
+            <span className="small">{t(`${offeringTextKey}.subtitle`)}</span>
           </div>
           <span className="statusPill statusLive">
-            {t("rolePanels.professor.offerings.total", { count: offerings.length })}
+            {t(`${offeringTextKey}.total`, { count: offerings.length })}
           </span>
         </div>
         <div className="sectionBody">
           {offeringsLoading ? (
-            <div className="pageStateCard">{t("rolePanels.professor.offerings.loading")}</div>
+            <div className="pageStateCard">{t(`${offeringTextKey}.loading`)}</div>
           ) : groups.length === 0 ? (
             <div className="emptyState">
-              <p>{t("rolePanels.professor.offerings.emptyTitle")}</p>
-              <p>{t("rolePanels.professor.offerings.emptyText")}</p>
+              <p>{t(`${offeringTextKey}.emptyTitle`)}</p>
+              <p>{t(`${offeringTextKey}.emptyText`)}</p>
             </div>
           ) : (
             <div className="offeringGroupStack">
@@ -446,8 +462,8 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                 <article className="offeringGroup" key={group.key}>
                   <div className="offeringGroupHeader">
                     <div>
-                      <h4>{t("rolePanels.professor.offerings.groupTitle", { year: group.year, semester: group.semester })}</h4>
-                      <span className="small">{t("rolePanels.professor.offerings.groupCount", { count: group.items.length })}</span>
+                      <h4>{t(`${offeringTextKey}.groupTitle`, { year: group.year, semester: group.semester })}</h4>
+                      <span className="small">{t(`${offeringTextKey}.groupCount`, { count: group.items.length })}</span>
                     </div>
                   </div>
 
@@ -458,22 +474,28 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                           <span className={`statusPill ${isLiveOffering(offering.status) ? "statusLive" : "statusDraft"}`}>
                             {offering.status || "-"}
                           </span>
-                          <span className="small">{formatSection(offering, t)}</span>
+                          <span className="small">{formatSection(offering, t, roleKey)}</span>
                         </div>
-                        <h4>{formatCourseTitle(offering, t)}</h4>
+                        <h4>{formatCourseTitle(offering, t, roleKey)}</h4>
                         <dl className="offeringMetaList">
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.term")}</dt>
-                            <dd>{formatTerm(offering, t)}</dd>
+                            <dt>{t(`${offeringTextKey}.term`)}</dt>
+                            <dd>{formatTerm(offering, t, roleKey)}</dd>
                           </div>
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.delivery")}</dt>
+                            <dt>{t(`${offeringTextKey}.delivery`)}</dt>
                             <dd>{offering.deliveryType || "-"}</dd>
                           </div>
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.capacity")}</dt>
+                            <dt>{t(`${offeringTextKey}.capacity`)}</dt>
                             <dd>{Number.isFinite(Number(offering.capacity)) ? offering.capacity : "-"}</dd>
                           </div>
+                          {roleKey === "assistant" ? (
+                            <div>
+                              <dt>{t(`${offeringTextKey}.responsibility`)}</dt>
+                              <dd>{t(`${offeringTextKey}.responsibilityValue`)}</dd>
+                            </div>
+                          ) : null}
                         </dl>
                       </article>
                     ))}
@@ -484,6 +506,28 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
           )}
         </div>
       </section>
+
+      {roleKey === "assistant" ? (
+        <section className="dashboardGrid">
+          {config.sections.map((section) => (
+            <article key={section.title} className="surfaceCard">
+              <div className="sectionHeader">
+                <h3>{section.title}</h3>
+              </div>
+              <div className="sectionBody">
+                <div className="bulletStack">
+                  {section.items.map((item) => (
+                    <div key={item} className="listRow">
+                      <span className="listDot" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -521,24 +565,24 @@ function groupOfferingsByYearSemester(offerings) {
   return Array.from(groups.values());
 }
 
-function formatCourseTitle(offering, t) {
+function formatCourseTitle(offering, t, roleKey = "professor") {
   const code = offering.course?.code?.trim();
   const name = offering.course?.name?.trim();
 
   if (code && name) return `${code} - ${name}`;
-  return code || name || t("rolePanels.professor.offerings.courseFallback");
+  return code || name || t(`rolePanels.${roleKey}.offerings.courseFallback`);
 }
 
-function formatTerm(offering, t) {
+function formatTerm(offering, t, roleKey = "professor") {
   const name = offering.term?.name?.trim();
   const academicYear = offering.term?.academicYearLabel?.trim();
 
   if (name && academicYear) return `${name} (${academicYear})`;
-  return name || academicYear || t("rolePanels.professor.offerings.termFallback");
+  return name || academicYear || t(`rolePanels.${roleKey}.offerings.termFallback`);
 }
 
-function formatSection(offering, t) {
-  return t("rolePanels.professor.offerings.section", { section: offering.sectionCode || "-" });
+function formatSection(offering, t, roleKey = "professor") {
+  return t(`rolePanels.${roleKey}.offerings.section`, { section: offering.sectionCode || "-" });
 }
 
 function isLiveOffering(status) {

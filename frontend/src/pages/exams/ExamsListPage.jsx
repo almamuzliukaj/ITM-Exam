@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { listExams } from "../../lib/examsApi";
-import { canManageExams } from "../../lib/permissions";
+import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -42,7 +42,7 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
-  const canCreate = canManageExams(user.role);
+  const canCreate = canCreateExams(user.role);
 
   return (
     <AppShell

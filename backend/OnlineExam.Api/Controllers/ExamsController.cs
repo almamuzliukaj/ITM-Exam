@@ -34,12 +34,14 @@ public class ExamsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
+            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
             query = query.Where(x =>
                 x.CreatedByUserId == userId.Value ||
                 (x.CourseOfferingId != null && _context.CourseOfferingStaffAssignments.Any(a =>
                     a.CourseOfferingId == x.CourseOfferingId &&
                     a.UserId == userId.Value &&
-                    a.IsActive)));
+                    a.IsActive &&
+                    a.RoleInOffering == assignmentRole)));
         }
         else if (User.IsInRole("Student"))
         {
@@ -78,7 +80,8 @@ public class ExamsController : ControllerBase
                             (exam.CourseOfferingId != null && await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
                                 a.CourseOfferingId == exam.CourseOfferingId &&
                                 a.UserId == userId.Value &&
-                                a.IsActive));
+                                a.IsActive &&
+                                a.RoleInOffering == (User.IsInRole("Professor") ? "Professor" : "Assistant")));
 
             if (!hasAccess)
                 return Forbid();
@@ -114,16 +117,21 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
+        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Assistant exams must be linked to an assigned course offering." });
+
         if (dto.CourseOfferingId.HasValue)
         {
             var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
             if (!offeringExists)
                 return BadRequest(new { message = "CourseOfferingId is invalid." });
 
+            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
             var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
                 a.CourseOfferingId == dto.CourseOfferingId.Value &&
                 a.UserId == userId.Value &&
-                a.IsActive);
+                a.IsActive &&
+                a.RoleInOffering == assignmentRole);
 
             if (!hasAssignment)
                 return Forbid();

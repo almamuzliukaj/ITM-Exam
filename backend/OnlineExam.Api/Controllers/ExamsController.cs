@@ -49,11 +49,7 @@ public class ExamsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
- feat/sprint-11-monaco-editor
             var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId.Value);
-
-            var offeringIds = await GetEligibleOfferingIdsAsync(userId.Value);
- main
             query = query.Where(x =>
                 x.IsPublished &&
                 x.Status == "Published" &&

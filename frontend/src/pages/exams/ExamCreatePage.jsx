@@ -1,8 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { createExam } from "../../lib/examsApi";
+import { listMyOfferings } from "../../lib/academicApi";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export default function ExamCreatePage() {
@@ -13,11 +14,44 @@ export default function ExamCreatePage() {
     title: "",
     description: "",
     durationMinutes: 60,
+    courseOfferingId: "",
   });
+  const [offerings, setOfferings] = useState([]);
+  const [loadingOfferings, setLoadingOfferings] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function onSubmit(e) {
+  useEffect(() => {
+    let active = true;
+
+    async function loadOfferings() {
+      try {
+        setLoadingOfferings(true);
+        const data = await listMyOfferings();
+        const rows = Array.isArray(data) ? data : [];
+        if (!active) return;
+        setOfferings(rows);
+        if (rows.length > 0) {
+          setForm((current) => ({
+            ...current,
+            courseOfferingId: current.courseOfferingId || rows[0].id,
+          }));
+        }
+      } catch {
+        if (active) setError("Failed to load assigned course offerings.");
+      } finally {
+        if (active) setLoadingOfferings(false);
+      }
+    }
+
+    loadOfferings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function saveExam(e, publishNow = false) {
     e.preventDefault();
     setError("");
 
@@ -27,6 +61,8 @@ export default function ExamCreatePage() {
         title: form.title,
         description: form.description,
         durationMinutes: Number(form.durationMinutes) || 60,
+        courseOfferingId: form.courseOfferingId || null,
+        isPublished: publishNow,
       });
       nav("/exams");
     } catch (err) {
@@ -63,7 +99,7 @@ export default function ExamCreatePage() {
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
-            <form className="stackLg" onSubmit={onSubmit}>
+            <form className="stackLg" onSubmit={(e) => saveExam(e, false)}>
               <div className="field">
                 <div className="label">{t("examCreate.titleLabel")}</div>
                 <input
@@ -87,6 +123,27 @@ export default function ExamCreatePage() {
               </div>
 
               <div className="field">
+                <label className="label">Course offering</label>
+                <select
+                  className="input"
+                  value={form.courseOfferingId}
+                  onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
+                  disabled={saving || loadingOfferings}
+                  required
+                >
+                  {offerings.length === 0 ? (
+                    <option value="">No assigned offerings available</option>
+                  ) : (
+                    offerings.map((offering) => (
+                      <option key={offering.id} value={offering.id}>
+                        {formatOfferingLabel(offering)}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div className="field">
                 <div className="label">{t("examCreate.descriptionLabel")}</div>
                 <textarea
                   className="input textarea"
@@ -96,10 +153,23 @@ export default function ExamCreatePage() {
                 />
               </div>
 
+              <div className="publishNotice">
+                <strong>Draft and publish workflow</strong>
+                <span>Save as draft while preparing questions, or publish immediately when the exam is ready for eligible students.</span>
+              </div>
+
               <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
-                <button className="btn btnPrimary" type="submit" disabled={saving}>
-                  {saving ? t("examCreate.creating") : t("examCreate.create")}
+                <button className="btn" type="submit" disabled={saving || loadingOfferings || !form.courseOfferingId}>
+                  {saving ? t("examCreate.creating") : "Save draft"}
+                </button>
+                <button
+                  className="btn btnPrimary"
+                  type="button"
+                  disabled={saving || loadingOfferings || !form.courseOfferingId}
+                  onClick={(e) => saveExam(e, true)}
+                >
+                  {saving ? t("examCreate.creating") : "Publish exam"}
                 </button>
               </div>
             </form>
@@ -108,4 +178,15 @@ export default function ExamCreatePage() {
       </section>
     </AppShell>
   );
+}
+
+function formatOfferingLabel(offering) {
+  const code = offering.course?.code || "Course";
+  const name = offering.course?.name || "";
+  const term = offering.term?.name || "Term";
+  const year = offering.yearOfStudy ? `Year ${offering.yearOfStudy}` : "Year -";
+  const semester = offering.semesterNo ? `Semester ${offering.semesterNo}` : "Semester -";
+  const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
+
+  return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
 }

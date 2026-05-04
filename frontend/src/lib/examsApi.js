@@ -10,6 +10,11 @@ export async function createExam(payload) {
   return response.data;
 }
 
+export async function publishExam(examId, payload = {}) {
+  const response = await api.post(`/api/exams/${examId}/publish`, payload);
+  return response.data;
+}
+
 export async function getExam(examId) {
   const response = await api.get(`/api/exams/${examId}`);
   return response.data;

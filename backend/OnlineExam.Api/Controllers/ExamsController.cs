@@ -47,7 +47,11 @@ public class ExamsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
+ feat/sprint-11-monaco-editor
+            var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId.Value);
+
             var offeringIds = await GetEligibleOfferingIdsAsync(userId.Value);
+ main
             query = query.Where(x =>
                 x.IsPublished &&
                 x.Status == "Published" &&
@@ -280,11 +284,46 @@ public class ExamsController : ControllerBase
 
     [HttpPost("{id:guid}/publish")]
     [Authorize(Roles = "Professor")]
-    public async Task<IActionResult> PublishExam(Guid id)
+    public async Task<IActionResult> PublishExam(Guid id, [FromBody] PublishExamDto? dto = null)
     {
         var exam = await _context.Exams.FindAsync(id);
         if (exam == null)
             return NotFound();
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var hasAccess = exam.CreatedByUserId == userId.Value ||
+                        (exam.CourseOfferingId != null && await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+                            a.CourseOfferingId == exam.CourseOfferingId &&
+                            a.UserId == userId.Value &&
+                            a.IsActive &&
+                            a.RoleInOffering == "Professor"));
+
+        if (!hasAccess)
+            return Forbid();
+
+        if (dto?.CourseOfferingId.HasValue == true)
+        {
+            var canAssignOffering = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+                a.CourseOfferingId == dto.CourseOfferingId.Value &&
+                a.UserId == userId.Value &&
+                a.IsActive &&
+                a.RoleInOffering == "Professor");
+
+            var isPrimaryProfessor = await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == dto.CourseOfferingId.Value &&
+                x.PrimaryProfessorId == userId.Value);
+
+            if (!canAssignOffering && !isPrimaryProfessor)
+                return Forbid();
+
+            exam.CourseOfferingId = dto.CourseOfferingId.Value;
+        }
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before publishing." });
 
         exam.Status = "Published";
         exam.IsPublished = true;
@@ -344,11 +383,22 @@ public class ExamsController : ControllerBase
         return Guid.TryParse(userId, out var parsed) ? parsed : null;
     }
 
-    private async Task<List<Guid>> GetEligibleOfferingIdsAsync(Guid userId)
+    private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)
     {
-        return await _context.StudentCourseEnrollments
+        var eligibleOfferingIds = await _context.StudentCourseEnrollments
             .Where(x => x.StudentId == userId && x.EligibleForExam && x.Status == "Eligible")
             .Select(x => x.CourseOfferingId)
+            .ToListAsync();
+
+        if (eligibleOfferingIds.Count > 0)
+            return eligibleOfferingIds;
+
+        return await _context.CourseOfferings
+            .Where(x =>
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft") &&
+                _context.Exams.Any(e => e.CourseOfferingId == x.Id && e.IsPublished && e.Status == "Published"))
+            .Select(x => x.Id)
             .ToListAsync();
     }
 
@@ -357,10 +407,22 @@ public class ExamsController : ControllerBase
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return false;
 
-        return await _context.StudentCourseEnrollments.AnyAsync(x =>
+        var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
             x.StudentId == userId &&
             x.CourseOfferingId == exam.CourseOfferingId.Value &&
             x.EligibleForExam &&
             x.Status == "Eligible");
+
+        if (hasEligibleEnrollment)
+            return true;
+
+        var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId);
+        if (hasAnyEnrollment)
+            return false;
+
+        return await _context.CourseOfferings.AnyAsync(x =>
+            x.Id == exam.CourseOfferingId.Value &&
+            x.Term != null &&
+            (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
     }
 }

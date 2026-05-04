@@ -109,6 +109,7 @@ public class StudentCourseEnrollmentsController : ControllerBase
             .ToListAsync();
 
         var visibleOfferingIds = eligibleEnrollments.Select(x => x.CourseOfferingId).ToHashSet();
+        var usePublishedCurrentTermFallback = visibleOfferingIds.Count == 0;
         var now = DateTime.UtcNow;
         var nextSevenDays = now.AddDays(7);
 
@@ -117,7 +118,8 @@ public class StudentCourseEnrollmentsController : ControllerBase
                 .ThenInclude(x => x!.Course)
             .Where(x =>
                 x.CourseOfferingId != null &&
-                visibleOfferingIds.Contains(x.CourseOfferingId.Value) &&
+                (visibleOfferingIds.Contains(x.CourseOfferingId.Value) ||
+                 (usePublishedCurrentTermFallback && x.CourseOffering!.TermId == currentTerm.Id)) &&
                 x.IsPublished &&
                 x.Status == "Published")
             .OrderBy(x => x.StartsAt)

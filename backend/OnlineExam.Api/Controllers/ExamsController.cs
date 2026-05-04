@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -393,6 +394,108 @@ public class ExamsController : ControllerBase
             .Select(q => new { q.Id, q.Text, q.Points, q.Type })
             .ToListAsync();
 
+    [HttpPost("{examId:guid}/generate-random")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> GenerateRandomQuestionsForExam(Guid examId, [FromBody] GenerateRandomExamQuestionsDto dto)
+    {
+        if (dto.NumberOfQuestions <= 0)
+            return BadRequest(new { message = "NumberOfQuestions must be greater than 0." });
+
+        var exam = await _context.Exams
+            .Include(x => x.Questions)
+            .FirstOrDefaultAsync(x => x.Id == examId);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before generating questions." });
+
+        var bankExam = await FindQuestionBankContainerAsync(exam.CourseOfferingId.Value);
+        if (bankExam == null)
+            return BadRequest(new { message = "No question bank exists for this course offering yet." });
+
+        var candidates = await BuildQuestionBankCandidateQuery(bankExam.Id, dto.Type)
+            .ToListAsync();
+
+        var availableCandidates = candidates
+            .Where(candidate => !exam.Questions.Any(existing => IsSameQuestionContent(existing, candidate)))
+            .OrderBy(_ => Guid.NewGuid())
+            .Take(dto.NumberOfQuestions)
+            .ToList();
+
+        if (availableCandidates.Count < dto.NumberOfQuestions)
+            return BadRequest(new { message = "Not enough matching question bank entries are available for this request." });
+
+        var createdQuestions = availableCandidates
+            .Select(candidate => CloneQuestionForExam(candidate, exam.Id))
+            .ToList();
+
+        _context.Questions.AddRange(createdQuestions);
+        await _context.SaveChangesAsync();
+
+        return Ok(createdQuestions.Select(MapToExamQuestionResponse));
+    }
+
+    [HttpPost("{examId:guid}/questions/{questionId:guid}/replace")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> ReplaceExamQuestion(Guid examId, Guid questionId, [FromBody] ReplaceExamQuestionDto? dto = null)
+    {
+        var exam = await _context.Exams
+            .Include(x => x.Questions)
+            .FirstOrDefaultAsync(x => x.Id == examId);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before replacing questions." });
+
+        var existingQuestion = exam.Questions.FirstOrDefault(x => x.Id == questionId);
+        if (existingQuestion == null)
+            return NotFound(new { message = "Question not found in this exam." });
+
+        var bankExam = await FindQuestionBankContainerAsync(exam.CourseOfferingId.Value);
+        if (bankExam == null)
+            return BadRequest(new { message = "No question bank exists for this course offering yet." });
+
+        var type = NormalizeOptionalValue(dto?.Type) ?? existingQuestion.Type;
+
+        var replacement = await BuildQuestionBankCandidateQuery(bankExam.Id, type)
+            .Where(candidate => !IsSameQuestionContent(candidate, existingQuestion))
+            .ToListAsync();
+
+        var selectedReplacement = replacement
+            .Where(candidate => !exam.Questions.Any(q => q.Id != existingQuestion.Id && IsSameQuestionContent(q, candidate)))
+            .OrderBy(_ => Guid.NewGuid())
+            .FirstOrDefault();
+
+        if (selectedReplacement == null)
+            return BadRequest(new { message = "No replacement question is available for the selected criteria." });
+
+        existingQuestion.Text = selectedReplacement.Text;
+        existingQuestion.Type = selectedReplacement.Type;
+        existingQuestion.CorrectAnswer = selectedReplacement.CorrectAnswer;
+        existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.Points = selectedReplacement.Points;
+        existingQuestion.CourseId = selectedReplacement.CourseId;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(MapToExamQuestionResponse(existingQuestion));
+    }
         return Ok(random);
     }
 
@@ -400,6 +503,109 @@ public class ExamsController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         return Guid.TryParse(userId, out var parsed) ? parsed : null;
+    private async Task<bool> CanManageExamAsync(Exam exam)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return false;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : User.IsInRole("Assistant") ? "Assistant" : string.Empty;
+        if (string.IsNullOrWhiteSpace(assignmentRole))
+            return false;
+
+        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == exam.CourseOfferingId.Value &&
+            a.UserId == userId.Value &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
+    }
+
+    private async Task<Exam?> FindQuestionBankContainerAsync(Guid offeringId)
+    {
+        return await _context.Exams.FirstOrDefaultAsync(x =>
+            x.CourseOfferingId == offeringId &&
+            x.Description == BuildQuestionBankDescription(offeringId));
+    }
+
+    private IQueryable<Question> BuildQuestionBankCandidateQuery(Guid questionBankExamId, string? type)
+    {
+        var query = _context.Questions.AsQueryable().Where(x => x.ExamId == questionBankExamId);
+
+        var normalizedType = NormalizeOptionalValue(type);
+        if (!string.IsNullOrWhiteSpace(normalizedType))
+        {
+            query = query.Where(x => x.Type.ToLower() == normalizedType.ToLower());
+        }
+
+        return query;
+    }
+
+    private static Question CloneQuestionForExam(Question source, Guid examId)
+    {
+        return new Question
+        {
+            Id = Guid.NewGuid(),
+            ExamId = examId,
+            CourseId = source.CourseId,
+            Text = source.Text,
+            Type = source.Type,
+            CorrectAnswer = source.CorrectAnswer,
+            OptionsJson = source.OptionsJson,
+            Points = source.Points
+        };
+    }
+
+    private static ExamQuestionResponseDto MapToExamQuestionResponse(Question question)
+    {
+        return new ExamQuestionResponseDto
+        {
+            Id = question.Id,
+            ExamId = question.ExamId,
+            Text = question.Text,
+            Type = question.Type,
+            CorrectAnswer = question.CorrectAnswer,
+            Options = ParseOptions(question.OptionsJson),
+            Points = question.Points
+        };
+    }
+
+    private static List<string> ParseOptions(string? optionsJson)
+    {
+        if (string.IsNullOrWhiteSpace(optionsJson))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(optionsJson) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool IsSameQuestionContent(Question left, Question right)
+    {
+        return string.Equals(left.Text.Trim(), right.Text.Trim(), StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(left.Type.Trim(), right.Type.Trim(), StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(NormalizeOptionalValue(left.CorrectAnswer), NormalizeOptionalValue(right.CorrectAnswer), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeOptionalValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string BuildQuestionBankDescription(Guid offeringId)
+    {
+        return $"{QuestionBankMarker}{offeringId}";
+    }
     }
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)

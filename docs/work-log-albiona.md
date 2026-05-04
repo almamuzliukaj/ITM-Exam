@@ -1,6 +1,14 @@
 # Work Log (Albiona)
 
 ## 2026-05-04
+- Completed Sprint 12 task: built random exam generation and replace-question logic.
+- Added backend endpoints to generate random exam questions from the assigned offering question bank and replace existing draft questions with compatible alternatives.
+- Reused question bank filtering by offering and type so draft exam generation works only inside the correct assigned course context.
+- Added draft exam authoring UI controls for random generation by count and type, plus per-question replacement from the same bank.
+- Extended exam question responses so authoring screens can show richer question metadata during generation and replacement.
+- Verified the Sprint 12 flow with `dotnet build`, `npm run lint`, and `npm run build`.
+
+## 2026-05-04
 - Completed Sprint 11 task: built the course-based question bank flow for assigned course offerings.
 - Added dedicated backend question bank APIs for professors and assistants to create, list, edit, and delete MCQ and Text questions inside their assigned offering context.
 - Added support for MCQ option storage and validation, including correct-answer checks and offering-scoped access rules.

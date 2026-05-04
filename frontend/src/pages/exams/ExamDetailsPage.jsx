@@ -1,10 +1,10 @@
 import { Link, useParams } from "react-router-dom";
-import { getExam, listQuestions, publishExam } from "../../lib/examsApi";
+import { generateRandomQuestions, getExam, listQuestions, publishExam, replaceExamQuestion } from "../../lib/examsApi";
 import { listMyOfferings } from "../../lib/academicApi";
 import { canManageExams } from "../../lib/permissions";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import AppShell from "../../components/AppShell";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export default function ExamDetailsPage() {
@@ -17,8 +17,18 @@ export default function ExamDetailsPage() {
   const [selectedOfferingId, setSelectedOfferingId] = useState("");
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [replacingId, setReplacingId] = useState("");
   const [error, setError] = useState("");
+  const [generator, setGenerator] = useState({
+    numberOfQuestions: 3,
+    type: "",
+  });
   const canEdit = canManageExams(user?.role);
+  const canGenerate = useMemo(
+    () => isPositiveNumber(generator.numberOfQuestions) && Boolean(exam?.courseOfferingId),
+    [exam?.courseOfferingId, generator.numberOfQuestions],
+  );
 
   useEffect(() => {
     if (!examId) return;
@@ -98,6 +108,52 @@ export default function ExamDetailsPage() {
     }
   }
 
+  async function onGenerateRandomQuestions() {
+    if (!examId || !canGenerate) return;
+
+    try {
+      setGenerating(true);
+      setError("");
+      const created = await generateRandomQuestions(examId, {
+        numberOfQuestions: Number(generator.numberOfQuestions),
+        type: generator.type || null,
+      });
+      const newQuestions = Array.isArray(created) ? created : [];
+      setQuestions((current) => [...current, ...newQuestions]);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to generate random questions.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function onReplaceQuestion(question) {
+    if (!examId || !question?.id) return;
+
+    try {
+      setReplacingId(question.id);
+      setError("");
+      const replacement = await replaceExamQuestion(examId, question.id, {
+        type: question.type || null,
+      });
+      setQuestions((current) =>
+        current.map((item) => (item.id === question.id ? replacement : item)),
+      );
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to replace question.");
+    } finally {
+      setReplacingId("");
+    }
+  }
+
   return (
     <AppShell
       user={user}
@@ -165,6 +221,54 @@ export default function ExamDetailsPage() {
               </section>
             ) : null}
 
+            {isDraft && exam?.courseOfferingId ? (
+              <section className="surfaceCard">
+                <div className="sectionHeader">
+                  <h3>{t("examDetails.generator.title")}</h3>
+                  <span className="small">{t("examDetails.generator.subtitle")}</span>
+                </div>
+                <div className="sectionBody stackLg">
+                  <div className="questionBankFormGrid">
+                    <div className="field">
+                      <label className="label">{t("examDetails.generator.count")}</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        value={generator.numberOfQuestions}
+                        onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
+                        disabled={generating}
+                      />
+                    </div>
+                    <div className="field">
+                      <label className="label">{t("questionBank.type")}</label>
+                      <select
+                        className="input"
+                        value={generator.type}
+                        onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
+                        disabled={generating}
+                      >
+                        <option value="">{t("questionBank.allTypes")}</option>
+                        <option value="MCQ">MCQ</option>
+                        <option value="Text">{t("common.text")}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
+                    <button
+                      className="btn btnPrimary"
+                      type="button"
+                      onClick={onGenerateRandomQuestions}
+                      disabled={!canGenerate || generating}
+                    >
+                      {generating ? t("examDetails.generator.generating") : t("examDetails.generator.generate")}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             <section className="surfaceCard">
               <div className="sectionHeader">
                 <h3>{t("examDetails.coverage")}</h3>
@@ -179,7 +283,15 @@ export default function ExamDetailsPage() {
                 ) : (
                   <div className="questionList">
                     {questions.map((question, index) => (
-                      <QuestionPreview key={question.id} question={question} index={index} t={t} />
+                      <QuestionPreview
+                        key={question.id}
+                        question={question}
+                        index={index}
+                        t={t}
+                        isDraft={isDraft}
+                        replacing={replacingId === question.id}
+                        onReplace={onReplaceQuestion}
+                      />
                     ))}
                   </div>
                 )}
@@ -192,7 +304,7 @@ export default function ExamDetailsPage() {
   );
 }
 
-function QuestionPreview({ question, index, t }) {
+function QuestionPreview({ question, index, t, isDraft, replacing, onReplace }) {
   const parsed = parseTechnicalQuestion(question);
 
   return (
@@ -225,6 +337,14 @@ function QuestionPreview({ question, index, t }) {
                 <pre>{parsed.expected}</pre>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {isDraft ? (
+          <div className="resourceActionGroup" style={{ marginTop: 12 }}>
+            <button className="btn" type="button" onClick={() => onReplace(question)} disabled={replacing}>
+              {replacing ? t("examDetails.generator.replacing") : t("examDetails.generator.replace")}
+            </button>
           </div>
         ) : null}
       </div>
@@ -288,4 +408,8 @@ function formatOfferingLabel(offering) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
 
   return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
+}
+
+function isPositiveNumber(value) {
+  return Number(value) > 0;
 }

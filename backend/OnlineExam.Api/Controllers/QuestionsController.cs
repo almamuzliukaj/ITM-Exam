@@ -137,17 +137,18 @@ public class QuestionsController : ControllerBase
 
         var questions = await _context.Questions
             .Where(q => q.ExamId == examId)
-            .Select(q => new
-            {
-                q.Id,
-                q.ExamId,
-                q.Type,
-                q.Text,
-                q.Points
-            })
             .ToListAsync();
 
-        return Ok(questions);
+        return Ok(questions.Select(q => new ExamQuestionResponseDto
+        {
+            Id = q.Id,
+            ExamId = q.ExamId,
+            Text = q.Text,
+            Type = q.Type,
+            CorrectAnswer = q.CorrectAnswer,
+            Options = ParseOptions(q.OptionsJson),
+            Points = q.Points
+        }));
     }
 
     [HttpGet("/api/question-bank/{offeringId:guid}/questions")]

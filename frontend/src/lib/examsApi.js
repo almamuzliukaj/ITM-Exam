@@ -29,3 +29,13 @@ export async function addQuestion(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/questions`, payload);
   return response.data;
 }
+
+export async function generateRandomQuestions(examId, payload) {
+  const response = await api.post(`/api/exams/${examId}/generate-random`, payload);
+  return response.data;
+}
+
+export async function replaceExamQuestion(examId, questionId, payload = {}) {
+  const response = await api.post(`/api/exams/${examId}/questions/${questionId}/replace`, payload);
+  return response.data;
+}

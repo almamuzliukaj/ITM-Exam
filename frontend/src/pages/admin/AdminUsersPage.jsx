@@ -55,6 +55,14 @@ export default function AdminUsersPage() {
     };
   }, [filters]);
 
+  const userSummary = useMemo(() => {
+    const active = users.filter((account) => account.isActive).length;
+    const inactive = users.length - active;
+    const staff = users.filter((account) => account.role === "Professor" || account.role === "Assistant").length;
+
+    return { active, inactive, staff };
+  }, [users]);
+
   const loadUsers = useCallback(async () => {
     try {
       setLoadingUsers(true);
@@ -203,8 +211,34 @@ export default function AdminUsersPage() {
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
 
+        <section className="adminDashboardHero">
+          <div className="adminDashboardHeroCopy">
+            <div className="adminHeroBrand">
+              <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
+              <span>Administration Portal</span>
+            </div>
+            <div className="eyebrow">{t("adminUsers.badge")}</div>
+            <h2 className="heroTitle">{t("adminUsers.title")}</h2>
+            <p className="heroText">{t("adminUsers.subtitle")}</p>
+          </div>
+          <div className="adminHeroMeta">
+            <div className="adminHeroMetaRow">
+              <span>{t("adminUsers.active")}</span>
+              <strong>{userSummary.active}</strong>
+            </div>
+            <div className="adminHeroMetaRow">
+              <span>{t("adminUsers.inactive")}</span>
+              <strong>{userSummary.inactive}</strong>
+            </div>
+            <div className="adminHeroMetaRow">
+              <span>Staff</span>
+              <strong>{userSummary.staff}</strong>
+            </div>
+          </div>
+        </section>
+
         <section className="dashboardGrid dashboardGridWide">
-          <article className="surfaceCard">
+          <article className="surfaceCard adminFormCard">
             <div className="sectionHeader"><h3>{t("adminUsers.createUser")}</h3></div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCreateUser}>
@@ -235,7 +269,7 @@ export default function AdminUsersPage() {
             </div>
           </article>
 
-          <article className="surfaceCard">
+          <article className="surfaceCard adminFormCard">
             <div className="sectionHeader"><h3>{t("adminUsers.bulkImport")}</h3></div>
             <div className="sectionBody stackLg">
               <div className="field">
@@ -260,7 +294,7 @@ export default function AdminUsersPage() {
           </article>
         </section>
 
-        <section className="surfaceCard">
+        <section className="surfaceCard adminTableCard">
           <div className="sectionHeader"><h3>{t("adminUsers.importPreview")}</h3></div>
           <div className="sectionBody">
             {importPreview.length === 0 ? (
@@ -298,7 +332,7 @@ export default function AdminUsersPage() {
 
         {importResult ? (
           <section className="dashboardGrid">
-            <article className="surfaceCard">
+            <article className="surfaceCard adminTableCard">
               <div className="sectionHeader"><h3>{t("adminUsers.importSummary")}</h3></div>
               <div className="sectionBody">
                 <div className="summaryStrip">
@@ -310,7 +344,7 @@ export default function AdminUsersPage() {
             </article>
 
             {importResult.users?.length > 0 ? (
-              <article className="surfaceCard">
+              <article className="surfaceCard adminTableCard">
                 <div className="sectionHeader"><h3>{t("adminUsers.importedAccounts")}</h3></div>
                 <div className="sectionBody">
                   <div className="tableWrap">
@@ -340,7 +374,7 @@ export default function AdminUsersPage() {
             ) : null}
 
             {importResult.errors?.length > 0 ? (
-              <article className="surfaceCard">
+              <article className="surfaceCard adminTableCard">
                 <div className="sectionHeader"><h3>{t("adminUsers.failedRows")}</h3></div>
                 <div className="sectionBody">
                   <div className="tableWrap">
@@ -367,7 +401,7 @@ export default function AdminUsersPage() {
           </section>
         ) : null}
 
-        <section className="surfaceCard">
+        <section className="surfaceCard adminTableCard">
           <div className="sectionHeader"><h3>{t("adminUsers.userDirectory")}</h3></div>
           <div className="sectionBody stackLg">
             <div className="filtersRow">

@@ -219,6 +219,34 @@ export default function AdminAcademicStructurePage() {
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
 
+        <section className="adminDashboardHero">
+          <div className="adminDashboardHeroCopy">
+            <div className="adminHeroBrand">
+              <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
+              <span>Administration Portal</span>
+            </div>
+            <div className="eyebrow">Administration</div>
+            <h2 className="heroTitle">Academic structure</h2>
+            <p className="heroText">
+              Maintain terms, course catalog records, and offering assignments in a layout focused on institutional control and semester planning.
+            </p>
+          </div>
+          <div className="adminHeroMeta">
+            <div className="adminHeroMetaRow">
+              <span>Active terms</span>
+              <strong>{activeTerms.length}</strong>
+            </div>
+            <div className="adminHeroMetaRow">
+              <span>Faculty staff</span>
+              <strong>{professors.length + assistants.length}</strong>
+            </div>
+            <div className="adminHeroMetaRow">
+              <span>Draft offerings</span>
+              <strong>{offerings.filter((offering) => offering.status === "Draft").length}</strong>
+            </div>
+          </div>
+        </section>
+
         <section className="summaryStrip">
           <article className="summaryCard">
             <span className="summaryLabel">Terms</span>
@@ -235,7 +263,7 @@ export default function AdminAcademicStructurePage() {
         </section>
 
         <section className="dashboardGrid dashboardGridWide">
-          <article className="surfaceCard">
+          <article className="surfaceCard adminFormCard">
             <div className="sectionHeader"><h3>Create term</h3></div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleTermSubmit}>
@@ -280,7 +308,7 @@ export default function AdminAcademicStructurePage() {
             </div>
           </article>
 
-          <article className="surfaceCard">
+          <article className="surfaceCard adminFormCard">
             <div className="sectionHeader"><h3>Create course</h3></div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCourseSubmit}>
@@ -324,7 +352,7 @@ export default function AdminAcademicStructurePage() {
           </article>
         </section>
 
-        <section className="surfaceCard">
+        <section className="surfaceCard adminFormCard">
           <div className="sectionHeader"><h3>Create course offering</h3></div>
           <div className="sectionBody">
             <form className="stackLg" onSubmit={handleOfferingSubmit}>
@@ -461,7 +489,7 @@ export default function AdminAcademicStructurePage() {
 
 function DirectoryTable({ title, columns, rows }) {
   return (
-    <section className="surfaceCard">
+    <section className="surfaceCard adminTableCard">
       <div className="sectionHeader"><h3>{title}</h3></div>
       <div className="sectionBody">
         <div className="tableWrap">

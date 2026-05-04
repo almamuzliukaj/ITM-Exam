@@ -1,30 +1,26 @@
 import api from "./api";
 
-// LISTA E PROVIMEVE
 export async function listExams() {
-  const response = await api.get("/api/Exams"); // Shtova /api/ ketu
+  const response = await api.get("/api/exams");
   return response.data;
 }
 
-// KRIJIMI I PROVIMIT
 export async function createExam(payload) {
-  const response = await api.post("/api/Exams", payload);
+  const response = await api.post("/api/exams", payload);
   return response.data;
 }
 
-// DETAJET E PROVIMIT
 export async function getExam(examId) {
-  const response = await api.get(`/api/Exams/${examId}`);
+  const response = await api.get(`/api/exams/${examId}`);
   return response.data;
 }
 
-// PYETJET
 export async function listQuestions(examId) {
-  const response = await api.get(`/api/Exams/${examId}/questions`);
+  const response = await api.get(`/api/exams/${examId}/questions`);
   return response.data;
 }
 
 export async function addQuestion(examId, payload) {
-  const response = await api.post(`/api/Exams/${examId}/questions`, payload);
+  const response = await api.post(`/api/exams/${examId}/questions`, payload);
   return response.data;
 }

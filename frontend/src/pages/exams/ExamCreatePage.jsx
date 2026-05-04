@@ -96,7 +96,7 @@ export default function ExamCreatePage() {
                 />
               </div>
 
-              <div className="row" style={{ justifyContent: "flex-end" }}>
+              <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
                 <button className="btn btnPrimary" type="submit" disabled={saving}>
                   {saving ? t("examCreate.creating") : t("examCreate.create")}

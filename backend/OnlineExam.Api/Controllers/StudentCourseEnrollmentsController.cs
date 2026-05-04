@@ -15,6 +15,7 @@ public class StudentCourseEnrollmentsController : ControllerBase
 {
     private static readonly HashSet<string> AllowedSources = ["RegularSemester", "CarryOver", "ManualOverride"];
     private static readonly HashSet<string> AllowedStatuses = ["Eligible", "Locked", "Withdrawn", "Completed"];
+    private static readonly HashSet<string> VisibleTermStatuses = ["Open", "Active"];
     private readonly AppDbContext _context;
 
     public StudentCourseEnrollmentsController(AppDbContext context)
@@ -43,6 +44,152 @@ public class StudentCourseEnrollmentsController : ControllerBase
             .ToListAsync();
 
         return Ok(enrollments);
+    }
+
+    [HttpGet("students/me/eligibility")]
+    [Authorize(Roles = "Student")]
+    public async Task<IActionResult> GetMyEligibilityDashboard()
+    {
+        var studentId = GetCurrentUserId();
+        if (studentId == null)
+            return Unauthorized();
+
+        var currentTerm = await _context.Terms
+            .Where(x => x.IsCurrent || VisibleTermStatuses.Contains(x.Status))
+            .OrderByDescending(x => x.IsCurrent)
+            .ThenByDescending(x => x.StartDate)
+            .FirstOrDefaultAsync();
+
+        if (currentTerm == null)
+        {
+            return Ok(new
+            {
+                currentTerm = (object?)null,
+                semesterEnrollment = (object?)null,
+                courses = Array.Empty<object>(),
+                carryOvers = Array.Empty<object>(),
+                exams = Array.Empty<object>(),
+                summary = new
+                {
+                    eligibleCourses = 0,
+                    visibleExams = 0,
+                    upcomingExams = 0,
+                    openCarryOvers = 0
+                }
+            });
+        }
+
+        var semesterEnrollment = await _context.SemesterEnrollments
+            .Where(x => x.StudentId == studentId.Value && x.TermId == currentTerm.Id)
+            .OrderByDescending(x => x.EnrolledAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.YearOfStudy,
+                x.SemesterNo,
+                x.Status,
+                x.EnrolledAt
+            })
+            .FirstOrDefaultAsync();
+
+        var eligibleEnrollments = await _context.StudentCourseEnrollments
+            .Include(x => x.CourseOffering)!
+                .ThenInclude(x => x!.Course)
+            .Include(x => x.CourseOffering)!
+                .ThenInclude(x => x!.Term)
+            .Where(x =>
+                x.StudentId == studentId.Value &&
+                x.CourseOffering != null &&
+                x.CourseOffering.TermId == currentTerm.Id &&
+                x.EligibleForExam &&
+                x.Status == "Eligible")
+            .OrderBy(x => x.CourseOffering!.YearOfStudy)
+            .ThenBy(x => x.CourseOffering!.SemesterNo)
+            .ThenBy(x => x.CourseOffering!.Course!.Code)
+            .ToListAsync();
+
+        var visibleOfferingIds = eligibleEnrollments.Select(x => x.CourseOfferingId).ToHashSet();
+        var now = DateTime.UtcNow;
+        var nextSevenDays = now.AddDays(7);
+
+        var exams = await _context.Exams
+            .Include(x => x.CourseOffering)!
+                .ThenInclude(x => x!.Course)
+            .Where(x =>
+                x.CourseOfferingId != null &&
+                visibleOfferingIds.Contains(x.CourseOfferingId.Value) &&
+                x.IsPublished &&
+                x.Status == "Published")
+            .OrderBy(x => x.StartsAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.Title,
+                x.StartsAt,
+                x.EndsAt,
+                x.DurationMinutes,
+                CourseCode = x.CourseOffering!.Course!.Code,
+                CourseName = x.CourseOffering!.Course!.Name,
+                x.CourseOffering.YearOfStudy,
+                x.CourseOffering.SemesterNo,
+                x.CourseOffering.SectionCode
+            })
+            .ToListAsync();
+
+        var carryOvers = await _context.CarryOverCourses
+            .Include(x => x.Course)
+            .Include(x => x.OriginTerm)
+            .Where(x => x.StudentId == studentId.Value && (x.Status == "Open" || x.Status == "AssignedToTerm"))
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.Status,
+                x.Reason,
+                x.OriginSemesterNo,
+                OriginTerm = x.OriginTerm == null ? null : x.OriginTerm.Name,
+                CourseCode = x.Course == null ? null : x.Course.Code,
+                CourseName = x.Course == null ? null : x.Course.Name
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            currentTerm = new
+            {
+                currentTerm.Id,
+                currentTerm.Code,
+                currentTerm.Name,
+                currentTerm.Season,
+                currentTerm.AcademicYearLabel,
+                currentTerm.Status,
+                currentTerm.IsCurrent
+            },
+            semesterEnrollment,
+            courses = eligibleEnrollments.Select(x => new
+            {
+                EnrollmentId = x.Id,
+                x.EnrollmentSource,
+                x.Status,
+                x.EligibleForExam,
+                CourseOfferingId = x.CourseOfferingId,
+                CourseCode = x.CourseOffering!.Course!.Code,
+                CourseName = x.CourseOffering!.Course!.Name,
+                x.CourseOffering.YearOfStudy,
+                x.CourseOffering.SemesterNo,
+                x.CourseOffering.SectionCode,
+                OfferingStatus = x.CourseOffering.Status
+            }),
+            carryOvers,
+            exams,
+            summary = new
+            {
+                eligibleCourses = eligibleEnrollments.Count,
+                visibleExams = exams.Count,
+                upcomingExams = exams.Count(x => x.StartsAt >= now && x.StartsAt <= nextSevenDays),
+                openCarryOvers = carryOvers.Count
+            }
+        });
     }
 
     [HttpPost("students/{studentId:guid}/course-enrollments/regularize")]

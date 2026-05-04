@@ -7,7 +7,7 @@ const resources = {
   en: {
     translation: {
       common: {
-        appName: "Online Exam",
+        appName: "ITM Exam",
         language: "Language",
         english: "English",
         albanian: "Albanian",
@@ -63,6 +63,7 @@ const resources = {
       dashboard: {
         loading: "Loading workspace...",
         error: "Unable to load dashboard.",
+        statsError: "Dashboard data could not be loaded.",
         title: "Operational overview",
         subtitle: "A role-based workspace designed for real academic operations, exam preparation, and secure assessment delivery.",
         examWorkspace: "Exam workspace",
@@ -250,7 +251,7 @@ const resources = {
           stats: {
             activeUsers: { label: "Active users", meta: "+12 this week" },
             offerings: { label: "Course offerings", meta: "Across 6 semesters" },
-            imports: { label: "Pending imports", meta: "Require review" },
+            imports: { label: "Pending enrollments", meta: "Require review" },
             alerts: { label: "Policy alerts", meta: "Need admin action" }
           },
           quickActions: {
@@ -308,6 +309,23 @@ const resources = {
                 "Year 3: Software Engineering"
               ]
             }
+          },
+          offerings: {
+            title: "Assigned offerings",
+            subtitle: "Only course offerings assigned to your active professor account are shown.",
+            loading: "Loading assigned offerings...",
+            error: "Assigned offerings could not be loaded.",
+            emptyTitle: "No assigned offerings yet.",
+            emptyText: "Ask an administrator to assign you to a course offering before creating course-linked exams.",
+            total: "{{count}} assigned",
+            groupTitle: "Year {{year}}, Semester {{semester}}",
+            groupCount: "{{count}} offerings",
+            section: "Section {{section}}",
+            term: "Term",
+            delivery: "Delivery",
+            capacity: "Capacity",
+            courseFallback: "Unnamed course",
+            termFallback: "No term"
           }
         },
         assistant: {
@@ -378,7 +396,7 @@ const resources = {
   sq: {
     translation: {
       common: {
-        appName: "Online Exam",
+        appName: "ITM Exam",
         language: "Gjuha",
         english: "Anglisht",
         albanian: "Shqip",
@@ -434,6 +452,7 @@ const resources = {
       dashboard: {
         loading: "Duke u ngarkuar hapësira...",
         error: "Ballina nuk mund të ngarkohet.",
+        statsError: "Të dhënat e panelit nuk mund të ngarkohen.",
         title: "Pasqyra operative",
         subtitle: "Një hapësirë me role për operacione reale akademike, përgatitje provimesh dhe zhvillim të sigurt të vlerësimit.",
         examWorkspace: "Hapësira e provimeve",
@@ -621,7 +640,7 @@ const resources = {
           stats: {
             activeUsers: { label: "Përdorues aktivë", meta: "+12 këtë javë" },
             offerings: { label: "Ofrime lëndësh", meta: "Në 6 semestra" },
-            imports: { label: "Importe në pritje", meta: "Kërkojnë kontroll" },
+            imports: { label: "Regjistrime në pritje", meta: "Kërkojnë kontroll" },
             alerts: { label: "Njoftime politike", meta: "Kërkojnë veprim admini" }
           },
           quickActions: {
@@ -679,6 +698,23 @@ const resources = {
                 "Viti 3: Inxhinieri Softuerike"
               ]
             }
+          },
+          offerings: {
+            title: "Ofrimet e caktuara",
+            subtitle: "Shfaqen vetem ofrimet e lendeve qe jane te lidhura me llogarine tende aktive si profesor.",
+            loading: "Duke u ngarkuar ofrimet e caktuara...",
+            error: "Ofrimet e caktuara nuk u ngarkuan.",
+            emptyTitle: "Ende nuk ke ofrime te caktuara.",
+            emptyText: "Kerko nga administratori te te caktoje ne nje ofrim lende para se te krijosh provime te lidhura me lenden.",
+            total: "{{count}} te caktuara",
+            groupTitle: "Viti {{year}}, Semestri {{semester}}",
+            groupCount: "{{count}} ofrime",
+            section: "Grupi {{section}}",
+            term: "Afati",
+            delivery: "Lloji",
+            capacity: "Kapaciteti",
+            courseFallback: "Lende pa emer",
+            termFallback: "Pa afat"
           }
         },
         assistant: {

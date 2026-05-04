@@ -41,6 +41,30 @@ public class ExamsController : ControllerBase
                     a.UserId == userId.Value &&
                     a.IsActive)));
         }
+        else if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+ feat/student-eligibility-dashboard
+            query = query.Where(x =>
+                x.CourseOfferingId != null &&
+                x.IsPublished &&
+                x.Status == "Published" &&
+                _context.StudentCourseEnrollments.Any(e =>
+                    e.StudentId == userId.Value &&
+                    e.CourseOfferingId == x.CourseOfferingId &&
+                    e.EligibleForExam &&
+
+                    e.Status == "Eligible"));
+            var offeringIds = await GetEligibleOfferingIdsAsync(userId.Value);
+            query = query.Where(x =>
+                x.IsPublished &&
+                x.CourseOfferingId.HasValue &&
+                offeringIds.Contains(x.CourseOfferingId.Value));
+ main
+        }
 
         return await query.OrderByDescending(x => x.CreatedAt).ToListAsync();
     }
@@ -68,6 +92,28 @@ public class ExamsController : ControllerBase
                                 a.IsActive));
 
             if (!hasAccess)
+                return Forbid();
+        }
+        else if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+ feat/student-eligibility-dashboard
+            var hasAccess = exam.CourseOfferingId != null &&
+                            exam.IsPublished &&
+                            exam.Status == "Published" &&
+                            await _context.StudentCourseEnrollments.AnyAsync(e =>
+                                e.StudentId == userId.Value &&
+                                e.CourseOfferingId == exam.CourseOfferingId &&
+                                e.EligibleForExam &&
+                                e.Status == "Eligible");
+
+            if (!hasAccess)
+
+            if (!await CanStudentAccessExamAsync(userId.Value, exam))
+ main
                 return Forbid();
         }
 
@@ -205,6 +251,22 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
+ feat/student-eligibility-dashboard
+        var canAttempt = exam.CourseOfferingId != null &&
+                         exam.IsPublished &&
+                         exam.Status == "Published" &&
+                         await _context.StudentCourseEnrollments.AnyAsync(e =>
+                             e.StudentId == userId.Value &&
+                             e.CourseOfferingId == exam.CourseOfferingId &&
+                             e.EligibleForExam &&
+                             e.Status == "Eligible");
+
+        if (!canAttempt)
+
+        if (!await CanStudentAccessExamAsync(userId.Value, exam))
+        main
+            return Forbid();
+
         var details = new List<QuestionScoreDetailDto>();
         double score = 0;
 
@@ -317,5 +379,25 @@ public class ExamsController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         return Guid.TryParse(userId, out var parsed) ? parsed : null;
+    }
+
+    private async Task<List<Guid>> GetEligibleOfferingIdsAsync(Guid userId)
+    {
+        return await _context.StudentCourseEnrollments
+            .Where(x => x.StudentId == userId && x.EligibleForExam && x.Status == "Eligible")
+            .Select(x => x.CourseOfferingId)
+            .ToListAsync();
+    }
+
+    private async Task<bool> CanStudentAccessExamAsync(Guid userId, Exam exam)
+    {
+        if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
+            return false;
+
+        return await _context.StudentCourseEnrollments.AnyAsync(x =>
+            x.StudentId == userId &&
+            x.CourseOfferingId == exam.CourseOfferingId.Value &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
     }
 }

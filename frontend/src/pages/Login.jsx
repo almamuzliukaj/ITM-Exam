@@ -67,8 +67,8 @@ export default function Login() {
 
         <section className="loginPanel">
           <div className="brand brandLarge">
-            <span className="logoMark" />
-            <span>
+            <img className="brandLogo brandLogoIcon" src="/app-logo.svg" alt="ITM Exam" />
+            <span className="brandCaption">
               <strong>{t("common.appName")}</strong>
               <small>{t("common.departmentWorkspace")}</small>
             </span>

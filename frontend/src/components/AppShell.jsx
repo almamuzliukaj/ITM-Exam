@@ -1,4 +1,5 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { logout } from "../lib/auth";
@@ -34,8 +35,14 @@ export default function AppShell({
   children,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const items = navigationByRole[user?.role] || navigationByRole.Student;
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   function handleLogout() {
     logout();
@@ -43,12 +50,13 @@ export default function AppShell({
   }
 
   return (
-    <div className="appShell">
-      <aside className="sidebar">
+    <div className={`appShell roleShell roleShell${user?.role || "Guest"}`}>
+      {isMobileMenuOpen ? <button className="mobileNavBackdrop" type="button" aria-label="Close menu" onClick={() => setIsMobileMenuOpen(false)} /> : null}
+      <aside className={`sidebar sidebar${user?.role || "Guest"}${isMobileMenuOpen ? " sidebarOpen" : ""}`}>
         <div className="sidebarTop">
           <Link className="brand brandLarge" to="/dashboard">
-            <span className="logoMark" />
-            <span>
+            <img className="brandLogo brandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
+            <span className="brandCaption">
               <strong>{t("common.appName")}</strong>
               <small>{t("common.facultyWorkspace")}</small>
             </span>
@@ -88,15 +96,31 @@ export default function AppShell({
         </div>
       </aside>
 
-      <div className="mainPanel">
+      <div className={`mainPanel mainPanel${user?.role || "Guest"}`}>
         <header className="topbar">
-          <div>
-            {badge ? <div className="eyebrow">{badge}</div> : null}
-            <h1 className="pageTitle">{title}</h1>
+          <div className="topbarIntro">
+            <div className="topbarIntroRow">
+              <button
+                className="mobileMenuButton"
+                type="button"
+                aria-label="Open navigation"
+                onClick={() => setIsMobileMenuOpen((current) => !current)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <div>
+                {badge ? <div className="eyebrow">{badge}</div> : null}
+                <h1 className="pageTitle">{title}</h1>
+              </div>
+            </div>
             {subtitle ? <p className="pageSubtitle">{subtitle}</p> : null}
           </div>
-          <div className="topbarActions">{actions}</div>
-          <LanguageSwitcher compact />
+          <div className="topbarTools">
+            <div className="topbarActions">{actions}</div>
+            <LanguageSwitcher compact />
+          </div>
         </header>
 
         <main className="contentArea">{children}</main>

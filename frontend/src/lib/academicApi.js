@@ -40,6 +40,11 @@ export async function listOfferings(filters = {}) {
   return response.data;
 }
 
+export async function listMyOfferings() {
+  const response = await api.get("/api/course-offerings/mine");
+  return response.data;
+}
+
 export async function createOffering(payload) {
   const response = await api.post("/api/course-offerings", payload);
   return response.data;

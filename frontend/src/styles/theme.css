@@ -1,29 +1,29 @@
 :root{
-  --bg: #f3efe7;
-  --bg-soft: #fbf8f2;
-  --surface: rgba(255,255,255,.76);
-  --surface-strong: rgba(255,255,255,.92);
-  --border: rgba(32, 49, 43, .12);
-  --border-strong: rgba(23, 53, 47, .22);
+  --bg: #eef2f6;
+  --bg-soft: #f7f9fc;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --border: #d8e0ea;
+  --border-strong: #b9c6d5;
 
-  --text: #20312b;
-  --muted: #5e7169;
-  --heading: #13211d;
+  --text: #213042;
+  --muted: #5d6b7c;
+  --heading: #162231;
 
-  --primary: #0f766e;
-  --primary-soft: #d5ede6;
-  --accent: #bc6c25;
+  --primary: #163a63;
+  --primary-soft: #e5edf6;
+  --accent: #7d8ea3;
   --danger: #b42318;
-  --success: #117a51;
+  --success: #17633d;
 
-  --shadow-xl: 0 28px 70px rgba(39, 51, 44, .12);
-  --shadow-md: 0 16px 32px rgba(39, 51, 44, .08);
-  --radius-xl: 28px;
-  --radius-lg: 20px;
-  --radius-md: 14px;
+  --shadow-xl: 0 18px 48px rgba(16, 34, 56, .08);
+  --shadow-md: 0 10px 24px rgba(16, 34, 56, .06);
+  --radius-xl: 18px;
+  --radius-lg: 14px;
+  --radius-md: 10px;
 
   --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", sans-serif;
-  --font-display: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", "Trebuchet MS", sans-serif;
+  --font-display: "Cambria", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-mono: "Consolas", "SFMono-Regular", monospace;
 }
 
@@ -34,9 +34,7 @@ body{
   font-family: var(--font-sans);
   color: var(--text);
   background:
-    radial-gradient(900px 500px at 0% 0%, rgba(15,118,110,.12), transparent 60%),
-    radial-gradient(800px 520px at 100% 0%, rgba(188,108,37,.10), transparent 60%),
-    linear-gradient(180deg, #f7f4ee 0%, #f1ece3 100%);
+    linear-gradient(180deg, #f4f7fb 0%, #ecf1f6 100%);
 }
 
 a{ color: inherit; text-decoration: none; }

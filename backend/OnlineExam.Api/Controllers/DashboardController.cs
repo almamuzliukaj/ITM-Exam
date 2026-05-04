@@ -119,7 +119,7 @@ public class DashboardController : ControllerBase
 
     private async Task<object> BuildStudentSummaryAsync(Guid userId)
     {
-        var offeringIds = await GetEligibleOfferingIdsAsync(userId);
+        var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId);
         var now = DateTime.UtcNow;
         var nextWeek = now.AddDays(7);
 
@@ -168,11 +168,22 @@ public class DashboardController : ControllerBase
             (x.CourseOfferingId.HasValue && offeringIds.Contains(x.CourseOfferingId.Value)));
     }
 
-    private async Task<List<Guid>> GetEligibleOfferingIdsAsync(Guid userId)
+    private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)
     {
-        return await _context.StudentCourseEnrollments
+        var eligibleOfferingIds = await _context.StudentCourseEnrollments
             .Where(x => x.StudentId == userId && x.EligibleForExam && x.Status == "Eligible")
             .Select(x => x.CourseOfferingId)
+            .ToListAsync();
+
+        if (eligibleOfferingIds.Count > 0)
+            return eligibleOfferingIds;
+
+        return await _context.CourseOfferings
+            .Where(x =>
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft") &&
+                _context.Exams.Any(e => e.CourseOfferingId == x.Id && e.IsPublished && e.Status == "Published"))
+            .Select(x => x.Id)
             .ToListAsync();
     }
 

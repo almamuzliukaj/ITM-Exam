@@ -1,15 +1,9 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
- feat/sprint-11-monaco-editor
 import { listMyOfferings } from "../lib/academicApi";
 import { getDashboardSummary } from "../lib/dashboardApi";
 import { getMyEligibilityDashboard } from "../lib/studentApi";
-
-import { getMyEligibilityDashboard } from "../lib/studentApi";
-import { listMyOfferings } from "../lib/academicApi";
-import { getDashboardSummary } from "../lib/dashboardApi";
-main
 
 export default function RoleDashboardPanels({ role = "Student" }) {
   const { t } = useTranslation();
@@ -45,7 +39,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
   }, [t]);
 
   useEffect(() => {
-    if (roleKey !== "professor") {
+    if (roleKey !== "professor" && roleKey !== "assistant") {
       setOfferings([]);
       setOfferingsError("");
       setOfferingsLoading(false);
@@ -61,7 +55,7 @@ export default function RoleDashboardPanels({ role = "Student" }) {
         const data = await listMyOfferings();
         if (active) setOfferings(Array.isArray(data) ? data : []);
       } catch {
-        if (active) setOfferingsError(t("rolePanels.professor.offerings.error"));
+        if (active) setOfferingsError(t(`rolePanels.${roleKey}.offerings.error`));
       } finally {
         if (active) setOfferingsLoading(false);
       }
@@ -92,6 +86,21 @@ export default function RoleDashboardPanels({ role = "Student" }) {
         offeringsLoading={offeringsLoading}
         offeringsError={offeringsError}
         summaryError={error}
+        roleKey="professor"
+        t={t}
+      />
+    );
+  }
+
+  if (roleKey === "assistant") {
+    return (
+      <ProfessorDashboard
+        config={config}
+        offerings={offerings}
+        offeringsLoading={offeringsLoading}
+        offeringsError={offeringsError}
+        summaryError={error}
+        roleKey="assistant"
         t={t}
       />
     );
@@ -226,7 +235,6 @@ function StudentEligibilityPanel({ config }) {
         </div>
         <div className="heroStats">
           {stats.map((stat) => (
- feat/sprint-11-monaco-editor
             <article key={stat.label} className="metricCard">
               <div className="metricValue">{stat.value}</div>
               <div className="metricLabel">{stat.label}</div>
@@ -355,141 +363,9 @@ function VisibilityRulesCard() {
   );
 }
 
-function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
+function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, roleKey, t }) {
   const groups = groupOfferingsByYearSemester(offerings);
-
-  return (
-    <div className="stackXl">
-      {summaryError ? <div className="alert">{summaryError}</div> : null}
-      {offeringsError ? <div className="alert">{offeringsError}</div> : null}
-
-      <section className="heroPanel">
-        <div className="heroCopy">
-          <div className="eyebrow">{config.badge}</div>
-          <h2 className="heroTitle">{config.heroTitle}</h2>
-          <p className="heroText">{config.heroText}</p>
-          <div className="heroActions">
-            {config.quickActions.map((action) => (
-              <Link key={action.to} className="btn btnPrimary" to={action.to}>
-                {action.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="heroStats">
-          {config.stats.map((stat) => (
- main
-            <article key={stat.label} className="metricCard">
-              <div className="metricValue">{stat.value}</div>
-              <div className="metricLabel">{stat.label}</div>
-              <div className="metricMeta">{stat.meta}</div>
-            </article>
-          ))}
-        </div>
-      </section>
-
- feat/sprint-11-monaco-editor
-
-      <section className="dashboardGrid">
-        <article className="surfaceCard">
-          <div className="sectionHeader">
-            <h3>Current semester courses</h3>
-          </div>
-          <div className="sectionBody">
-            {courses.length ? (
-              <div className="studentItemList">
-                {courses.map((course) => (
-                  <div key={course.enrollmentId} className="studentItemRow">
-                    <div>
-                      <strong>{course.courseCode} - {course.courseName}</strong>
-                      <span>Year {course.yearOfStudy}, semester {course.semesterNo}, section {course.sectionCode}</span>
-                    </div>
-                    <span className="statusPill statusLive">{course.enrollmentSource}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="emptyState">No eligible current-semester courses are visible yet.</div>
-            )}
-          </div>
-        </article>
-
-        <article className="surfaceCard">
-          <div className="sectionHeader">
-            <h3>Visible exams</h3>
-          </div>
-          <div className="sectionBody">
-            {exams.length ? (
-              <div className="studentItemList">
-                {exams.map((exam) => (
-                  <div key={exam.id} className="studentItemRow">
-                    <div>
-                      <strong>{exam.title}</strong>
-                      <span>{exam.courseCode} - {formatDateTime(exam.startsAt)} / {exam.durationMinutes} min</span>
-                    </div>
-                    <Link className="btn" to={`/exams/${exam.id}`}>
-                      Open
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="emptyState">No published exams are visible for your eligible courses.</div>
-            )}
-          </div>
-        </article>
-
-        <article className="surfaceCard">
-          <div className="sectionHeader">
-            <h3>Carry-over courses</h3>
-          </div>
-          <div className="sectionBody">
-            {carryOvers.length ? (
-              <div className="studentItemList">
-                {carryOvers.map((item) => (
-                  <div key={item.id} className="studentItemRow">
-                    <div>
-                      <strong>{item.courseCode} - {item.courseName}</strong>
-                      <span>{item.reason} from semester {item.originSemesterNo}{item.originTerm ? `, ${item.originTerm}` : ""}</span>
-                    </div>
-                    <span className="statusPill statusDraft">{item.status}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="emptyState">No open carry-over courses are currently assigned.</div>
-            )}
-          </div>
-        </article>
-
-        <article className="surfaceCard">
-          <div className="sectionHeader">
-            <h3>Visibility rules</h3>
-          </div>
-          <div className="sectionBody">
-            <div className="bulletStack">
-              <div className="listRow">
-                <span className="listDot" />
-                <span>Only eligible enrollments from the current term are shown.</span>
-              </div>
-              <div className="listRow">
-                <span className="listDot" />
-                <span>Exams must be published and linked to an eligible course offering.</span>
-              </div>
-              <div className="listRow">
-                <span className="listDot" />
-                <span>Carry-over courses appear separately until they are closed or cancelled.</span>
-              </div>
-            </div>
-          </div>
-        </article>
-      </section>
-    </div>
-  );
-}
-
-function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
-  const groups = groupOfferingsByYearSemester(offerings);
+  const offeringTextKey = `rolePanels.${roleKey}.offerings`;
 
   return (
     <div className="stackXl">
@@ -520,24 +396,23 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
       </section>
 
- main
       <section className="surfaceCard professorOfferingsSurface">
         <div className="sectionHeader professorOfferingsHeader">
           <div>
-            <h3>{t("rolePanels.professor.offerings.title")}</h3>
-            <span className="small">{t("rolePanels.professor.offerings.subtitle")}</span>
+            <h3>{t(`${offeringTextKey}.title`)}</h3>
+            <span className="small">{t(`${offeringTextKey}.subtitle`)}</span>
           </div>
           <span className="statusPill statusLive">
-            {t("rolePanels.professor.offerings.total", { count: offerings.length })}
+            {t(`${offeringTextKey}.total`, { count: offerings.length })}
           </span>
         </div>
         <div className="sectionBody">
           {offeringsLoading ? (
-            <div className="pageStateCard">{t("rolePanels.professor.offerings.loading")}</div>
+            <div className="pageStateCard">{t(`${offeringTextKey}.loading`)}</div>
           ) : groups.length === 0 ? (
             <div className="emptyState">
-              <p>{t("rolePanels.professor.offerings.emptyTitle")}</p>
-              <p>{t("rolePanels.professor.offerings.emptyText")}</p>
+              <p>{t(`${offeringTextKey}.emptyTitle`)}</p>
+              <p>{t(`${offeringTextKey}.emptyText`)}</p>
             </div>
           ) : (
             <div className="offeringGroupStack">
@@ -545,8 +420,8 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                 <article className="offeringGroup" key={group.key}>
                   <div className="offeringGroupHeader">
                     <div>
-                      <h4>{t("rolePanels.professor.offerings.groupTitle", { year: group.year, semester: group.semester })}</h4>
-                      <span className="small">{t("rolePanels.professor.offerings.groupCount", { count: group.items.length })}</span>
+                      <h4>{t(`${offeringTextKey}.groupTitle`, { year: group.year, semester: group.semester })}</h4>
+                      <span className="small">{t(`${offeringTextKey}.groupCount`, { count: group.items.length })}</span>
                     </div>
                   </div>
 
@@ -557,22 +432,28 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                           <span className={`statusPill ${isLiveOffering(offering.status) ? "statusLive" : "statusDraft"}`}>
                             {offering.status || "-"}
                           </span>
-                          <span className="small">{formatSection(offering, t)}</span>
+                          <span className="small">{formatSection(offering, t, roleKey)}</span>
                         </div>
-                        <h4>{formatCourseTitle(offering, t)}</h4>
+                        <h4>{formatCourseTitle(offering, t, roleKey)}</h4>
                         <dl className="offeringMetaList">
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.term")}</dt>
-                            <dd>{formatTerm(offering, t)}</dd>
+                            <dt>{t(`${offeringTextKey}.term`)}</dt>
+                            <dd>{formatTerm(offering, t, roleKey)}</dd>
                           </div>
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.delivery")}</dt>
+                            <dt>{t(`${offeringTextKey}.delivery`)}</dt>
                             <dd>{offering.deliveryType || "-"}</dd>
                           </div>
                           <div>
-                            <dt>{t("rolePanels.professor.offerings.capacity")}</dt>
+                            <dt>{t(`${offeringTextKey}.capacity`)}</dt>
                             <dd>{Number.isFinite(Number(offering.capacity)) ? offering.capacity : "-"}</dd>
                           </div>
+                          {roleKey === "assistant" ? (
+                            <div>
+                              <dt>{t(`${offeringTextKey}.responsibility`)}</dt>
+                              <dd>{t(`${offeringTextKey}.responsibilityValue`)}</dd>
+                            </div>
+                          ) : null}
                         </dl>
                       </article>
                     ))}
@@ -583,11 +464,32 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
           )}
         </div>
       </section>
+
+      {roleKey === "assistant" ? (
+        <section className="dashboardGrid">
+          {config.sections.map((section) => (
+            <article key={section.title} className="surfaceCard">
+              <div className="sectionHeader">
+                <h3>{section.title}</h3>
+              </div>
+              <div className="sectionBody">
+                <div className="bulletStack">
+                  {section.items.map((item) => (
+                    <div key={item} className="listRow">
+                      <span className="listDot" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : null}
     </div>
   );
 }
 
- feat/sprint-11-monaco-editor
 function DefaultDashboard({ config, error }) {
   return (
     <div className="stackXl">
@@ -640,7 +542,6 @@ function DefaultDashboard({ config, error }) {
   );
 }
 
- main
 function formatDateTime(value) {
   if (!value) return "No schedule";
   return new Intl.DateTimeFormat(undefined, {
@@ -674,24 +575,24 @@ function groupOfferingsByYearSemester(offerings) {
   return Array.from(groups.values());
 }
 
-function formatCourseTitle(offering, t) {
+function formatCourseTitle(offering, t, roleKey = "professor") {
   const code = offering.course?.code?.trim();
   const name = offering.course?.name?.trim();
 
   if (code && name) return `${code} - ${name}`;
-  return code || name || t("rolePanels.professor.offerings.courseFallback");
+  return code || name || t(`rolePanels.${roleKey}.offerings.courseFallback`);
 }
 
-function formatTerm(offering, t) {
+function formatTerm(offering, t, roleKey = "professor") {
   const name = offering.term?.name?.trim();
   const academicYear = offering.term?.academicYearLabel?.trim();
 
   if (name && academicYear) return `${name} (${academicYear})`;
-  return name || academicYear || t("rolePanels.professor.offerings.termFallback");
+  return name || academicYear || t(`rolePanels.${roleKey}.offerings.termFallback`);
 }
 
-function formatSection(offering, t) {
-  return t("rolePanels.professor.offerings.section", { section: offering.sectionCode || "-" });
+function formatSection(offering, t, roleKey = "professor") {
+  return t(`rolePanels.${roleKey}.offerings.section`, { section: offering.sectionCode || "-" });
 }
 
 function isLiveOffering(status) {

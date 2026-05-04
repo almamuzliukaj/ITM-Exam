@@ -35,6 +35,9 @@ export default function AppRoutes() {
 
         <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>
           <Route path="/exams/new" element={<ExamCreatePage />} />
+        </Route>
+
+        <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>
           <Route path="/exams/:examId/questions/new" element={<QuestionCreatePage />} />
         </Route>
       </Route>

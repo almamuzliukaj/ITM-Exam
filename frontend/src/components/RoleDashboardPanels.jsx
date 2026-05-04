@@ -1,15 +1,9 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
- feat/student-eligibility-dashboard
- feat/student-eligibility-dashboard
 import { getMyEligibilityDashboard } from "../lib/studentApi";
-
-
 import { listMyOfferings } from "../lib/academicApi";
- main
 import { getDashboardSummary } from "../lib/dashboardApi";
- main
 
 export default function RoleDashboardPanels({ role = "Student" }) {
   const { t } = useTranslation();
@@ -127,9 +121,9 @@ export default function RoleDashboardPanels({ role = "Student" }) {
     );
   }
 
- feat/student-eligibility-dashboard
   if (roleKey === "student") {
     return <StudentEligibilityPanel config={config} />;
+  }
 
   if (roleKey === "professor") {
     return (
@@ -142,7 +136,6 @@ export default function RoleDashboardPanels({ role = "Student" }) {
         t={t}
       />
     );
-main
   }
 
   return (
@@ -196,8 +189,6 @@ main
   );
 }
 
- feat/student-eligibility-dashboard
- feat/student-eligibility-dashboard
 function StudentEligibilityPanel({ config }) {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -292,31 +283,6 @@ function StudentEligibilityPanel({ config }) {
         </div>
         <div className="heroStats">
           {stats.map((stat) => (
-
-function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
-  const groups = groupOfferingsByYearSemester(offerings);
-
-  return (
-    <div className="stackXl">
-      {summaryError ? <div className="alert">{summaryError}</div> : null}
-      {offeringsError ? <div className="alert">{offeringsError}</div> : null}
-
-      <section className="heroPanel">
-        <div className="heroCopy">
-          <div className="eyebrow">{config.badge}</div>
-          <h2 className="heroTitle">{config.heroTitle}</h2>
-          <p className="heroText">{config.heroText}</p>
-          <div className="heroActions">
-            {config.quickActions.map((action) => (
-              <Link key={action.to} className="btn btnPrimary" to={action.to}>
-                {action.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="heroStats">
-          {config.stats.map((stat) => (
- main
             <article key={stat.label} className="metricCard">
               <div className="metricValue">{stat.value}</div>
               <div className="metricLabel">{stat.label}</div>
@@ -326,7 +292,6 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
       </section>
 
- feat/student-eligibility-dashboard
       <section className="dashboardGrid">
         <article className="surfaceCard">
           <div className="sectionHeader">
@@ -420,6 +385,42 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
             </div>
           </div>
         </article>
+      </section>
+    </div>
+  );
+}
+
+function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsError, summaryError, t }) {
+  const groups = groupOfferingsByYearSemester(offerings);
+
+  return (
+    <div className="stackXl">
+      {summaryError ? <div className="alert">{summaryError}</div> : null}
+      {offeringsError ? <div className="alert">{offeringsError}</div> : null}
+
+      <section className="heroPanel">
+        <div className="heroCopy">
+          <div className="eyebrow">{config.badge}</div>
+          <h2 className="heroTitle">{config.heroTitle}</h2>
+          <p className="heroText">{config.heroText}</p>
+          <div className="heroActions">
+            {config.quickActions.map((action) => (
+              <Link key={action.to} className="btn btnPrimary" to={action.to}>
+                {action.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="heroStats">
+          {config.stats.map((stat) => (
+            <article key={stat.label} className="metricCard">
+              <div className="metricValue">{stat.value}</div>
+              <div className="metricLabel">{stat.label}</div>
+              <div className="metricMeta">{stat.meta}</div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="surfaceCard professorOfferingsSurface">
         <div className="sectionHeader professorOfferingsHeader">
@@ -482,13 +483,11 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
             </div>
           )}
         </div>
- main
       </section>
     </div>
   );
 }
 
- feat/student-eligibility-dashboard
 function formatDateTime(value) {
   if (!value) return "No schedule";
   return new Intl.DateTimeFormat(undefined, {
@@ -496,8 +495,6 @@ function formatDateTime(value) {
     timeStyle: "short"
   }).format(new Date(value));
 }
-
-function getDashboardConfig(roleKey, t) {
 
 function groupOfferingsByYearSemester(offerings) {
   const groups = new Map();
@@ -547,10 +544,8 @@ function formatSection(offering, t) {
 function isLiveOffering(status) {
   return ["Published", "Active"].includes(status);
 }
- main
 
 function getDashboardConfig(roleKey, t, metrics = {}, loading = false, hasError = false) {
- main
   const fallback = "student";
   const current = ["admin", "professor", "assistant", "student"].includes(roleKey) ? roleKey : fallback;
   const value = (key) => formatMetric(metrics?.[key], loading, hasError);

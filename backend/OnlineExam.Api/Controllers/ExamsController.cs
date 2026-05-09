@@ -174,6 +174,9 @@ public class ExamsController : ControllerBase
         if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be deleted. Only draft exams can be deleted." });
+
         var userId = GetCurrentUserId();
         if (userId == null)
             return Unauthorized();

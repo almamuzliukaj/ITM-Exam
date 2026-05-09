@@ -1093,6 +1093,205 @@
   font-size: 14px;
 }
 
+.examSessionBar{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.examSessionBar > div{
+  min-height: 128px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.examSessionBar strong{
+  display: block;
+  margin-top: 8px;
+  color: var(--heading);
+  font-family: var(--font-display);
+  font-size: 30px;
+}
+
+.examSessionBar small{
+  display: block;
+  min-height: 20px;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.examIntegrityStrip,
+.submitReviewPanel{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+  box-shadow: var(--shadow-md);
+}
+
+.examIntegrityStrip strong,
+.submitReviewPanel h3{
+  display: block;
+  margin: 0;
+  color: var(--heading);
+}
+
+.examIntegrityStrip span,
+.submitReviewPanel p{
+  display: block;
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.submitReviewPanel{
+  border-color: rgba(22,58,99,.22);
+  background: #f7fbff;
+}
+
+.submitReviewMeta{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.submitReviewMeta span{
+  color: var(--heading);
+  font-weight: 800;
+}
+
+.timerDanger{
+  color: var(--danger) !important;
+}
+
+.examSubmitBtn{
+  min-width: 144px;
+}
+
+.btnCompact{
+  padding: 8px 11px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.btnWarn{
+  border-color: rgba(180, 83, 9, .28);
+  background: #fff7ed;
+  color: #9a4a08;
+}
+
+.examSessionLayout{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 24px;
+  align-items: start;
+}
+
+.examQuestionStack{
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.examQuestionCard{
+  scroll-margin-top: 18px;
+}
+
+.examPrompt{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.examPrompt p{
+  margin: 0;
+  color: var(--heading);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.examPrompt pre{
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  padding: 12px;
+  background: #111827;
+  color: #e5edf7;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.examCodeAnswer{
+  min-height: 240px;
+  font-family: var(--font-mono);
+}
+
+.examNavigator{
+  position: sticky;
+  top: 20px;
+  box-shadow: var(--shadow-md);
+}
+
+.examQuestionNav{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.examQuestionNav a{
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.examQuestionNav a.answered{
+  border-color: rgba(23,99,61,.28);
+  background: #e5f3ea;
+  color: #195738;
+}
+
+.examQuestionNav a.flagged{
+  border-color: rgba(180, 83, 9, .32);
+  background: #fff7ed;
+  color: #9a4a08;
+}
+
+.examQuestionNav a.answered.flagged{
+  background: linear-gradient(135deg, #e5f3ea 0 50%, #fff7ed 50% 100%);
+}
+
+.questionHeaderActions{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.examDoneActions{
+  margin-top: 18px;
+}
+
 .loginShell{
   min-height: 100vh;
   position: relative;
@@ -1380,6 +1579,8 @@
   .dashboardGrid,
   .dashboardGridWide,
   .summaryStrip,
+  .examSessionBar,
+  .examSessionLayout,
   .adminDashboardHero,
   .adminMetricGrid,
   .adminSectionGrid,

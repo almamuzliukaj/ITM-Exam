@@ -25,6 +25,14 @@ export async function listQuestions(examId) {
   return response.data;
 }
 
+export async function submitExamAttempt(examId, payload) {
+  const response = await api.post(`/api/exams/${examId}/attempt`, {
+    examId,
+    answers: payload.answers || [],
+  });
+  return response.data;
+}
+
 export async function addQuestion(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/questions`, payload);
   return response.data;

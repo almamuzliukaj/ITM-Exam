@@ -279,6 +279,13 @@ public class ExamsController : ControllerBase
         if (!await CanStudentAccessExamAsync(userId.Value, exam))
             return Forbid();
 
+        var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
+            a.ExamId == examId &&
+            a.StudentId == userId.Value);
+
+        if (alreadySubmitted)
+            return BadRequest(new { message = "You have already submitted this exam." });
+
         var details = new List<QuestionScoreDetailDto>();
         double autoScore = 0;
         var requiresManualGrading = false;

@@ -42,7 +42,35 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
+ feat/sprint-11-monaco-editor
+  const canCreate = canManageExams(user.role);
+  const isStudent = user.role === "Student";
+
+  async function onPublish(examId) {
+    try {
+      setPublishingId(examId);
+      setError("");
+      await publishExam(examId);
+      setExams((current) =>
+        current.map((exam) =>
+          exam.id === examId
+            ? { ...exam, isPublished: true, status: "Published" }
+            : exam
+        )
+      );
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to publish exam.");
+    } finally {
+      setPublishingId("");
+    }
+  }
+
   const canCreate = canCreateExams(user.role);
+ main
 
   return (
     <AppShell
@@ -95,7 +123,9 @@ export default function ExamsListPage() {
                     {canCreate && !exam.isPublished ? (
                       <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
                     ) : null}
-                    <Link className="btn" to={`/exams/${exam.id}`}>{t("examsList.open")}</Link>
+                    <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/session` : `/exams/${exam.id}`}>
+                      {isStudent ? "Start" : t("examsList.open")}
+                    </Link>
                   </div>
                 </div>
               </article>

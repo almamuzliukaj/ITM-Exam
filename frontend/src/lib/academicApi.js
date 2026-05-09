@@ -103,3 +103,23 @@ export async function listStudentCarryOvers(studentId) {
   const response = await api.get(`/api/students/${studentId}/carry-overs`);
   return response.data;
 }
+
+export async function createStudentCarryOver(studentId, payload) {
+  const response = await api.post(`/api/students/${studentId}/carry-overs`, payload);
+  return response.data;
+}
+
+export async function assignCarryOverOffering(carryOverId, payload) {
+  const response = await api.post(`/api/carry-overs/${carryOverId}/assign-offering`, payload);
+  return response.data;
+}
+
+export async function closeCarryOver(carryOverId, payload = {}) {
+  const response = await api.post(`/api/carry-overs/${carryOverId}/close`, payload);
+  return response.data;
+}
+
+export async function cancelCarryOver(carryOverId) {
+  const response = await api.post(`/api/carry-overs/${carryOverId}/cancel`);
+  return response.data;
+}

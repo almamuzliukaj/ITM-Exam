@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
+using OnlineExam.Api.Services;
 using System.ComponentModel.DataAnnotations;
 
 namespace OnlineExam.Api.Controllers
@@ -15,10 +16,12 @@ namespace OnlineExam.Api.Controllers
     {
         private static readonly string[] AllowedRoles = ["Professor", "Assistant", "Student", "Admin"];
         private readonly AppDbContext _context;
+        private readonly IAuditLogService _auditLogService;
 
-        public UsersController(AppDbContext context)
+        public UsersController(AppDbContext context, IAuditLogService auditLogService)
         {
             _context = context;
+            _auditLogService = auditLogService;
         }
 
         [HttpPost]
@@ -35,6 +38,12 @@ namespace OnlineExam.Api.Controllers
             var user = BuildUser(normalizedEmail, dto.FullName, dto.Role, dto.Password, dto.IsActive);
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+            await _auditLogService.LogAsync("User.Created", "User", user.Id, new
+            {
+                user.Email,
+                user.Role,
+                user.IsActive
+            }, "UserManagement");
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, ToResponse(user));
         }
@@ -95,6 +104,12 @@ namespace OnlineExam.Api.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await _auditLogService.LogAsync("User.Imported", "User", null, new
+            {
+                Requested = dto.Users.Count,
+                Imported = importedUsers.Count,
+                Failed = errors.Count
+            }, "UserManagement");
 
             return Ok(new
             {
@@ -170,6 +185,12 @@ namespace OnlineExam.Api.Controllers
             user.IsActive = dto.IsActive;
 
             await _context.SaveChangesAsync();
+            await _auditLogService.LogAsync("User.Updated", "User", user.Id, new
+            {
+                user.Email,
+                user.Role,
+                user.IsActive
+            }, "UserManagement");
             return Ok(ToResponse(user));
         }
 
@@ -182,6 +203,11 @@ namespace OnlineExam.Api.Controllers
 
             user.IsActive = dto.IsActive;
             await _context.SaveChangesAsync();
+            await _auditLogService.LogAsync("User.StatusUpdated", "User", user.Id, new
+            {
+                user.Email,
+                user.IsActive
+            }, "UserManagement");
 
             return Ok(ToResponse(user));
         }
@@ -198,6 +224,10 @@ namespace OnlineExam.Api.Controllers
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
             await _context.SaveChangesAsync();
+            await _auditLogService.LogAsync("User.PasswordReset", "User", user.Id, new
+            {
+                user.Email
+            }, "UserManagement");
 
             return Ok(new { message = "Password reset successfully." });
         }

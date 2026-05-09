@@ -40,6 +40,7 @@ Implemented areas:
 - Exam CRUD.
 - Question CRUD.
 - Basic student exam attempt model.
+- Audit logging for critical admin, authoring, grading, and publishing actions.
 - React login, protected routes, dashboards, admin pages, and exam pages.
 
 Planned or partially implemented areas:
@@ -280,15 +281,40 @@ http://localhost:5173
 
 ## Demo Users
 
-Seed users are configured in `AppDbContext.cs`.
+Seed users are enforced in development startup and refreshed by `Program.cs`.
 
 | Role | Email | Password |
 | --- | --- | --- |
 | Admin | `admin@onlineexam.com` | `Password123!` |
 | Professor | `prof@onlineexam.com` | `Password123!` |
+| Assistant | `assistant@onlineexam.com` | `Password123!` |
 | Student | `student@onlineexam.com` | `Password123!` |
 
-Note: if seeded-user login fails, check password hashing behavior in `AuthController.cs` and seeded password values in `AppDbContext.cs`.
+Development startup also seeds stable demo academic data:
+
+- term: `DEMO-WS26`
+- course: `SE-DEMO-101`
+- one published course offering with professor and assistant assignments
+- one eligible student enrollment
+- one published demo exam plus a question-bank container
+
+Note: if seeded-user login fails, check password hashing behavior in `AuthController.cs` and demo user setup in `Program.cs`.
+
+## Audit Logs
+
+Critical backend actions now write to the `AuditLogs` table. Admins can review them through:
+
+```text
+GET /api/audit-logs
+```
+
+Supported filters:
+
+- `action`
+- `entityType`
+- `actorRole`
+- `entityId`
+- `limit`
 
 ## Core Academic Rules
 

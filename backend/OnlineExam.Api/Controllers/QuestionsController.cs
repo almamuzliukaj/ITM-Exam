@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
+using OnlineExam.Api.Services;
 
 namespace OnlineExam.Api.Controllers;
 
@@ -17,31 +18,52 @@ public class QuestionsController : ControllerBase
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text", "CSharp", "SQL"];
     private readonly AppDbContext _context;
+    private readonly IAuditLogService _auditLogService;
 
-    public QuestionsController(AppDbContext context)
+    public QuestionsController(AppDbContext context, IAuditLogService auditLogService)
     {
         _context = context;
+        _auditLogService = auditLogService;
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<Question>> Get(Guid id)
     {
-        var question = await _context.Questions.FindAsync(id);
-        if (question == null)
+        var question = await _context.Questions
+            .AsNoTracking()
+            .Include(x => x.Exam)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (question == null || question.Exam == null)
             return NotFound();
 
-        return question;
+        if (!await CanAccessExamAsync(question.Exam))
+            return Forbid();
+
+        return Ok(new ExamQuestionResponseDto
+        {
+            Id = question.Id,
+            ExamId = question.ExamId,
+            Text = question.Text,
+            Type = question.Type,
+            CorrectAnswer = User.IsInRole("Student") ? null : question.CorrectAnswer,
+            Options = ParseOptions(question.OptionsJson),
+            Points = question.Points
+        });
     }
 
     [HttpPost("/api/exams/{examId:guid}/questions")]
-    [Authorize(Roles = "Admin,Professor,Assistant")]
+    [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> Post(Guid examId, [FromBody] CreateQuestionDto dto)
     {
         var exam = await _context.Exams.FindAsync(examId);
         if (exam == null)
             return NotFound("Exam not found");
 
-        if (!await CanManageExamAsync(exam))
+        if (IsQuestionBankContainer(exam))
+            return NotFound();
+
+        if (!await CanAuthorExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -59,6 +81,12 @@ public class QuestionsController : ControllerBase
 
         _context.Questions.Add(question);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Question.Created", "Question", question.Id, new
+        {
+            question.ExamId,
+            question.Type,
+            question.Points
+        }, "ExamAuthoring");
 
         return CreatedAtAction(nameof(Get), new { id = question.Id }, new
         {
@@ -71,7 +99,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Professor,Assistant")]
+    [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> Put(Guid id, [FromBody] CreateQuestionDto dto)
     {
         var existing = await _context.Questions.FindAsync(id);
@@ -82,7 +110,10 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        if (!await CanManageExamAsync(exam))
+        if (IsQuestionBankContainer(exam))
+            return NotFound();
+
+        if (!await CanAuthorExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -94,11 +125,17 @@ public class QuestionsController : ControllerBase
         existing.Points = dto.Points;
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Question.Updated", "Question", existing.Id, new
+        {
+            existing.ExamId,
+            existing.Type,
+            existing.Points
+        }, "ExamAuthoring");
         return NoContent();
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,Professor,Assistant")]
+    [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var existing = await _context.Questions.FindAsync(id);
@@ -109,11 +146,18 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        if (!await CanManageExamAsync(exam))
+        if (IsQuestionBankContainer(exam))
+            return NotFound();
+
+        if (!await CanAuthorExamAsync(exam))
             return Forbid();
 
         _context.Questions.Remove(existing);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Question.Deleted", "Question", id, new
+        {
+            existing.ExamId
+        }, "ExamAuthoring");
         return NoContent();
     }
 
@@ -241,6 +285,12 @@ public class QuestionsController : ControllerBase
 
         _context.Questions.Add(question);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("QuestionBankQuestion.Created", "Question", question.Id, new
+        {
+            question.ExamId,
+            OfferingId = offeringId,
+            question.Type
+        }, "QuestionBank");
 
         return Created($"/api/question-bank/questions/{question.Id}", MapToQuestionBankResponse(question, offeringId));
     }
@@ -277,6 +327,12 @@ public class QuestionsController : ControllerBase
         question.CourseId = offering.CourseId;
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("QuestionBankQuestion.Updated", "Question", question.Id, new
+        {
+            question.ExamId,
+            OfferingId = offering.Id,
+            question.Type
+        }, "QuestionBank");
         return Ok(MapToQuestionBankResponse(question, offering.Id));
     }
 
@@ -301,7 +357,36 @@ public class QuestionsController : ControllerBase
 
         _context.Questions.Remove(question);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("QuestionBankQuestion.Deleted", "Question", id, new
+        {
+            question.ExamId,
+            OfferingId = question.Exam.CourseOfferingId
+        }, "QuestionBank");
         return NoContent();
+    }
+
+    private async Task<bool> CanAuthorExamAsync(Exam exam)
+    {
+        if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
+            return false;
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return false;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+
+        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == exam.CourseOfferingId.Value &&
+            a.UserId == userId.Value &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
     }
 
     private async Task<bool> CanAccessExamAsync(Exam exam)

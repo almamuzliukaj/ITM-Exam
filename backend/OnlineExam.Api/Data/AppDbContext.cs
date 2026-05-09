@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Exam> Exams { get; set; }
     public DbSet<ExamAttempt> ExamAttempts { get; set; }
+    public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Question> Questions { get; set; }
     public DbSet<Term> Terms { get; set; }
     public DbSet<Course> Courses { get; set; }
@@ -23,6 +24,10 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        var adminCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6811);
+        var professorCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6819);
+        var studentCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6822);
+
         modelBuilder.Entity<User>().HasData(
             new User
             {
@@ -32,7 +37,7 @@ public class AppDbContext : DbContext
                 PasswordHash = "Password123!",
                 Role = "Admin",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = adminCreatedAt
             },
             new User
             {
@@ -42,7 +47,7 @@ public class AppDbContext : DbContext
                 PasswordHash = "Password123!",
                 Role = "Professor",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = professorCreatedAt
             },
             new User
             {
@@ -52,7 +57,7 @@ public class AppDbContext : DbContext
                 PasswordHash = "Password123!",
                 Role = "Student",
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = studentCreatedAt
             }
         );
 
@@ -77,6 +82,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)
             .IsUnique();
+
+        modelBuilder.Entity<AuditLog>()
+            .HasIndex(x => x.CreatedAt);
+
+        modelBuilder.Entity<AuditLog>()
+            .HasIndex(x => new { x.EntityType, x.EntityId });
 
         modelBuilder.Entity<Course>()
             .HasIndex(x => x.Code)

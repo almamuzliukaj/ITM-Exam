@@ -1,56 +1,70 @@
-# 2. Scope dhe Rolet
+# 2. Scope and Roles
 
-## 2.1 Çfarë përfshin sistemi (Scope)
-Sistemi OnlineExam përfshin:
-- Autentikim dhe autorizim sipas roleve (Admin, Profesor, Asistent/TA, Student).
-- Menaxhim akademik: semestra, lëndë, grupe (sections), regjistrime (enrollment), dhe caktim i stafit në lëndë.
-- Bankë pyetjesh për lëndë (MCQ, Text, Code).
-- Krijim/gjenerim i provimeve dhe planifikim me start/end time.
-- Ndërfaqe “Exam Arena” për studentin (one-at-a-time, timer, auto-save).
-- Vlerësim:
-  - MCQ: automatik
-  - Code (C#): automatik përmes Judge0 + test cases
-  - Text: manual (Professor/TA)
-- Rezultate dhe publikim i kontrolluar i rezultateve nga profesori.
+## 2.1 System Scope
 
-## 2.2 Jashtë scope për MVP (Future work)
-- Mbështetje për gjuhë të tjera programimi përveç C#.
-- Proctoring i avancuar (p.sh. webcam monitoring).
-- Vlerësim NLP/AI për pyetje teorike (si modul opsional).
-- Ekzekutim i SQL si pjesë e detyrueshme (opsional sipas kohës).
+The system includes:
 
-## 2.3 Rolet (RBAC)
+- Authentication and role-based authorization.
+- Admin management of users, academic terms, courses, course offerings, staff assignments, and student enrollments.
+- Professor and assistant workspaces for assigned course offerings.
+- Course-based question bank management.
+- Manual and random exam authoring.
+- Exam publish workflow.
+- Student exam visibility based on enrollment eligibility.
+- Baseline support for grading, results, carry-over, and security workflows.
 
-### 2.3.1 Admin
-- Krijon/menaxhon semestra dhe lëndë.
-- Menaxhon grupe (sections) për lëndë (për organizim).
-- Krijon/çaktivizon përdorues dhe cakton rolet.
-- Cakton profesorë/TA në lëndë.
-- Regjistron studentët në lëndë/grupe.
+## 2.2 Out of Scope for the Current MVP
 
-### 2.3.2 Profesor
-- Menaxhon bankën e pyetjeve për lëndët e veta.
-- Krijon/gjeneron provime, i planifikon dhe i publikon.
-- Monitoron incidentet bazë gjatë provimit (focus lost, etj.).
-- Vlerëson pyetjet Text (ose delegon).
-- Publikon rezultatet.
-- Mund të bëjë manual override për pikët e Code kur është e nevojshme.
+- Advanced webcam proctoring.
+- Production-grade AI grading decisions without human review.
+- Full deployment automation and institution-wide scaling.
+- Final legal compliance workflows beyond baseline security documentation.
 
-### 2.3.3 Asistent (TA)
-- Sipas autorizimit: krijon pyetje, ndihmon në menaxhim të lëndës.
-- Vlerëson pyetje Text dhe ndihmon në publikimin/raportimin e rezultateve.
+## 2.3 Roles
 
-### 2.3.4 Student
-- Shikon lëndët dhe provimet ku është i regjistruar.
-- Fillon provimin vetëm brenda orarit dhe me kontrollet e aksesit.
-- Jep përgjigje MCQ/Text/Code, me auto-save gjatë provimit.
-- Sheh rezultatet vetëm pasi profesori i publikon.
+### Admin
 
-## 2.4 Rregulla akademike (kufizime operative)
-- Ligjëratat/ushtrimet mund të jenë të ndara në grupe, por **provimi mbahet i përbashkët**.
-- Lejohet vetëm **1 attempt** për student (nuk lejohet resit).
-- Rezultatet bëhen të dukshme për studentët vetëm pas **publish** nga profesori.
-- Për Code:
-  - studenti mund të provojë disa herë gjatë provimit,
-  - ruhet vetëm **zgjidhja finale** (submisioni i fundit),
-  - studenti sheh vetëm **pass/fail** (pa detaje test cases).
+The admin manages platform operations and academic setup:
+
+- Creates and manages users.
+- Creates terms, courses, offerings, and enrollments.
+- Assigns professors and assistants to offerings.
+- Manages account status and operational corrections.
+- Does not author academic exam content.
+
+### Professor
+
+The professor manages academic exam content for assigned offerings:
+
+- Views assigned course offerings.
+- Manages question bank content.
+- Creates draft exams.
+- Adds or generates exam questions.
+- Publishes exams when ready.
+- Reviews grading and result workflows.
+
+### Assistant
+
+The assistant supports assigned offerings:
+
+- Views only assigned offerings.
+- Supports question authoring where allowed.
+- Supports draft exam preparation where allowed.
+- Assists with grading and review workflows according to assigned permissions.
+
+### Student
+
+The student accesses only eligible academic content:
+
+- Views current eligible exams.
+- Opens published exams only when eligibility rules allow it.
+- Submits answers through the exam workflow.
+- Views results only after publication.
+
+## 2.4 Core Business Rules
+
+- Admin access is operational, not academic-content ownership.
+- Staff access is limited to assigned course offerings.
+- Exam access for students depends on `StudentCourseEnrollment` eligibility.
+- Draft exams are not visible to students.
+- Published exams should have a linked offering and at least one question.

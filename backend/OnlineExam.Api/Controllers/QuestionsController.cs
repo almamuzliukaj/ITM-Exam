@@ -15,7 +15,7 @@ namespace OnlineExam.Api.Controllers;
 public class QuestionsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
-    private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text"];
+    private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text", "CSharp", "SQL"];
     private readonly AppDbContext _context;
 
     public QuestionsController(AppDbContext context)
@@ -41,9 +41,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -54,7 +52,6 @@ public class QuestionsController : ControllerBase
             Type = dto.Type,
             CourseId = dto.CourseId,
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
-            Difficulty = dto.Difficulty,
             CorrectAnswer = dto.CorrectAnswer,
             Points = dto.Points,
             ExamId = examId
@@ -85,9 +82,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -95,7 +90,6 @@ public class QuestionsController : ControllerBase
         existing.Type = dto.Type;
         existing.CourseId = dto.CourseId;
         existing.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
-        existing.Difficulty = dto.Difficulty;
         existing.CorrectAnswer = dto.CorrectAnswer;
         existing.Points = dto.Points;
 
@@ -115,9 +109,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         _context.Questions.Remove(existing);
@@ -137,22 +129,25 @@ public class QuestionsController : ControllerBase
 
         var questions = await _context.Questions
             .Where(q => q.ExamId == examId)
-            .Select(q => new
-            {
-                q.Id,
-                q.ExamId,
-                q.Type,
-                q.Text,
-                q.Points
-            })
             .ToListAsync();
 
-        return Ok(questions);
+        var includeCorrectAnswer = !User.IsInRole("Student");
+
+        return Ok(questions.Select(q => new ExamQuestionResponseDto
+        {
+            Id = q.Id,
+            ExamId = q.ExamId,
+            Text = q.Text,
+            Type = q.Type,
+            CorrectAnswer = includeCorrectAnswer ? q.CorrectAnswer : null,
+            Options = ParseOptions(q.OptionsJson),
+            Points = q.Points
+        }));
     }
 
     [HttpGet("/api/question-bank/{offeringId:guid}/questions")]
     [Authorize(Roles = "Professor,Assistant")]
-    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? difficulty, [FromQuery] string? search)
+    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? search)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -172,12 +167,6 @@ public class QuestionsController : ControllerBase
         {
             var normalizedType = type.Trim();
             query = query.Where(x => x.Type == normalizedType);
-        }
-
-        if (!string.IsNullOrWhiteSpace(difficulty))
-        {
-            var normalizedDifficulty = difficulty.Trim().ToLower();
-            query = query.Where(x => x.Difficulty != null && x.Difficulty.ToLower() == normalizedDifficulty);
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -245,7 +234,6 @@ public class QuestionsController : ControllerBase
             CourseId = offering.CourseId,
             Text = dto.Text.Trim(),
             Type = NormalizeQuestionType(dto.Type),
-            Difficulty = NormalizeOptionalValue(dto.Difficulty),
             CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer),
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
             Points = dto.Points
@@ -283,7 +271,6 @@ public class QuestionsController : ControllerBase
         var options = NormalizeOptions(dto.Options);
         question.Text = dto.Text.Trim();
         question.Type = NormalizeQuestionType(dto.Type);
-        question.Difficulty = NormalizeOptionalValue(dto.Difficulty);
         question.CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer);
         question.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
         question.Points = dto.Points;
@@ -345,16 +332,55 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Student"))
         {
-            return exam.IsPublished &&
-                exam.CourseOfferingId.HasValue &&
-                await _context.StudentCourseEnrollments.AnyAsync(x =>
-                    x.StudentId == userId.Value &&
-                    x.CourseOfferingId == exam.CourseOfferingId.Value &&
-                    x.EligibleForExam &&
-                    x.Status == "Eligible");
+            if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
+                return false;
+
+            var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
+                x.StudentId == userId.Value &&
+                x.CourseOfferingId == exam.CourseOfferingId.Value &&
+                x.EligibleForExam &&
+                x.Status == "Eligible");
+
+            if (hasEligibleEnrollment)
+                return true;
+
+            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId.Value);
+            if (hasAnyEnrollment)
+                return false;
+
+            return await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == exam.CourseOfferingId.Value &&
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
         }
 
         return false;
+    }
+
+    private async Task<bool> CanManageExamAsync(Exam exam)
+    {
+        if (IsQuestionBankContainer(exam))
+            return false;
+
+        if (User.IsInRole("Admin"))
+            return true;
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return false;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == exam.CourseOfferingId.Value &&
+            a.UserId == userId.Value &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
     }
 
     private async Task<CourseOffering?> GetAccessibleOfferingAsync(Guid offeringId, Guid userId)
@@ -419,7 +445,7 @@ public class QuestionsController : ControllerBase
 
         var normalizedType = NormalizeQuestionType(dto.Type);
         if (!AllowedQuestionBankTypes.Contains(normalizedType))
-            return "Only MCQ and Text questions are supported in this question bank.";
+            return "Only MCQ, Text, C#, and SQL questions are supported in this question bank.";
 
         if (normalizedType == "MCQ")
         {
@@ -446,6 +472,13 @@ public class QuestionsController : ControllerBase
 
         if (string.Equals(normalized, "MCQ", StringComparison.OrdinalIgnoreCase))
             return "MCQ";
+
+        if (string.Equals(normalized, "CSharp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "C#", StringComparison.OrdinalIgnoreCase))
+            return "CSharp";
+
+        if (string.Equals(normalized, "SQL", StringComparison.OrdinalIgnoreCase))
+            return "SQL";
 
         return normalized;
     }
@@ -483,7 +516,6 @@ public class QuestionsController : ControllerBase
             CourseId = question.CourseId,
             Text = question.Text,
             Type = question.Type,
-            Difficulty = question.Difficulty,
             CorrectAnswer = question.CorrectAnswer,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points

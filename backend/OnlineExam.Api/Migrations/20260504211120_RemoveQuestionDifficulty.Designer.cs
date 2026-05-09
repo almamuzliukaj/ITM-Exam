@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OnlineExam.Api.Data;
@@ -11,9 +12,11 @@ using OnlineExam.Api.Data;
 namespace OnlineExam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260504211120_RemoveQuestionDifficulty")]
+    partial class RemoveQuestionDifficulty
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -278,41 +281,11 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<double>("AutoScore")
-                        .HasColumnType("double precision");
-
                     b.Property<Guid>("ExamId")
                         .HasColumnType("uuid");
 
-                    b.Property<double>("FinalScore")
+                    b.Property<double>("Score")
                         .HasColumnType("double precision");
-
-                    b.Property<DateTime?>("GradedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("GradedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("GradingNotes")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsGraded")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsPublished")
-                        .HasColumnType("boolean");
-
-                    b.Property<double>("ManualScore")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime?>("PublishedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("PublishedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("RequiresManualGrading")
-                        .HasColumnType("boolean");
 
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid");
@@ -542,7 +515,7 @@ namespace OnlineExam.Api.Migrations
                         new
                         {
                             Id = new Guid("f9635e15-1d90-4e3b-b722-331a8fc2fbe9"),
-                            CreatedAt = new DateTime(2026, 5, 9, 14, 51, 56, 108, DateTimeKind.Utc).AddTicks(6717),
+                            CreatedAt = new DateTime(2026, 5, 4, 21, 11, 19, 991, DateTimeKind.Utc).AddTicks(9401),
                             Email = "admin@onlineexam.com",
                             FullName = "Admin User",
                             IsActive = true,
@@ -552,7 +525,7 @@ namespace OnlineExam.Api.Migrations
                         new
                         {
                             Id = new Guid("b5769729-e575-4789-b6e7-f7327ede1acc"),
-                            CreatedAt = new DateTime(2026, 5, 9, 14, 51, 56, 108, DateTimeKind.Utc).AddTicks(6721),
+                            CreatedAt = new DateTime(2026, 5, 4, 21, 11, 19, 991, DateTimeKind.Utc).AddTicks(9405),
                             Email = "prof@onlineexam.com",
                             FullName = "Professor",
                             IsActive = true,
@@ -562,7 +535,7 @@ namespace OnlineExam.Api.Migrations
                         new
                         {
                             Id = new Guid("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"),
-                            CreatedAt = new DateTime(2026, 5, 9, 14, 51, 56, 108, DateTimeKind.Utc).AddTicks(6724),
+                            CreatedAt = new DateTime(2026, 5, 4, 21, 11, 19, 991, DateTimeKind.Utc).AddTicks(9407),
                             Email = "student@onlineexam.com",
                             FullName = "Student",
                             IsActive = true,

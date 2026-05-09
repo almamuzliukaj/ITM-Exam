@@ -1,43 +1,51 @@
-# 3. Kërkesat Funksionale (FR)
+# 3. Functional Requirements
 
-## 3.1 Autentikim & Autorizim
-- FR-01: Login
-- FR-02: Role-based authorization
-- FR-03: Admin user management (create/disable)
+## 3.1 Authentication and Authorization
 
-## 3.2 Menaxhimi Akademik
-- FR-04: CRUD Semesters
-- FR-05: CRUD Courses
-- FR-06: Groups/Sections per course (organizim)
-- FR-07: Assign staff (Professor/TA)
-- FR-08: Enroll students
+- FR-01: Users can log in with valid credentials.
+- FR-02: The API protects endpoints using token-based authentication.
+- FR-03: Frontend routes are restricted by role.
+- FR-04: Users are redirected to the correct workspace after login.
 
-## 3.3 Banka e Pyetjeve
-- FR-09: CRUD Questions
-- FR-10: MCQ options + correct answer
-- FR-11: Text questions
-- FR-12: Code C# + test cases (public/hidden)
+## 3.2 User and Identity Management
 
-## 3.4 Provimet
-- FR-13: Create exam + schedule start/end
-- FR-14: Generate exam from question bank
-- FR-15: Snapshot/immutability for exam questions
-- FR-16: Publish/Unpublish (workflow)
+- FR-05: Admin can create and update users.
+- FR-06: Admin can activate or deactivate accounts.
+- FR-07: User email addresses must be unique.
+- FR-08: User roles must be validated by the backend.
 
-## 3.5 Marrja e provimit & Submissions
-- FR-17: Start exam vetëm brenda orarit
-- FR-18: One-at-a-time exam UI (backend support)
-- FR-19: Auto-save submissions
-- FR-20: Final submit (1 attempt)
+## 3.3 Academic Structure
 
-## 3.6 Vlerësimi
-- FR-21: Auto-grade MCQ
-- FR-22: Auto-grade Code (Judge0) -> pass/fail student view
-- FR-23: Manual grade Text
-- FR-24: Manual override for Code score
-- FR-25: Publish results
+- FR-09: Admin can manage academic terms.
+- FR-10: Admin can manage course catalog records.
+- FR-11: Admin can create course offerings for terms.
+- FR-12: Admin can assign professors and assistants to offerings.
+- FR-13: Admin can manage semester and course enrollments.
+- FR-14: Carry-over eligibility can be tracked for previous-semester courses.
 
-## 3.7 Raportimi
-- FR-26: Professor results dashboard
-- FR-27: Student results view (vetëm pas publikimit)
-- FR-28: Export CSV (opsionale)
+## 3.4 Question Bank
+
+- FR-15: Professors and assistants can manage questions for assigned offerings.
+- FR-16: Questions support MCQ, text, C#, and SQL types.
+- FR-17: MCQ questions support answer options and a correct answer.
+- FR-18: Question bank records are isolated from normal exam records.
+
+## 3.5 Exam Authoring
+
+- FR-19: Staff can create exam drafts.
+- FR-20: Staff can manually attach questions to draft exams.
+- FR-21: Staff can generate random exam questions from the offering question bank.
+- FR-22: Staff can replace draft exam questions with compatible alternatives.
+- FR-23: Exams can be published only when required readiness checks pass.
+
+## 3.6 Student Exam Flow
+
+- FR-24: Students see only eligible published exams.
+- FR-25: Students can submit exam attempts.
+- FR-26: Submitted answers are stored for grading and result calculation.
+
+## 3.7 Grading and Results
+
+- FR-27: MCQ answers can be scored automatically.
+- FR-28: Text, C#, and SQL answers can be reviewed by staff.
+- FR-29: Results visibility is controlled and should be published only when approved.

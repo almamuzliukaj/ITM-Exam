@@ -442,6 +442,32 @@ public class QuestionsController : ControllerBase
         return false;
     }
 
+    private async Task<bool> CanManageExamAsync(Exam exam)
+    {
+        if (IsQuestionBankContainer(exam))
+            return false;
+
+        if (User.IsInRole("Admin"))
+            return true;
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return false;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == exam.CourseOfferingId.Value &&
+            a.UserId == userId.Value &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
+    }
+
     private async Task<CourseOffering?> GetAccessibleOfferingAsync(Guid offeringId, Guid userId)
     {
         if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))

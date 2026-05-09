@@ -1,25 +1,38 @@
-# 1. Hyrje
+# 1. Introduction
 
-## 1.1 Qëllimi i projektit
-OnlineExam është një platformë web e dizajnuar për të modernizuar procesin e provimeve në departament, duke zëvendësuar vlerësimin tradicional në letër me një mjedis digjital të kontrolluar. Sistemi mbështet provime me tri lloje pyetjesh: **MCQ (me alternativa)**, **pyetje me shkrim (Text)** dhe **pyetje me ekzekutim të kodit (Code)**. Në kuadër të MVP, pyetjet e kodit mbështeten vetëm për **C#**, për të garantuar stabilitet dhe realizim brenda afatit semestral.
+## 1.1 Project Purpose
 
-## 1.2 Përkufizimi i problemit
-Procesi aktual i vlerësimit përballet me disa sfida kryesore:
-- Shkrimi i kodit në letër nuk e mat aftësinë reale të studentit për të programuar, testuar dhe korrigjuar zgjidhje.
-- Vlerësimi manual i një numri të madh të skriptave dhe përgjigjeve teorike kërkon kohë të konsiderueshme dhe rrit rrezikun e mospërputhjeve në pikëzim.
-- Mungesa e një banke të centralizuar të pyetjeve bën që historiku akademik dhe materialet të humbin me ndryshimin e stafit.
-- Siguria dhe integriteti akademik janë më të vështira për t’u kontrolluar pa mekanizma digjitalë (audit, randomizim, kontroll aksesesh).
+Online Exam Management is a web platform for managing university exam workflows in a controlled digital environment. The system supports role-based access for administrators, professors, assistants, and students.
 
-## 1.3 Arsyeja pse është zgjedhur ky projekt
-Ky projekt është zgjedhur sepse adreson një nevojë reale departamentale: vlerësim më objektiv, më të shpejtë dhe më të standardizuar. Përmes automatizimit të pjesës së vlerësimit (MCQ dhe Code), ruajtjes së bankës së pyetjeve si aset institucional dhe mekanizmave bazë të sigurisë, OnlineExam synon të sjellë përmirësim të prekshëm në cilësinë dhe efikasitetin e procesit të provimeve.
+The project focuses on replacing fragmented manual processes with a structured workflow for academic setup, question authoring, exam creation, student eligibility, submissions, grading, and result visibility.
 
-## 1.4 Objektivat kryesore
-- Vlerësim më objektiv përmes auto-grading (MCQ + Code).
-- Reduktim i kohës së korrigjimit dhe administrimit të provimeve.
-- Ruajtja e bankës së pyetjeve dhe historikut si aset institucional.
-- Përmirësim i integritetit akademik përmes kontrollit të aksesit dhe auditimit të sjelljeve gjatë provimit.
+## 1.2 Problem Statement
 
-## 1.5 Kufizimet (MVP)
-- Code questions: vetëm C#.
-- Studentët shohin vetëm rezultat **pass/fail** për test cases (jo detaje).
-- SQL/NLP/AI konsiderohen “future work” dhe jo pjesë e MVP nëse koha nuk e lejon.
+The current exam process has several operational challenges:
+
+- Academic setup, course offerings, and staff assignments are difficult to track consistently.
+- Question preparation is often repeated instead of being stored in a reusable question bank.
+- Exam creation and publishing need clearer ownership and status rules.
+- Student access should depend on enrollment and eligibility, not only on user role.
+- Grading and result publication need controlled visibility and auditability.
+
+## 1.3 Project Objectives
+
+- Provide a secure role-based platform for exam operations.
+- Support academic structure management for terms, courses, offerings, staff assignments, and enrollments.
+- Enable professors and assistants to manage question banks and create exams.
+- Allow manual and random exam authoring workflows.
+- Ensure students can access only eligible published exams.
+- Provide a foundation for grading, results, carry-over logic, and security hardening.
+
+## 1.4 MVP Boundaries
+
+The MVP focuses on:
+
+- Authentication and role-based navigation.
+- Admin user, academic, offering, and enrollment management.
+- Question bank and question authoring.
+- Exam draft creation, question attachment, random generation, and publish workflow.
+- Student exam visibility based on eligibility.
+
+Advanced proctoring, full AI grading, and final result publication workflows are planned for later sprint work.

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { listExams, publishExam } from "../../lib/examsApi";
+import { listExams } from "../../lib/examsApi";
 import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,6 @@ export default function ExamsListPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [publishingId, setPublishingId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -44,29 +43,6 @@ export default function ExamsListPage() {
   }
 
   const canCreate = canCreateExams(user.role);
-
-  async function onPublish(examId) {
-    try {
-      setPublishingId(examId);
-      setError("");
-      await publishExam(examId);
-      setExams((current) =>
-        current.map((exam) =>
-          exam.id === examId
-            ? { ...exam, isPublished: true, status: "Published" }
-            : exam
-        )
-      );
-    } catch (err) {
-      const apiMessage =
-        err?.response?.data?.message ||
-        (typeof err?.response?.data === "string" ? err.response.data : null) ||
-        err?.message;
-      setError(apiMessage || "Failed to publish exam.");
-    } finally {
-      setPublishingId("");
-    }
-  }
 
   return (
     <AppShell
@@ -117,9 +93,7 @@ export default function ExamsListPage() {
                   <div className="small">{t("examsList.openHint")}</div>
                   <div className="resourceActionGroup">
                     {canCreate && !exam.isPublished ? (
-                      <button className="btn btnPrimary" type="button" onClick={() => onPublish(exam.id)} disabled={publishingId === exam.id}>
-                        {publishingId === exam.id ? "Publishing..." : "Publish"}
-                      </button>
+                      <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
                     ) : null}
                     <Link className="btn" to={`/exams/${exam.id}`}>{t("examsList.open")}</Link>
                   </div>

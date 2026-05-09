@@ -1,41 +1,31 @@
-# 11. Siguria dhe Integriteti Akademik (Proctoring)
+# 11. Security and Academic Integrity
 
-## 11.1 Qëllimi
-Qëllimi i mekanizmave të sigurisë është:
-- të reduktohet mundësia që studenti të hyjë në provim nga jashtë fakultetit,
-- të zvogëlohet kopjimi gjatë provimit,
-- të krijohet gjurmueshmëri (audit) për incidentet.
+## 11.1 Current Security Baseline
 
-## 11.2 Kontrolli i aksesit (mos me u kyç nga shtëpia)
+- Authentication uses token-based access.
+- Backend endpoints enforce role-based authorization.
+- Staff access is tied to created exams or assigned course offerings.
+- Student exam visibility is tied to published exams and eligibility rules.
+- Admin access is restricted away from academic authoring where appropriate.
 
-### 11.2.1 IP Whitelisting
-Provimi lejohet vetëm nga rrjeti i fakultetit (IP range). Ky është mekanizmi kryesor për të bllokuar qasjen nga shtëpia.
+## 11.2 Academic Integrity Rules
 
-### 11.2.2 Live PIN / QR Code (hyrje në sallë)
-Për të filluar provimin, studenti duhet të përdorë:
-- **PIN** të gjeneruar nga profesori me afat të shkurtër (p.sh. 2–5 minuta), ose
-- **QR Code** të shfaqur në sallë që hap URL me token.
-Kjo e lidh fillimin e attempt-it me prezencën në sallë.
+- Students should see only eligible published exams.
+- Draft exams should never appear in student workspaces.
+- Published exams should require a course offering and at least one question.
+- Question bank container records should be hidden from normal exam listings.
+- Attempts should preserve submitted answers for grading and review.
 
-### 11.2.3 Device binding (anti-sharing)
-Pasi studenti e nis attempt-in, sistemi e lidh attempt-in me pajisjen (cookie/token + fingerprint bazik). Nëse tenton të vazhdojë nga pajisje tjetër:
-- bllokohet, ose
-- kërkohet autorizim i profesorit.
+## 11.3 Future Security Enhancements
 
-## 11.3 Focus tracking (Tab-lock)
-Nëse studenti ndërron tab/dritaren ose del nga faqja e provimit:
-- sistemi regjistron “focus lost event”,
-- profesori i sheh incidentet në panel.
+The following items are planned for later stabilization work:
 
-## 11.4 Clipboard restrictions (opsionale)
-Sistemi mund të kufizojë:
-- copy/paste
-- right-click
-si masë “deterrent” (nuk është 100% e pa-anashkalueshme, por ndihmon).
+- Detailed audit logs for publish, grading, and override actions.
+- Exam session monitoring.
+- Focus-loss event logging.
+- IP, PIN, or QR-based exam entry controls.
+- Demo-ready security and test data setup.
 
-## 11.5 Screenshot – çka mund dhe çka nuk mund
-Në një aplikacion web standard nuk mund të bllokohet 100% screenshot (p.sh. PrintScreen, Snipping Tool, screenshot nga telefoni).  
-Megjithatë, mund të implementohen masa praktike:
-- **Watermark dinamik** gjatë provimit (Emër, ID, timestamp) për identifikim të burimit në rast shpërndarjeje.
-- **Full-screen (opsional)**: dalja nga full-screen regjistrohet si incident.
-- Kombinimi i watermark + audit + kontrolle aksesesh ul ndjeshëm riskun praktik.
+## 11.4 Practical Limitations
+
+Browser-based systems cannot fully prevent screenshots or external-device recording. The project should focus on realistic controls, auditability, access boundaries, and clear staff review workflows.

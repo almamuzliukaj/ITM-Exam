@@ -1,15 +1,20 @@
-﻿# Acceptance - Login (MVP)
+# Login Acceptance Checklist
 
 ## Prerequisites
-- Docker Desktop running
-- Postgres started via docker compose
+
+- PostgreSQL is running.
+- Backend configuration points to the correct database.
+- Seed or demo users exist.
+- Frontend `VITE_API_BASE_URL` points to the backend API.
 
 ## Checklist
-- [ ] Run DB: docker compose up -d
-- [ ] Verify DB: docker ps shows onlineexam-postgres is Up
-- [ ] API runs: dotnet run in ackend/OnlineExam.Api (listens on http://localhost:5045)
-- [ ] Swagger reachable: http://localhost:5045/swagger
-- [ ] POST /auth/login returns JWT token
-- [ ] GET /auth/me returns current user when Bearer token is provided
-- [ ] Admin-only endpoint denies non-admin and allows admin
-- [ ] Frontend login stores token and loads dashboard
+
+- [ ] Backend starts successfully.
+- [ ] Swagger or API documentation is reachable.
+- [ ] `POST /api/auth/login` returns a token for valid credentials.
+- [ ] Invalid credentials return a clear error.
+- [ ] `GET /api/auth/me` returns the current user when a valid bearer token is provided.
+- [ ] Protected endpoints reject unauthenticated requests.
+- [ ] Admin-only endpoints reject non-admin users.
+- [ ] Frontend login stores the token and redirects by role.
+- [ ] Logout clears the session and returns the user to login.

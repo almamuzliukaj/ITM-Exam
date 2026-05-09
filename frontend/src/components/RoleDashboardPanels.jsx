@@ -32,7 +32,6 @@ export default function RoleDashboardPanels({ role = "Student" }) {
     }
 
     loadSummary();
-
     return () => {
       active = false;
     };
@@ -62,7 +61,6 @@ export default function RoleDashboardPanels({ role = "Student" }) {
     }
 
     loadOfferings();
-
     return () => {
       active = false;
     };
@@ -70,14 +68,8 @@ export default function RoleDashboardPanels({ role = "Student" }) {
 
   const config = getDashboardConfig(roleKey, t, summary?.metrics, loading, Boolean(error));
 
-  if (roleKey === "admin") {
-    return <AdminDashboard config={config} />;
-  }
-
-  if (roleKey === "student") {
-    return <StudentEligibilityPanel config={config} />;
-  }
-
+  if (roleKey === "admin") return <AdminDashboard config={config} />;
+  if (roleKey === "student") return <StudentEligibilityPanel config={config} />;
   if (roleKey === "professor") {
     return (
       <ProfessorDashboard
@@ -186,7 +178,6 @@ function StudentEligibilityPanel({ config }) {
     }
 
     loadDashboard();
-
     return () => {
       active = false;
     };
@@ -296,8 +287,8 @@ function StudentExamsCard({ exams }) {
                   <strong>{exam.title}</strong>
                   <span>{exam.courseCode} - {formatDateTime(exam.startsAt)} / {exam.durationMinutes} min</span>
                 </div>
-                <Link className="btn" to={`/exams/${exam.id}`}>
-                  Open
+                <Link className="btn btnPrimary" to={`/exams/${exam.id}/session`}>
+                  Start
                 </Link>
               </div>
             ))}
@@ -424,7 +415,6 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                       <span className="small">{t(`${offeringTextKey}.groupCount`, { count: group.items.length })}</span>
                     </div>
                   </div>
-
                   <div className="assignedOfferingGrid">
                     {group.items.map((offering) => (
                       <article className="assignedOfferingCard" key={offering.id}>
@@ -565,10 +555,7 @@ function groupOfferingsByYearSemester(offerings) {
       const semester = Number(offering.semesterNo ?? 0);
       const key = `${year}-${semester}`;
 
-      if (!groups.has(key)) {
-        groups.set(key, { key, year, semester, items: [] });
-      }
-
+      if (!groups.has(key)) groups.set(key, { key, year, semester, items: [] });
       groups.get(key).items.push(offering);
     });
 
@@ -578,7 +565,6 @@ function groupOfferingsByYearSemester(offerings) {
 function formatCourseTitle(offering, t, roleKey = "professor") {
   const code = offering.course?.code?.trim();
   const name = offering.course?.name?.trim();
-
   if (code && name) return `${code} - ${name}`;
   return code || name || t(`rolePanels.${roleKey}.offerings.courseFallback`);
 }
@@ -586,7 +572,6 @@ function formatCourseTitle(offering, t, roleKey = "professor") {
 function formatTerm(offering, t, roleKey = "professor") {
   const name = offering.term?.name?.trim();
   const academicYear = offering.term?.academicYearLabel?.trim();
-
   if (name && academicYear) return `${name} (${academicYear})`;
   return name || academicYear || t(`rolePanels.${roleKey}.offerings.termFallback`);
 }
@@ -650,44 +635,20 @@ function getDashboardConfig(roleKey, t, metrics = {}, loading = false, hasError 
 
   const sectionsByRole = {
     admin: [
-      {
-        title: t("rolePanels.admin.sections.priorities.title"),
-        items: t("rolePanels.admin.sections.priorities.items", { returnObjects: true }),
-      },
-      {
-        title: t("rolePanels.admin.sections.nextMoves.title"),
-        items: t("rolePanels.admin.sections.nextMoves.items", { returnObjects: true }),
-      },
+      { title: t("rolePanels.admin.sections.priorities.title"), items: t("rolePanels.admin.sections.priorities.items", { returnObjects: true }) },
+      { title: t("rolePanels.admin.sections.nextMoves.title"), items: t("rolePanels.admin.sections.nextMoves.items", { returnObjects: true }) },
     ],
     professor: [
-      {
-        title: t("rolePanels.professor.sections.focus.title"),
-        items: t("rolePanels.professor.sections.focus.items", { returnObjects: true }),
-      },
-      {
-        title: t("rolePanels.professor.sections.courses.title"),
-        items: t("rolePanels.professor.sections.courses.items", { returnObjects: true }),
-      },
+      { title: t("rolePanels.professor.sections.focus.title"), items: t("rolePanels.professor.sections.focus.items", { returnObjects: true }) },
+      { title: t("rolePanels.professor.sections.courses.title"), items: t("rolePanels.professor.sections.courses.items", { returnObjects: true }) },
     ],
     assistant: [
-      {
-        title: t("rolePanels.assistant.sections.responsibilities.title"),
-        items: t("rolePanels.assistant.sections.responsibilities.items", { returnObjects: true }),
-      },
-      {
-        title: t("rolePanels.assistant.sections.notes.title"),
-        items: t("rolePanels.assistant.sections.notes.items", { returnObjects: true }),
-      },
+      { title: t("rolePanels.assistant.sections.responsibilities.title"), items: t("rolePanels.assistant.sections.responsibilities.items", { returnObjects: true }) },
+      { title: t("rolePanels.assistant.sections.notes.title"), items: t("rolePanels.assistant.sections.notes.items", { returnObjects: true }) },
     ],
     student: [
-      {
-        title: t("rolePanels.student.sections.visible.title"),
-        items: t("rolePanels.student.sections.visible.items", { returnObjects: true }),
-      },
-      {
-        title: t("rolePanels.student.sections.security.title"),
-        items: t("rolePanels.student.sections.security.items", { returnObjects: true }),
-      },
+      { title: t("rolePanels.student.sections.visible.title"), items: t("rolePanels.student.sections.visible.items", { returnObjects: true }) },
+      { title: t("rolePanels.student.sections.security.title"), items: t("rolePanels.student.sections.security.items", { returnObjects: true }) },
     ],
   };
 

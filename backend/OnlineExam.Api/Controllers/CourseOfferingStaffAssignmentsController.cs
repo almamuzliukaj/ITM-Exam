@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
+using OnlineExam.Api.Services;
 
 namespace OnlineExam.Api.Controllers;
 
@@ -17,10 +18,12 @@ public class CourseOfferingStaffAssignmentsController : ControllerBase
     private static readonly HashSet<string> AllowedAssignmentTypes = ["Primary", "Secondary"];
     private static readonly HashSet<string> AllowedPermissionProfiles = ["FullTeaching", "LimitedTeaching", "GradingOnly"];
     private readonly AppDbContext _context;
+    private readonly IAuditLogService _auditLogService;
 
-    public CourseOfferingStaffAssignmentsController(AppDbContext context)
+    public CourseOfferingStaffAssignmentsController(AppDbContext context, IAuditLogService auditLogService)
     {
         _context = context;
+        _auditLogService = auditLogService;
     }
 
     [HttpGet]
@@ -87,6 +90,13 @@ public class CourseOfferingStaffAssignmentsController : ControllerBase
             offering.AssistantId = dto.UserId;
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("StaffAssignment.Created", "CourseOfferingStaffAssignment", assignment.Id, new
+        {
+            assignment.CourseOfferingId,
+            assignment.UserId,
+            assignment.RoleInOffering,
+            assignment.AssignmentType
+        }, "AcademicStructure");
         return Ok(assignment);
     }
 
@@ -119,6 +129,14 @@ public class CourseOfferingStaffAssignmentsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("StaffAssignment.Updated", "CourseOfferingStaffAssignment", assignment.Id, new
+        {
+            assignment.CourseOfferingId,
+            assignment.UserId,
+            assignment.RoleInOffering,
+            assignment.IsActive,
+            assignment.PermissionsProfile
+        }, "AcademicStructure");
         return Ok(assignment);
     }
 
@@ -144,6 +162,12 @@ public class CourseOfferingStaffAssignmentsController : ControllerBase
             assignment.CourseOffering.AssistantId = null;
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("StaffAssignment.Revoked", "CourseOfferingStaffAssignment", assignment.Id, new
+        {
+            assignment.CourseOfferingId,
+            assignment.UserId,
+            assignment.RoleInOffering
+        }, "AcademicStructure");
         return Ok(assignment);
     }
 

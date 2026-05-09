@@ -40,6 +40,7 @@ Implemented areas:
 - Exam CRUD.
 - Question CRUD.
 - Basic student exam attempt model.
+- Audit logging for critical admin, authoring, grading, and publishing actions.
 - React login, protected routes, dashboards, admin pages, and exam pages.
 
 Planned or partially implemented areas:
@@ -163,6 +164,14 @@ cd C:\Users\24538\OneDrive\Desktop\Online-Exam
 docker compose up -d db
 ```
 
+Wait until the container is healthy before starting the backend:
+
+```powershell
+docker ps
+```
+
+You should see `onlineexam-postgres` in `Up` state.
+
 Database connection details:
 
 ```text
@@ -192,7 +201,59 @@ Then list tables:
 \dt
 ```
 
+### PostgreSQL troubleshooting
+
+If Docker shows an error like:
+
+```text
+Error: Database is uninitialized and superuser password is not specified
+```
+
+the most common cause is a stale/broken container or volume from an older run. Reset the local PostgreSQL state and recreate it:
+
+```powershell
+docker compose down
+docker rm -f onlineexam-postgres
+docker volume rm online-exam_onlineexam_db
+docker compose up -d db
+```
+
+Then verify the container is running:
+
+```powershell
+docker ps
+```
+
+This repository already defines:
+
+- `POSTGRES_DB=onlineexam`
+- `POSTGRES_USER=onlineexam`
+- `POSTGRES_PASSWORD=onlineexam`
+
+so you should not need to pass extra password flags manually when using this repo's `docker-compose.yml`.
+
 ### 2. Run the Backend
+
+Recommended option from the project root:
+
+```powershell
+.\scripts\start-backend.ps1
+```
+
+This script:
+
+- starts PostgreSQL with Docker Compose
+- waits for port `5432`
+- stops any old backend process still using port `5045`
+- starts the API with the `http` launch profile
+
+To stop the backend cleanly:
+
+```powershell
+.\scripts\stop-backend.ps1
+```
+
+Manual option:
 
 ```powershell
 cd backend\OnlineExam.Api
@@ -220,15 +281,40 @@ http://localhost:5173
 
 ## Demo Users
 
-Seed users are configured in `AppDbContext.cs`.
+Seed users are enforced in development startup and refreshed by `Program.cs`.
 
 | Role | Email | Password |
 | --- | --- | --- |
 | Admin | `admin@onlineexam.com` | `Password123!` |
 | Professor | `prof@onlineexam.com` | `Password123!` |
+| Assistant | `assistant@onlineexam.com` | `Password123!` |
 | Student | `student@onlineexam.com` | `Password123!` |
 
-Note: if seeded-user login fails, check password hashing behavior in `AuthController.cs` and seeded password values in `AppDbContext.cs`.
+Development startup also seeds stable demo academic data:
+
+- term: `DEMO-WS26`
+- course: `SE-DEMO-101`
+- one published course offering with professor and assistant assignments
+- one eligible student enrollment
+- one published demo exam plus a question-bank container
+
+Note: if seeded-user login fails, check password hashing behavior in `AuthController.cs` and demo user setup in `Program.cs`.
+
+## Audit Logs
+
+Critical backend actions now write to the `AuditLogs` table. Admins can review them through:
+
+```text
+GET /api/audit-logs
+```
+
+Supported filters:
+
+- `action`
+- `entityType`
+- `actorRole`
+- `entityId`
+- `limit`
 
 ## Core Academic Rules
 
@@ -248,6 +334,7 @@ Note: if seeded-user login fails, check password hashing behavior in `AuthContro
 - The frontend communicates with the backend through API helper files in `frontend/src/lib`.
 - CORS is configured for local Vite ports in `Program.cs`.
 - Swagger is enabled in development mode for testing API endpoints.
+- If `dotnet run` reports that `OnlineExam.Api.exe` is locked, an older backend instance is still running. Use `.\scripts\stop-backend.ps1` and then `.\scripts\start-backend.ps1`.
 
 ## Roadmap
 

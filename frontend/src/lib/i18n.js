@@ -133,7 +133,16 @@ const resources = {
         noQuestionsTitle: "No questions have been added yet.",
         noQuestionsText: "Add the first question to start building the exam.",
         type: "Type",
-        points: "Points"
+        points: "Points",
+        generator: {
+          title: "Random question generator",
+          subtitle: "Build this draft from your question bank by count and type.",
+          count: "Question count",
+          generate: "Generate questions",
+          generating: "Generating...",
+          replace: "Replace question",
+          replacing: "Replacing..."
+        }
       },
       questionCreate: {
         loading: "Loading question editor...",
@@ -604,7 +613,16 @@ const resources = {
         noQuestionsTitle: "Ende nuk është shtuar asnjë pyetje.",
         noQuestionsText: "Shto pyetjen e parë për të nisur ndërtimin e provimit.",
         type: "Lloji",
-        points: "Pikët"
+        points: "Pikët",
+        generator: {
+          title: "Gjeneruesi random i pyetjeve",
+          subtitle: "Ndërto këtë draft nga banka e pyetjeve sipas numrit dhe llojit.",
+          count: "Numri i pyetjeve",
+          generate: "Gjenero pyetje",
+          generating: "Duke gjeneruar...",
+          replace: "Zëvendëso pyetjen",
+          replacing: "Duke zëvendësuar..."
+        }
       },
       questionCreate: {
         loading: "Duke u ngarkuar edituesi i pyetjes...",

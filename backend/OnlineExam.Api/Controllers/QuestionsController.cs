@@ -41,9 +41,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -84,9 +82,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         var options = NormalizeOptions(dto.Options);
@@ -113,9 +109,7 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound("Exam not found");
 
-        var role = User.FindFirstValue(ClaimTypes.Role);
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (role != "Admin" && exam.CreatedByUserId.ToString() != userId)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
         _context.Questions.Remove(existing);
@@ -135,17 +129,20 @@ public class QuestionsController : ControllerBase
 
         var questions = await _context.Questions
             .Where(q => q.ExamId == examId)
-            .Select(q => new
-            {
-                q.Id,
-                q.ExamId,
-                q.Type,
-                q.Text,
-                q.Points
-            })
             .ToListAsync();
 
-        return Ok(questions);
+        var includeCorrectAnswer = !User.IsInRole("Student");
+
+        return Ok(questions.Select(q => new ExamQuestionResponseDto
+        {
+            Id = q.Id,
+            ExamId = q.ExamId,
+            Text = q.Text,
+            Type = q.Type,
+            CorrectAnswer = includeCorrectAnswer ? q.CorrectAnswer : null,
+            Options = ParseOptions(q.OptionsJson),
+            Points = q.Points
+        }));
     }
 
     [HttpGet("/api/question-bank/{offeringId:guid}/questions")]
@@ -335,16 +332,55 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Student"))
         {
-            return exam.IsPublished &&
-                exam.CourseOfferingId.HasValue &&
-                await _context.StudentCourseEnrollments.AnyAsync(x =>
-                    x.StudentId == userId.Value &&
-                    x.CourseOfferingId == exam.CourseOfferingId.Value &&
-                    x.EligibleForExam &&
-                    x.Status == "Eligible");
+            if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
+                return false;
+
+            var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
+                x.StudentId == userId.Value &&
+                x.CourseOfferingId == exam.CourseOfferingId.Value &&
+                x.EligibleForExam &&
+                x.Status == "Eligible");
+
+            if (hasEligibleEnrollment)
+                return true;
+
+            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId.Value);
+            if (hasAnyEnrollment)
+                return false;
+
+            return await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == exam.CourseOfferingId.Value &&
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
         }
 
         return false;
+    }
+
+    private async Task<bool> CanManageExamAsync(Exam exam)
+    {
+        if (IsQuestionBankContainer(exam))
+            return false;
+
+        if (User.IsInRole("Admin"))
+            return true;
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return false;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == exam.CourseOfferingId.Value &&
+            a.UserId == userId.Value &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
     }
 
     private async Task<CourseOffering?> GetAccessibleOfferingAsync(Guid offeringId, Guid userId)

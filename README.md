@@ -163,6 +163,14 @@ cd C:\Users\24538\OneDrive\Desktop\Online-Exam
 docker compose up -d db
 ```
 
+Wait until the container is healthy before starting the backend:
+
+```powershell
+docker ps
+```
+
+You should see `onlineexam-postgres` in `Up` state.
+
 Database connection details:
 
 ```text
@@ -192,7 +200,59 @@ Then list tables:
 \dt
 ```
 
+### PostgreSQL troubleshooting
+
+If Docker shows an error like:
+
+```text
+Error: Database is uninitialized and superuser password is not specified
+```
+
+the most common cause is a stale/broken container or volume from an older run. Reset the local PostgreSQL state and recreate it:
+
+```powershell
+docker compose down
+docker rm -f onlineexam-postgres
+docker volume rm online-exam_onlineexam_db
+docker compose up -d db
+```
+
+Then verify the container is running:
+
+```powershell
+docker ps
+```
+
+This repository already defines:
+
+- `POSTGRES_DB=onlineexam`
+- `POSTGRES_USER=onlineexam`
+- `POSTGRES_PASSWORD=onlineexam`
+
+so you should not need to pass extra password flags manually when using this repo's `docker-compose.yml`.
+
 ### 2. Run the Backend
+
+Recommended option from the project root:
+
+```powershell
+.\scripts\start-backend.ps1
+```
+
+This script:
+
+- starts PostgreSQL with Docker Compose
+- waits for port `5432`
+- stops any old backend process still using port `5045`
+- starts the API with the `http` launch profile
+
+To stop the backend cleanly:
+
+```powershell
+.\scripts\stop-backend.ps1
+```
+
+Manual option:
 
 ```powershell
 cd backend\OnlineExam.Api
@@ -248,6 +308,7 @@ Note: if seeded-user login fails, check password hashing behavior in `AuthContro
 - The frontend communicates with the backend through API helper files in `frontend/src/lib`.
 - CORS is configured for local Vite ports in `Program.cs`.
 - Swagger is enabled in development mode for testing API endpoints.
+- If `dotnet run` reports that `OnlineExam.Api.exe` is locked, an older backend instance is still running. Use `.\scripts\stop-backend.ps1` and then `.\scripts\start-backend.ps1`.
 
 ## Roadmap
 

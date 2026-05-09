@@ -131,13 +131,15 @@ public class QuestionsController : ControllerBase
             .Where(q => q.ExamId == examId)
             .ToListAsync();
 
+        var includeCorrectAnswer = !User.IsInRole("Student");
+
         return Ok(questions.Select(q => new ExamQuestionResponseDto
         {
             Id = q.Id,
             ExamId = q.ExamId,
             Text = q.Text,
             Type = q.Type,
-            CorrectAnswer = q.CorrectAnswer,
+            CorrectAnswer = includeCorrectAnswer ? q.CorrectAnswer : null,
             Options = ParseOptions(q.OptionsJson),
             Points = q.Points
         }));
@@ -330,13 +332,26 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Student"))
         {
-            return exam.IsPublished &&
-                exam.CourseOfferingId.HasValue &&
-                await _context.StudentCourseEnrollments.AnyAsync(x =>
-                    x.StudentId == userId.Value &&
-                    x.CourseOfferingId == exam.CourseOfferingId.Value &&
-                    x.EligibleForExam &&
-                    x.Status == "Eligible");
+            if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
+                return false;
+
+            var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
+                x.StudentId == userId.Value &&
+                x.CourseOfferingId == exam.CourseOfferingId.Value &&
+                x.EligibleForExam &&
+                x.Status == "Eligible");
+
+            if (hasEligibleEnrollment)
+                return true;
+
+            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId.Value);
+            if (hasAnyEnrollment)
+                return false;
+
+            return await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == exam.CourseOfferingId.Value &&
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
         }
 
         return false;

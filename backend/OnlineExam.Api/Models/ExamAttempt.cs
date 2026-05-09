@@ -7,7 +7,17 @@ public class ExamAttempt
     public Guid StudentId { get; set; }
     public DateTime SubmittedAt { get; set; }
     public string AnswersJson { get; set; } = null!;
-    public double Score { get; set; }
+    public double AutoScore { get; set; }
+    public double ManualScore { get; set; }
+    public double FinalScore { get; set; }
+    public bool RequiresManualGrading { get; set; }
+    public bool IsGraded { get; set; }
+    public bool IsPublished { get; set; }
+    public DateTime? GradedAt { get; set; }
+    public Guid? GradedByUserId { get; set; }
+    public string? GradingNotes { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public Guid? PublishedByUserId { get; set; }
 
     public Exam Exam { get; set; } = null!;
 }

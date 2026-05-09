@@ -79,18 +79,7 @@ public class ExamsController : ControllerBase
 
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
         {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-                return Unauthorized();
-
-            var hasAccess = exam.CreatedByUserId == userId.Value ||
-                            (exam.CourseOfferingId != null && await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                                a.CourseOfferingId == exam.CourseOfferingId &&
-                                a.UserId == userId.Value &&
-                                a.IsActive &&
-                                a.RoleInOffering == (User.IsInRole("Professor") ? "Professor" : "Assistant")));
-
-            if (!hasAccess)
+            if (!await CanManageExamAsync(exam))
                 return Forbid();
         }
         else if (User.IsInRole("Student"))
@@ -252,7 +241,8 @@ public class ExamsController : ControllerBase
             return Forbid();
 
         var details = new List<QuestionScoreDetailDto>();
-        double score = 0;
+        double autoScore = 0;
+        var requiresManualGrading = false;
 
         foreach (var answer in dto.Answers)
         {
@@ -261,11 +251,17 @@ public class ExamsController : ControllerBase
                 continue;
 
             var awarded = 0d;
-            if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
-                string.Equals(question.CorrectAnswer.Trim(), answer.Response.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase))
             {
-                awarded = question.Points;
+                if (!string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
+                    string.Equals(question.CorrectAnswer.Trim(), answer.Response.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    awarded = question.Points;
+                }
+            }
+            else
+            {
+                requiresManualGrading = true;
             }
 
             details.Add(new QuestionScoreDetailDto
@@ -275,7 +271,7 @@ public class ExamsController : ControllerBase
                 MaxPoints = question.Points
             });
 
-            score += awarded;
+            autoScore += awarded;
         }
 
         var attempt = new ExamAttempt
@@ -284,8 +280,13 @@ public class ExamsController : ControllerBase
             ExamId = examId,
             StudentId = userId.Value,
             SubmittedAt = DateTime.UtcNow,
-            AnswersJson = System.Text.Json.JsonSerializer.Serialize(dto.Answers),
-            Score = score
+            AnswersJson = JsonSerializer.Serialize(dto.Answers),
+            AutoScore = autoScore,
+            ManualScore = 0,
+            FinalScore = autoScore,
+            RequiresManualGrading = requiresManualGrading,
+            IsGraded = !requiresManualGrading,
+            IsPublished = false
         };
 
         _context.ExamAttempts.Add(attempt);
@@ -294,7 +295,7 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAttemptResultDto
         {
             ExamAttemptId = attempt.Id,
-            Score = attempt.Score,
+            Score = attempt.FinalScore,
             Questions = details
         });
     }
@@ -358,21 +359,176 @@ public class ExamsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/gradebook")]
-    [Authorize(Roles = "Professor")]
+    [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> GetGradebook(Guid id)
     {
+        var exam = await _context.Exams.FirstOrDefaultAsync(x => x.Id == id);
+        if (exam == null)
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
         var attempts = await _context.ExamAttempts
             .Where(a => a.ExamId == id)
-            .Select(a => new
-            {
-                a.Id,
-                a.StudentId,
-                a.Score,
-                a.SubmittedAt
-            })
+            .Join(
+                _context.Users,
+                attempt => attempt.StudentId,
+                user => user.Id,
+                (attempt, user) => new ExamAttemptSummaryDto
+                {
+                    AttemptId = attempt.Id,
+                    ExamId = attempt.ExamId,
+                    StudentId = attempt.StudentId,
+                    StudentName = user.FullName,
+                    StudentEmail = user.Email,
+                    SubmittedAt = attempt.SubmittedAt,
+                    AutoScore = attempt.AutoScore,
+                    ManualScore = attempt.ManualScore,
+                    FinalScore = attempt.FinalScore,
+                    RequiresManualGrading = attempt.RequiresManualGrading,
+                    IsGraded = attempt.IsGraded,
+                    IsPublished = attempt.IsPublished,
+                    GradedAt = attempt.GradedAt,
+                    GradingNotes = attempt.GradingNotes
+                })
+            .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
 
         return Ok(attempts);
+    }
+
+    [HttpPost("attempts/{attemptId:guid}/grade")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> GradeAttempt(Guid attemptId, [FromBody] GradeExamAttemptDto dto)
+    {
+        var attempt = await _context.ExamAttempts
+            .Include(x => x.Exam)
+            .FirstOrDefaultAsync(x => x.Id == attemptId);
+
+        if (attempt == null)
+            return NotFound(new { message = "Attempt not found." });
+
+        if (!await CanManageExamAsync(attempt.Exam))
+            return Forbid();
+
+        var examPoints = await _context.Questions
+            .Where(x => x.ExamId == attempt.ExamId)
+            .SumAsync(x => (double)x.Points);
+
+        var manualScore = dto.ManualScore ?? attempt.ManualScore;
+        var finalScore = dto.FinalScore ?? (attempt.AutoScore + manualScore);
+
+        if (manualScore < 0)
+            return BadRequest(new { message = "Manual score cannot be negative." });
+
+        if (finalScore < 0 || (examPoints > 0 && finalScore > examPoints))
+            return BadRequest(new { message = "Final score is outside the allowed exam range." });
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        attempt.ManualScore = manualScore;
+        attempt.FinalScore = finalScore;
+        attempt.IsGraded = true;
+        attempt.GradedAt = DateTime.UtcNow;
+        attempt.GradedByUserId = userId.Value;
+        attempt.GradingNotes = NormalizeOptionalValue(dto.Notes);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new ExamAttemptSummaryDto
+        {
+            AttemptId = attempt.Id,
+            ExamId = attempt.ExamId,
+            StudentId = attempt.StudentId,
+            SubmittedAt = attempt.SubmittedAt,
+            AutoScore = attempt.AutoScore,
+            ManualScore = attempt.ManualScore,
+            FinalScore = attempt.FinalScore,
+            RequiresManualGrading = attempt.RequiresManualGrading,
+            IsGraded = attempt.IsGraded,
+            IsPublished = attempt.IsPublished,
+            GradedAt = attempt.GradedAt,
+            GradingNotes = attempt.GradingNotes
+        });
+    }
+
+    [HttpPost("{id:guid}/results/publish")]
+    [Authorize(Roles = "Professor")]
+    public async Task<IActionResult> PublishResults(Guid id, [FromBody] PublishExamResultsDto? dto = null)
+    {
+        var exam = await _context.Exams.FirstOrDefaultAsync(x => x.Id == id);
+        if (exam == null)
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var query = _context.ExamAttempts.Where(x => x.ExamId == id && x.IsGraded);
+
+        if (dto?.PublishAll == false)
+        {
+            if (dto.AttemptIds.Count == 0)
+                return BadRequest(new { message = "At least one attemptId is required when PublishAll is false." });
+
+            query = query.Where(x => dto.AttemptIds.Contains(x.Id));
+        }
+
+        var attempts = await query.ToListAsync();
+        foreach (var attempt in attempts)
+        {
+            attempt.IsPublished = true;
+            attempt.PublishedAt = DateTime.UtcNow;
+            attempt.PublishedByUserId = userId.Value;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Results published successfully.",
+            examId = id,
+            publishedCount = attempts.Count
+        });
+    }
+
+    [HttpGet("results/me")]
+    [Authorize(Roles = "Student")]
+    public async Task<IActionResult> GetMyResults()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var results = await _context.ExamAttempts
+            .Where(x => x.StudentId == userId.Value)
+            .Join(
+                _context.Exams,
+                attempt => attempt.ExamId,
+                exam => exam.Id,
+                (attempt, exam) => new StudentExamResultDto
+                {
+                    AttemptId = attempt.Id,
+                    ExamId = attempt.ExamId,
+                    ExamTitle = exam.Title,
+                    SubmittedAt = attempt.SubmittedAt,
+                    Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
+                    IsPublished = attempt.IsPublished,
+                    FinalScore = attempt.IsPublished ? attempt.FinalScore : null,
+                    AutoScore = attempt.IsPublished ? attempt.AutoScore : null,
+                    GradingNotes = attempt.IsPublished ? attempt.GradingNotes : null,
+                    PublishedAt = attempt.PublishedAt
+                })
+            .OrderByDescending(x => x.SubmittedAt)
+            .ToListAsync();
+
+        return Ok(results);
     }
 
     [HttpPost("build-random")]
@@ -426,8 +582,7 @@ public class ExamsController : ControllerBase
         if (bankExam == null)
             return BadRequest(new { message = "No question bank exists for this course offering yet." });
 
-        var candidates = await BuildQuestionBankCandidateQuery(bankExam.Id, dto.Type)
-            .ToListAsync();
+        var candidates = await BuildQuestionBankCandidateQuery(bankExam.Id, dto.Type).ToListAsync();
 
         var availableCandidates = candidates
             .Where(candidate => !exam.Questions.Any(existing => IsSameQuestionContent(existing, candidate)))
@@ -520,7 +675,12 @@ public class ExamsController : ControllerBase
         if (!exam.CourseOfferingId.HasValue)
             return false;
 
-        var assignmentRole = User.IsInRole("Professor") ? "Professor" : User.IsInRole("Assistant") ? "Assistant" : string.Empty;
+        var assignmentRole = User.IsInRole("Professor")
+            ? "Professor"
+            : User.IsInRole("Assistant")
+                ? "Assistant"
+                : string.Empty;
+
         if (string.IsNullOrWhiteSpace(assignmentRole))
             return false;
 

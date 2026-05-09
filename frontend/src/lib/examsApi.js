@@ -39,3 +39,23 @@ export async function replaceExamQuestion(examId, questionId, payload = {}) {
   const response = await api.post(`/api/exams/${examId}/questions/${questionId}/replace`, payload);
   return response.data;
 }
+
+export async function getExamGradebook(examId) {
+  const response = await api.get(`/api/exams/${examId}/gradebook`);
+  return response.data;
+}
+
+export async function gradeExamAttempt(attemptId, payload) {
+  const response = await api.post(`/api/exams/attempts/${attemptId}/grade`, payload);
+  return response.data;
+}
+
+export async function publishExamResults(examId, payload = { publishAll: true, attemptIds: [] }) {
+  const response = await api.post(`/api/exams/${examId}/results/publish`, payload);
+  return response.data;
+}
+
+export async function getMyExamResults() {
+  const response = await api.get("/api/exams/results/me");
+  return response.data;
+}

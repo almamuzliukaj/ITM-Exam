@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -100,8 +101,22 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    logger.LogInformation("Applying pending database migrations...");
-    db.Database.Migrate();
+    const int maxAttempts = 10;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++)
+    {
+        try
+        {
+            logger.LogInformation("Applying pending database migrations (attempt {Attempt}/{MaxAttempts})...", attempt, maxAttempts);
+            db.Database.Migrate();
+            logger.LogInformation("Database migrations applied successfully.");
+            break;
+        }
+        catch (NpgsqlException ex) when (attempt < maxAttempts)
+        {
+            logger.LogWarning(ex, "Database is not ready yet. Retrying in 3 seconds...");
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+        }
+    }
 }
 
 if (app.Environment.IsDevelopment())

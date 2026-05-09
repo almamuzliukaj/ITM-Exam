@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using OnlineExam.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +29,8 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
 // ================= SWAGGER JWT AUTH ======================
 builder.Services.AddSwaggerGen(c =>
@@ -122,6 +125,7 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     EnsureDemoUsers(app);
+    EnsureStableDemoData(app);
     app.UseSwagger();
     app.UseSwaggerUI(); // <-- Kjo është për Swagger!
 }
@@ -144,6 +148,7 @@ static void EnsureDemoUsers(WebApplication app)
     {
         new { Id = Guid.Parse("f9635e15-1d90-4e3b-b722-331a8fc2fbe9"), FullName = "Admin User", Email = "admin@onlineexam.com", Password = "Password123!", Role = "Admin" },
         new { Id = Guid.Parse("b5769729-e575-4789-b6e7-f7327ede1acc"), FullName = "Professor", Email = "prof@onlineexam.com", Password = "Password123!", Role = "Professor" },
+        new { Id = Guid.Parse("d4c36f34-d494-42f7-9af6-77cf635b2d22"), FullName = "Assistant", Email = "assistant@onlineexam.com", Password = "Password123!", Role = "Assistant" },
         new { Id = Guid.Parse("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"), FullName = "Student", Email = "student@onlineexam.com", Password = "Password123!", Role = "Student" }
     };
 
@@ -175,4 +180,288 @@ static void EnsureDemoUsers(WebApplication app)
     }
 
     db.SaveChanges();
+}
+
+static void EnsureStableDemoData(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    var adminId = Guid.Parse("f9635e15-1d90-4e3b-b722-331a8fc2fbe9");
+    var professorId = Guid.Parse("b5769729-e575-4789-b6e7-f7327ede1acc");
+    var assistantId = Guid.Parse("d4c36f34-d494-42f7-9af6-77cf635b2d22");
+    var studentId = Guid.Parse("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1");
+
+    var term = db.Terms.FirstOrDefault(x => x.Code == "DEMO-WS26");
+    if (term is null)
+    {
+        term = new Term
+        {
+            Id = Guid.Parse("ebb72703-f0f0-48b6-b410-66ae03d2e11a"),
+            Code = "DEMO-WS26"
+        };
+        db.Terms.Add(term);
+    }
+
+    term.Name = "Demo Winter Semester 2026/2027";
+    term.Season = "Winter";
+    term.AcademicYearLabel = "2026/2027";
+    term.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+    term.EndDate = new DateTime(2027, 1, 31, 0, 0, 0, DateTimeKind.Utc);
+    term.EnrollmentOpenAt = new DateTime(2026, 9, 15, 0, 0, 0, DateTimeKind.Utc);
+    term.EnrollmentCloseAt = new DateTime(2026, 10, 15, 0, 0, 0, DateTimeKind.Utc);
+    term.Status = "Active";
+    term.IsCurrent = true;
+
+    var course = db.Courses.FirstOrDefault(x => x.Code == "SE-DEMO-101");
+    if (course is null)
+    {
+        course = new Course
+        {
+            Id = Guid.Parse("5b8c781f-c0a6-44be-b6e2-49857332ea66"),
+            Code = "SE-DEMO-101"
+        };
+        db.Courses.Add(course);
+    }
+
+    course.Name = "Software Engineering Demo";
+    course.Credits = 6;
+    course.YearOfStudy = 1;
+    course.DefaultSemesterNo = 1;
+    course.IsElective = false;
+    course.IsActive = true;
+    course.Description = "Stable seeded course used for permissions, grading, and walkthrough demos.";
+
+    db.SaveChanges();
+
+    var offering = db.CourseOfferings.FirstOrDefault(x =>
+        x.CourseId == course.Id &&
+        x.TermId == term.Id &&
+        x.SectionCode == "A");
+
+    if (offering is null)
+    {
+        offering = new CourseOffering
+        {
+            Id = Guid.Parse("7b236ee5-92ad-4bd4-ae0e-4897ef16dcb6"),
+            CourseId = course.Id,
+            TermId = term.Id,
+            SectionCode = "A",
+            CreatedAt = DateTime.UtcNow
+        };
+        db.CourseOfferings.Add(offering);
+    }
+
+    offering.YearOfStudy = 1;
+    offering.SemesterNo = 1;
+    offering.DeliveryType = "Regular";
+    offering.Capacity = 80;
+    offering.Status = "Published";
+    offering.PrimaryProfessorId = professorId;
+    offering.AssistantId = assistantId;
+    offering.UpdatedAt = DateTime.UtcNow;
+
+    db.SaveChanges();
+
+    EnsureStaffAssignment(db, offering.Id, professorId, "Professor", "Primary", "FullTeaching", adminId);
+    EnsureStaffAssignment(db, offering.Id, assistantId, "Assistant", "Secondary", "GradingOnly", adminId);
+
+    var semesterEnrollment = db.SemesterEnrollments.FirstOrDefault(x => x.StudentId == studentId && x.TermId == term.Id);
+    if (semesterEnrollment is null)
+    {
+        semesterEnrollment = new SemesterEnrollment
+        {
+            Id = Guid.Parse("7ae34779-c61a-4c4a-8142-a1183f6b84ca"),
+            StudentId = studentId,
+            TermId = term.Id,
+            EnrolledAt = DateTime.UtcNow
+        };
+        db.SemesterEnrollments.Add(semesterEnrollment);
+    }
+
+    semesterEnrollment.YearOfStudy = 1;
+    semesterEnrollment.SemesterNo = 1;
+    semesterEnrollment.Status = "Approved";
+    semesterEnrollment.ApprovedBy = adminId;
+    semesterEnrollment.Notes = "Stable seeded semester enrollment for demo walkthroughs.";
+
+    db.SaveChanges();
+
+    var courseEnrollment = db.StudentCourseEnrollments.FirstOrDefault(x =>
+        x.StudentId == studentId &&
+        x.CourseOfferingId == offering.Id);
+
+    if (courseEnrollment is null)
+    {
+        courseEnrollment = new StudentCourseEnrollment
+        {
+            Id = Guid.Parse("74009ddd-a42d-4b83-a466-af25ef1aa863"),
+            StudentId = studentId,
+            CourseOfferingId = offering.Id,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = adminId
+        };
+        db.StudentCourseEnrollments.Add(courseEnrollment);
+    }
+
+    courseEnrollment.LinkedSemesterEnrollmentId = semesterEnrollment.Id;
+    courseEnrollment.EnrollmentSource = "RegularSemester";
+    courseEnrollment.Status = "Eligible";
+    courseEnrollment.EligibleForExam = true;
+
+    db.SaveChanges();
+
+    var exam = db.Exams.FirstOrDefault(x => x.CourseOfferingId == offering.Id && x.Title == "Seeded Demo Midterm");
+    if (exam is null)
+    {
+        exam = new Exam
+        {
+            Id = Guid.Parse("0ec629c0-b1a7-4ec1-b968-f78dd4988ee2"),
+            Title = "Seeded Demo Midterm",
+            CreatedByUserId = professorId,
+            CreatedAt = DateTime.UtcNow,
+            CourseOfferingId = offering.Id
+        };
+        db.Exams.Add(exam);
+    }
+
+    exam.Description = "Stable demo exam used for Sprint 14 walkthroughs.";
+    exam.StartsAt = DateTime.UtcNow.AddDays(-1);
+    exam.EndsAt = DateTime.UtcNow.AddDays(30);
+    exam.DurationMinutes = 60;
+    exam.Status = "Published";
+    exam.IsPublished = true;
+
+    db.SaveChanges();
+
+    EnsureQuestion(
+        db,
+        exam.Id,
+        Guid.Parse("a6d4b20c-a9e9-4a1a-8740-8859e88b7107"),
+        "MCQ",
+        "Which role is allowed to publish exam results?",
+        10,
+        "[\"Admin\",\"Professor\",\"Student\",\"Assistant\"]",
+        "Professor",
+        course.Id);
+
+    EnsureQuestion(
+        db,
+        exam.Id,
+        Guid.Parse("8bbde00d-5472-4c17-a005-f60f76d7c4c0"),
+        "Text",
+        "Explain why audit logs matter in a role-based exam platform.",
+        15,
+        null,
+        null,
+        course.Id);
+
+    var bankContainer = db.Exams.FirstOrDefault(x =>
+        x.CourseOfferingId == offering.Id &&
+        x.Description == $"__QUESTION_BANK__:{offering.Id}");
+
+    if (bankContainer is null)
+    {
+        bankContainer = new Exam
+        {
+            Id = Guid.Parse("66303ee6-d2dd-4294-b0e3-f3f10d846ed4"),
+            Title = "Question Bank Container",
+            Description = $"__QUESTION_BANK__:{offering.Id}",
+            StartsAt = DateTime.UtcNow,
+            EndsAt = DateTime.UtcNow.AddYears(5),
+            DurationMinutes = 0,
+            CreatedByUserId = professorId,
+            CreatedAt = DateTime.UtcNow,
+            IsPublished = false,
+            Status = "Draft",
+            CourseOfferingId = offering.Id
+        };
+        db.Exams.Add(bankContainer);
+        db.SaveChanges();
+    }
+
+    EnsureQuestion(
+        db,
+        bankContainer.Id,
+        Guid.Parse("3d7693a8-c902-4a5f-bf74-66ea2ef6b340"),
+        "MCQ",
+        "JWT stands for which expansion?",
+        10,
+        "[\"Java Web Token\",\"JSON Web Token\",\"Joined Web Token\"]",
+        "JSON Web Token",
+        course.Id);
+
+    db.SaveChanges();
+}
+
+static void EnsureStaffAssignment(AppDbContext db, Guid offeringId, Guid userId, string role, string assignmentType, string permissionsProfile, Guid assignedBy)
+{
+    var assignment = db.CourseOfferingStaffAssignments.FirstOrDefault(x =>
+        x.CourseOfferingId == offeringId &&
+        x.UserId == userId &&
+        x.RoleInOffering == role);
+
+    if (assignment is null)
+    {
+        db.CourseOfferingStaffAssignments.Add(new CourseOfferingStaffAssignment
+        {
+            Id = Guid.NewGuid(),
+            CourseOfferingId = offeringId,
+            UserId = userId,
+            RoleInOffering = role,
+            AssignmentType = assignmentType,
+            PermissionsProfile = permissionsProfile,
+            AssignedAt = DateTime.UtcNow,
+            AssignedBy = assignedBy,
+            IsActive = true
+        });
+
+        db.SaveChanges();
+        return;
+    }
+
+    assignment.AssignmentType = assignmentType;
+    assignment.PermissionsProfile = permissionsProfile;
+    assignment.AssignedBy = assignedBy;
+    assignment.IsActive = true;
+    assignment.RevokedAt = null;
+    assignment.RevokedBy = null;
+}
+
+static void EnsureQuestion(
+    AppDbContext db,
+    Guid examId,
+    Guid questionId,
+    string type,
+    string text,
+    int points,
+    string? optionsJson,
+    string? correctAnswer,
+    Guid courseId)
+{
+    var question = db.Questions.FirstOrDefault(x => x.Id == questionId);
+    if (question is null)
+    {
+        db.Questions.Add(new Question
+        {
+            Id = questionId,
+            ExamId = examId,
+            CourseId = courseId,
+            Type = type,
+            Text = text,
+            Points = points,
+            OptionsJson = optionsJson,
+            CorrectAnswer = correctAnswer
+        });
+
+        return;
+    }
+
+    question.ExamId = examId;
+    question.CourseId = courseId;
+    question.Type = type;
+    question.Text = text;
+    question.Points = points;
+    question.OptionsJson = optionsJson;
+    question.CorrectAnswer = correctAnswer;
 }

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
+using OnlineExam.Api.Services;
 
 namespace OnlineExam.Api.Controllers;
 
@@ -16,10 +17,12 @@ public class ExamsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private readonly AppDbContext _context;
+    private readonly IAuditLogService _auditLogService;
 
-    public ExamsController(AppDbContext context)
+    public ExamsController(AppDbContext context, IAuditLogService auditLogService)
     {
         _context = context;
+        _auditLogService = auditLogService;
     }
 
     [HttpGet]
@@ -150,6 +153,12 @@ public class ExamsController : ControllerBase
 
         _context.Exams.Add(exam);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Exam.Created", "Exam", exam.Id, new
+        {
+            exam.Title,
+            exam.CourseOfferingId,
+            exam.Status
+        }, "ExamAuthoring");
 
         return CreatedAtAction(nameof(GetExam), new { id = exam.Id }, exam);
     }
@@ -182,6 +191,26 @@ public class ExamsController : ControllerBase
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
 
+        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Assistant exams must stay linked to an assigned course offering." });
+
+        if (dto.CourseOfferingId.HasValue)
+        {
+            var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
+            if (!offeringExists)
+                return BadRequest(new { message = "CourseOfferingId is invalid." });
+
+            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+            var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+                a.CourseOfferingId == dto.CourseOfferingId.Value &&
+                a.UserId == userId.Value &&
+                a.IsActive &&
+                a.RoleInOffering == assignmentRole);
+
+            if (!hasAssignment)
+                return Forbid();
+        }
+
         exam.Title = dto.Title.Trim();
         exam.Description = dto.Description?.Trim() ?? string.Empty;
         exam.StartsAt = startsAt;
@@ -192,6 +221,12 @@ public class ExamsController : ControllerBase
         exam.CourseOfferingId = dto.CourseOfferingId;
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Exam.Updated", "Exam", exam.Id, new
+        {
+            exam.Title,
+            exam.CourseOfferingId,
+            exam.Status
+        }, "ExamAuthoring");
         return Ok(exam);
     }
 
@@ -215,6 +250,10 @@ public class ExamsController : ControllerBase
 
         _context.Exams.Remove(exam);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Exam.Deleted", "Exam", id, new
+        {
+            exam.Title
+        }, "ExamAuthoring");
 
         return NoContent();
     }
@@ -291,6 +330,13 @@ public class ExamsController : ControllerBase
 
         _context.ExamAttempts.Add(attempt);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAttempt.Submitted", "ExamAttempt", attempt.Id, new
+        {
+            attempt.ExamId,
+            attempt.StudentId,
+            attempt.AutoScore,
+            attempt.RequiresManualGrading
+        }, "ExamDelivery");
 
         return Ok(new ExamAttemptResultDto
         {
@@ -349,6 +395,10 @@ public class ExamsController : ControllerBase
         exam.Status = "Published";
         exam.IsPublished = true;
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Exam.Published", "Exam", exam.Id, new
+        {
+            exam.CourseOfferingId
+        }, "ExamAuthoring");
 
         return Ok(new { message = "Exam published!", examId = id });
     }
@@ -432,6 +482,13 @@ public class ExamsController : ControllerBase
         attempt.GradingNotes = NormalizeOptionalValue(dto.Notes);
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAttempt.Graded", "ExamAttempt", attempt.Id, new
+        {
+            attempt.ExamId,
+            attempt.AutoScore,
+            attempt.ManualScore,
+            attempt.FinalScore
+        }, "Grading");
 
         return Ok(new ExamAttemptSummaryDto
         {
@@ -484,6 +541,10 @@ public class ExamsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamResults.Published", "Exam", id, new
+        {
+            PublishedAttempts = attempts.Count
+        }, "Results");
 
         return Ok(new
         {

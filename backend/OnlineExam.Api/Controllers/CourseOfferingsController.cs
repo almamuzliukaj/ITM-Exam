@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
+using OnlineExam.Api.Services;
 
 namespace OnlineExam.Api.Controllers;
 
@@ -16,10 +17,12 @@ public class CourseOfferingsController : ControllerBase
     private static readonly HashSet<string> AllowedOfferingStatuses = ["Draft", "Published", "Active", "Closed", "Archived"];
     private static readonly HashSet<string> AllowedDeliveryTypes = ["Regular", "RetakeOnly", "Special"];
     private readonly AppDbContext _context;
+    private readonly IAuditLogService _auditLogService;
 
-    public CourseOfferingsController(AppDbContext context)
+    public CourseOfferingsController(AppDbContext context, IAuditLogService auditLogService)
     {
         _context = context;
+        _auditLogService = auditLogService;
     }
 
     [HttpGet]
@@ -199,6 +202,13 @@ public class CourseOfferingsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("CourseOffering.Created", "CourseOffering", offering.Id, new
+        {
+            offering.CourseId,
+            offering.TermId,
+            offering.PrimaryProfessorId,
+            offering.AssistantId
+        }, "AcademicStructure");
 
         return CreatedAtAction(nameof(GetOffering), new { id = offering.Id }, await BuildOfferingResponseAsync(offering.Id));
     }
@@ -237,6 +247,12 @@ public class CourseOfferingsController : ControllerBase
 
         await SyncAssignmentsAsync(offering, dto.PrimaryProfessorId, dto.AssistantId);
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("CourseOffering.Updated", "CourseOffering", offering.Id, new
+        {
+            offering.Status,
+            offering.PrimaryProfessorId,
+            offering.AssistantId
+        }, "AcademicStructure");
 
         return Ok(await BuildOfferingResponseAsync(id));
     }
@@ -255,6 +271,11 @@ public class CourseOfferingsController : ControllerBase
         offering.Status = "Published";
         offering.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("CourseOffering.Published", "CourseOffering", offering.Id, new
+        {
+            offering.CourseId,
+            offering.TermId
+        }, "AcademicStructure");
         return Ok(await BuildOfferingResponseAsync(id));
     }
 
@@ -269,6 +290,11 @@ public class CourseOfferingsController : ControllerBase
         offering.Status = "Closed";
         offering.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("CourseOffering.Closed", "CourseOffering", offering.Id, new
+        {
+            offering.CourseId,
+            offering.TermId
+        }, "AcademicStructure");
         return Ok(await BuildOfferingResponseAsync(id));
     }
 

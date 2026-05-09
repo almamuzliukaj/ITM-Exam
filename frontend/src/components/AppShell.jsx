@@ -25,6 +25,7 @@ const navigationByRole = {
   Student: [
     { to: "/dashboard", labelKey: "shell.nav.studentOverview" },
     { to: "/exams", labelKey: "shell.nav.studentExams" },
+    { to: "/results", labelKey: "shell.nav.studentResults" },
   ],
 };
 

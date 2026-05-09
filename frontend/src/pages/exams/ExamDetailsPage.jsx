@@ -25,14 +25,12 @@ export default function ExamDetailsPage() {
     type: "",
   });
   const canEdit = canManageExams(user?.role);
- feat/sprint-11-monaco-editor
   const isStudent = user?.role === "Student";
 
   const canGenerate = useMemo(
     () => isPositiveNumber(generator.numberOfQuestions) && Boolean(exam?.courseOfferingId),
     [exam?.courseOfferingId, generator.numberOfQuestions],
   );
-main
 
   useEffect(() => {
     if (!examId) return;
@@ -174,12 +172,8 @@ main
               {publishing ? "Publishing..." : "Publish exam"}
             </button>
           ) : null}
- feat/sprint-11-monaco-editor
-          {isStudent && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/session`}>Start session</Link> : null}
+          {isStudent && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/attempt`}>Start attempt</Link> : null}
           {canEdit && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
-
-          {isDraft && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
- main
         </>
       }
     >

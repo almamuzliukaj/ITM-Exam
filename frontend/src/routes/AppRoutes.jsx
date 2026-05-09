@@ -12,6 +12,7 @@ import ExamDetailsPage from "../pages/exams/ExamDetailsPage";
 import ExamGradebookPage from "../pages/exams/ExamGradebookPage";
 import QuestionCreatePage from "../pages/exams/QuestionCreatePage";
 import StudentExamSessionPage from "../pages/exams/StudentExamSessionPage";
+import StudentResultsPage from "../pages/exams/StudentResultsPage";
 import AdminUsersPage from "../pages/admin/AdminUsersPage";
 import AdminAcademicStructurePage from "../pages/admin/AdminAcademicStructurePage";
 import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
@@ -38,7 +39,9 @@ export default function AppRoutes() {
         </Route>
 
         <Route element={<RoleGuard allow={["Student"]} />}>
+          <Route path="/exams/:examId/attempt" element={<StudentExamSessionPage />} />
           <Route path="/exams/:examId/session" element={<StudentExamSessionPage />} />
+          <Route path="/results" element={<StudentResultsPage />} />
         </Route>
 
         <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>

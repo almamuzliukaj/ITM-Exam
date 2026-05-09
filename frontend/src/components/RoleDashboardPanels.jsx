@@ -222,6 +222,9 @@ function StudentEligibilityPanel({ config }) {
             <Link className="btn btnPrimary" to="/exams">
               View eligible exams
             </Link>
+            <Link className="btn" to="/results">
+              View results
+            </Link>
           </div>
         </div>
         <div className="heroStats">
@@ -287,7 +290,7 @@ function StudentExamsCard({ exams }) {
                   <strong>{exam.title}</strong>
                   <span>{exam.courseCode} - {formatDateTime(exam.startsAt)} / {exam.durationMinutes} min</span>
                 </div>
-                <Link className="btn btnPrimary" to={`/exams/${exam.id}/session`}>
+                <Link className="btn btnPrimary" to={`/exams/${exam.id}/attempt`}>
                   Start
                 </Link>
               </div>

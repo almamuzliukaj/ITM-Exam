@@ -312,7 +312,8 @@ const resources = {
           assistantQuestionBank: "Question bank",
           assistantExams: "Assigned exams",
           studentOverview: "Overview",
-          studentExams: "Available exams"
+          studentExams: "Available exams",
+          studentResults: "My results"
         }
       },
       rolePanels: {
@@ -792,7 +793,8 @@ const resources = {
           assistantQuestionBank: "Banka e pyetjeve",
           assistantExams: "Provimet e caktuara",
           studentOverview: "Përmbledhje",
-          studentExams: "Provimet e lejuara"
+          studentExams: "Provimet e lejuara",
+          studentResults: "Rezultatet e mia"
         }
       },
       rolePanels: {

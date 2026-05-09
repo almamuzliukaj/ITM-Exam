@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { listExams } from "../../lib/examsApi";
+import { deleteExam, listExams } from "../../lib/examsApi";
 import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ export default function ExamsListPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,35 +43,30 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
- feat/sprint-11-monaco-editor
-  const canCreate = canManageExams(user.role);
+  const canCreate = canCreateExams(user.role);
   const isStudent = user.role === "Student";
 
-  async function onPublish(examId) {
+  async function onDeleteDraft(exam) {
+    if (!exam?.id || exam.isPublished) return;
+
+    const confirmed = window.confirm(`Delete draft "${exam.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+
     try {
-      setPublishingId(examId);
+      setDeletingId(exam.id);
       setError("");
-      await publishExam(examId);
-      setExams((current) =>
-        current.map((exam) =>
-          exam.id === examId
-            ? { ...exam, isPublished: true, status: "Published" }
-            : exam
-        )
-      );
+      await deleteExam(exam.id);
+      setExams((current) => current.filter((item) => item.id !== exam.id));
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
         (typeof err?.response?.data === "string" ? err.response.data : null) ||
         err?.message;
-      setError(apiMessage || "Failed to publish exam.");
+      setError(apiMessage || "Failed to delete draft exam.");
     } finally {
-      setPublishingId("");
+      setDeletingId("");
     }
   }
-
-  const canCreate = canCreateExams(user.role);
- main
 
   return (
     <AppShell
@@ -123,7 +119,17 @@ export default function ExamsListPage() {
                     {canCreate && !exam.isPublished ? (
                       <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
                     ) : null}
-                    <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/session` : `/exams/${exam.id}`}>
+                    {canCreate && !exam.isPublished ? (
+                      <button
+                        className="btn btnDanger"
+                        type="button"
+                        onClick={() => onDeleteDraft(exam)}
+                        disabled={deletingId === exam.id}
+                      >
+                        {deletingId === exam.id ? "Deleting..." : "Delete draft"}
+                      </button>
+                    ) : null}
+                    <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
                       {isStudent ? "Start" : t("examsList.open")}
                     </Link>
                   </div>

@@ -15,6 +15,10 @@ export async function publishExam(examId, payload = {}) {
   return response.data;
 }
 
+export async function deleteExam(examId) {
+  await api.delete(`/api/exams/${examId}`);
+}
+
 export async function getExam(examId) {
   const response = await api.get(`/api/exams/${examId}`);
   return response.data;

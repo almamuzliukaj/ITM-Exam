@@ -1507,6 +1507,72 @@
   color: white;
 }
 
+.questionBankFilters{
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.questionBankField{
+  flex: 1 1 220px;
+  min-width: 220px;
+}
+
+.questionBankContext{
+  color: var(--muted);
+}
+
+.questionBankGrid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.questionBankCard{
+  min-height: 100%;
+}
+
+.compactStack{
+  gap: 10px;
+}
+
+.questionBankModelAnswer{
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.technicalCodeBlock{
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  padding: 12px;
+  background: #111827;
+  color: #e5edf7;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.questionBankActions{
+  gap: 10px;
+}
+
+.questionBankFormGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sectionHeaderInline{
+  padding: 0;
+  border: 0;
+}
+
+.questionBankOptionRow{
+  gap: 12px;
+}
+
 @media (max-width: 1180px){
   .appShell,
   .heroPanel,
@@ -1518,6 +1584,8 @@
   .adminDashboardHero,
   .adminMetricGrid,
   .adminSectionGrid,
+  .questionBankGrid,
+  .questionBankFormGrid,
   .loginContent,
   .loginFeatureGrid{
     grid-template-columns: 1fr;

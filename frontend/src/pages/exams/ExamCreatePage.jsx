@@ -3,7 +3,7 @@ import { createExam } from "../../lib/examsApi";
 import { listMyOfferings } from "../../lib/academicApi";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export default function ExamCreatePage() {
@@ -17,54 +17,59 @@ export default function ExamCreatePage() {
     courseOfferingId: "",
   });
   const [offerings, setOfferings] = useState([]);
-  const [loadingOfferings, setLoadingOfferings] = useState(true);
+  const [offeringsLoading, setOfferingsLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const canSubmit = useMemo(
+    () => Boolean(form.title.trim()) && Boolean(form.courseOfferingId) && !saving && !offeringsLoading,
+    [form.courseOfferingId, form.title, offeringsLoading, saving],
+  );
 
   useEffect(() => {
     let active = true;
 
-    async function loadOfferings() {
+    (async () => {
       try {
-        setLoadingOfferings(true);
+        setOfferingsLoading(true);
         const data = await listMyOfferings();
-        const rows = Array.isArray(data) ? data : [];
         if (!active) return;
-        setOfferings(rows);
-        if (rows.length > 0) {
+
+        const assignedOfferings = Array.isArray(data) ? data : [];
+        setOfferings(assignedOfferings);
+        if (assignedOfferings.length > 0) {
           setForm((current) => ({
             ...current,
-            courseOfferingId: current.courseOfferingId || rows[0].id,
+            courseOfferingId: current.courseOfferingId || assignedOfferings[0].id,
           }));
         }
-      } catch {
-        if (active) setError("Failed to load assigned course offerings.");
+      } catch (err) {
+        if (active) {
+          setError(err?.response?.data?.message || t("examCreate.offeringsError"));
+        }
       } finally {
-        if (active) setLoadingOfferings(false);
+        if (active) setOfferingsLoading(false);
       }
-    }
-
-    loadOfferings();
+    })();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
 
-  async function saveExam(e, publishNow = false) {
+  async function saveExam(e) {
     e.preventDefault();
     setError("");
 
     try {
       setSaving(true);
-      await createExam({
+      const created = await createExam({
         title: form.title,
         description: form.description,
         durationMinutes: Number(form.durationMinutes) || 60,
         courseOfferingId: form.courseOfferingId || null,
-        isPublished: publishNow,
+        isPublished: false,
       });
-      nav("/exams");
+      nav(`/exams/${created.id}`);
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -99,7 +104,31 @@ export default function ExamCreatePage() {
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
-            <form className="stackLg" onSubmit={(e) => saveExam(e, false)}>
+            {offeringsLoading ? <div className="pageStateCard">{t("examCreate.loadingOfferings")}</div> : null}
+            {!offeringsLoading && offerings.length === 0 ? (
+              <div className="emptyState">
+                <p>{t("examCreate.noOfferingsTitle")}</p>
+                <p>{t("examCreate.noOfferingsText")}</p>
+              </div>
+            ) : null}
+            <form className="stackLg" onSubmit={saveExam}>
+              <div className="field">
+                <label className="label">{t("examCreate.offeringLabel")}</label>
+                <select
+                  className="input"
+                  value={form.courseOfferingId}
+                  onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
+                  disabled={saving || offeringsLoading || offerings.length === 0}
+                  required
+                >
+                  {offerings.map((offering) => (
+                    <option key={offering.id} value={offering.id}>
+                      {formatOfferingOption(offering)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="field">
                 <div className="label">{t("examCreate.titleLabel")}</div>
                 <input
@@ -123,27 +152,6 @@ export default function ExamCreatePage() {
               </div>
 
               <div className="field">
-                <label className="label">Course offering</label>
-                <select
-                  className="input"
-                  value={form.courseOfferingId}
-                  onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
-                  disabled={saving || loadingOfferings}
-                  required
-                >
-                  {offerings.length === 0 ? (
-                    <option value="">No assigned offerings available</option>
-                  ) : (
-                    offerings.map((offering) => (
-                      <option key={offering.id} value={offering.id}>
-                        {formatOfferingLabel(offering)}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div className="field">
                 <div className="label">{t("examCreate.descriptionLabel")}</div>
                 <textarea
                   className="input textarea"
@@ -155,21 +163,13 @@ export default function ExamCreatePage() {
 
               <div className="publishNotice">
                 <strong>Draft and publish workflow</strong>
-                <span>Save as draft while preparing questions, or publish immediately when the exam is ready for eligible students.</span>
+                <span>Save the exam draft first, attach questions in the builder, then publish it for eligible students.</span>
               </div>
 
               <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
-                <button className="btn" type="submit" disabled={saving || loadingOfferings || !form.courseOfferingId}>
+                <button className="btn" type="submit" disabled={!canSubmit}>
                   {saving ? t("examCreate.creating") : "Save draft"}
-                </button>
-                <button
-                  className="btn btnPrimary"
-                  type="button"
-                  disabled={saving || loadingOfferings || !form.courseOfferingId}
-                  onClick={(e) => saveExam(e, true)}
-                >
-                  {saving ? t("examCreate.creating") : "Publish exam"}
                 </button>
               </div>
             </form>
@@ -180,13 +180,12 @@ export default function ExamCreatePage() {
   );
 }
 
-function formatOfferingLabel(offering) {
-  const code = offering.course?.code || "Course";
-  const name = offering.course?.name || "";
-  const term = offering.term?.name || "Term";
-  const year = offering.yearOfStudy ? `Year ${offering.yearOfStudy}` : "Year -";
-  const semester = offering.semesterNo ? `Semester ${offering.semesterNo}` : "Semester -";
-  const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
+function formatOfferingOption(offering) {
+  const courseCode = offering.course?.code?.trim();
+  const courseName = offering.course?.name?.trim();
+  const courseTitle = [courseCode, courseName].filter(Boolean).join(" - ") || "Course offering";
+  const term = offering.term?.name || offering.term?.academicYearLabel || "No term";
+  const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "No section";
 
-  return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
+  return `${courseTitle} / ${term} / ${section}`;
 }

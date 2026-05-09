@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { listExams, publishExam } from "../../lib/examsApi";
-import { canManageExams } from "../../lib/permissions";
+import { listExams } from "../../lib/examsApi";
+import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +11,6 @@ export default function ExamsListPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [publishingId, setPublishingId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -43,6 +42,7 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
+ feat/sprint-11-monaco-editor
   const canCreate = canManageExams(user.role);
   const isStudent = user.role === "Student";
 
@@ -68,6 +68,9 @@ export default function ExamsListPage() {
       setPublishingId("");
     }
   }
+
+  const canCreate = canCreateExams(user.role);
+ main
 
   return (
     <AppShell
@@ -118,9 +121,7 @@ export default function ExamsListPage() {
                   <div className="small">{t("examsList.openHint")}</div>
                   <div className="resourceActionGroup">
                     {canCreate && !exam.isPublished ? (
-                      <button className="btn btnPrimary" type="button" onClick={() => onPublish(exam.id)} disabled={publishingId === exam.id}>
-                        {publishingId === exam.id ? "Publishing..." : "Publish"}
-                      </button>
+                      <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
                     ) : null}
                     <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/session` : `/exams/${exam.id}`}>
                       {isStudent ? "Start" : t("examsList.open")}

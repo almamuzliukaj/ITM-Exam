@@ -13,11 +13,13 @@ const navigationByRole = {
   ],
   Professor: [
     { to: "/dashboard", labelKey: "shell.nav.professorOverview" },
+    { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank" },
     { to: "/exams", labelKey: "shell.nav.professorExams" },
     { to: "/exams/new", labelKey: "shell.nav.professorCreateExam" },
   ],
   Assistant: [
     { to: "/dashboard", labelKey: "shell.nav.assistantOverview" },
+    { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank" },
     { to: "/exams", labelKey: "shell.nav.assistantExams" },
   ],
   Student: [

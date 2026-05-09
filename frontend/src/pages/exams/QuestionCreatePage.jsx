@@ -35,6 +35,8 @@ export default function QuestionCreatePage() {
     text: "",
     type: "MCQ",
     points: 10,
+    options: ["", ""],
+    correctAnswer: "",
     starterCode: starterTemplates.CSharp,
     sqlSchema: "",
     expectedAnswer: "",
@@ -79,6 +81,8 @@ export default function QuestionCreatePage() {
         text: buildQuestionText(form),
         type: form.type,
         points: Number(form.points) || 0,
+        options: form.type === "MCQ" ? normalizeOptions(form.options) : [],
+        correctAnswer: form.type === "MCQ" ? normalizeOptionalValue(form.correctAnswer) : null,
       });
       nav(`/exams/${examId}`);
     } catch (err) {
@@ -97,9 +101,39 @@ export default function QuestionCreatePage() {
     setForm((current) => ({
       ...current,
       type: nextType,
+      options: nextType === "MCQ" ? (current.options.length > 0 ? current.options : ["", ""]) : current.options,
+      correctAnswer: nextType === "MCQ" ? current.correctAnswer : "",
       starterCode: starterTemplates[nextType] || current.starterCode,
       sqlSchema: nextType === "SQL" ? current.sqlSchema : "",
     }));
+  }
+
+  function updateOption(index, value) {
+    setForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? value : option)),
+    }));
+  }
+
+  function addOptionField() {
+    setForm((current) => ({
+      ...current,
+      options: [...current.options, ""],
+    }));
+  }
+
+  function removeOptionField(index) {
+    setForm((current) => {
+      const nextOptions = current.options.filter((_, optionIndex) => optionIndex !== index);
+      const nextCorrectAnswer =
+        current.correctAnswer === current.options[index] ? "" : current.correctAnswer;
+
+      return {
+        ...current,
+        options: nextOptions.length > 0 ? nextOptions : ["", ""],
+        correctAnswer: nextCorrectAnswer,
+      };
+    });
   }
 
   if (userLoading) {
@@ -154,6 +188,64 @@ export default function QuestionCreatePage() {
                   <option value="SQL">SQL</option>
                 </select>
               </div>
+
+              {form.type === "MCQ" ? (
+                <div className="technicalQuestionPanel">
+                  <div className="technicalQuestionHeader">
+                    <div>
+                      <h4>MCQ options</h4>
+                      <p>Add the answer choices and select which one is correct.</p>
+                    </div>
+                    <span className="statusPill statusDraft">MCQ</span>
+                  </div>
+
+                  <div className="stackLg compactStack">
+                    {form.options.map((option, index) => (
+                      <div className="row questionBankOptionRow" key={`option-${index}`}>
+                        <input
+                          className="input"
+                          type="text"
+                          value={option}
+                          onChange={(e) => updateOption(index, e.target.value)}
+                          disabled={saving || loadingExam}
+                          placeholder={`Option ${index + 1}`}
+                        />
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => removeOptionField(index)}
+                          disabled={saving || loadingExam || form.options.length <= 2}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="row">
+                      <button className="btn" type="button" onClick={addOptionField} disabled={saving || loadingExam}>
+                        Add option
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Correct answer</label>
+                    <select
+                      className="input"
+                      value={form.correctAnswer}
+                      onChange={(e) => setForm((current) => ({ ...current, correctAnswer: e.target.value }))}
+                      disabled={saving || loadingExam}
+                    >
+                      <option value="">Select the correct option</option>
+                      {normalizeOptions(form.options).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : null}
 
               {isTechnicalQuestion ? (
                 <div className="technicalQuestionPanel">
@@ -243,6 +335,19 @@ export default function QuestionCreatePage() {
 }
 
 function validateQuestionForm(form) {
+  if (form.type === "MCQ") {
+    const options = normalizeOptions(form.options);
+    if (options.length < 2) {
+      return "MCQ questions require at least two options.";
+    }
+
+    if (!normalizeOptionalValue(form.correctAnswer)) {
+      return "Please select the correct answer for the MCQ question.";
+    }
+
+    return "";
+  }
+
   if (!technicalTypes.has(form.type)) {
     return "";
   }
@@ -280,4 +385,14 @@ function buildQuestionText(form) {
   }
 
   return sections.join("\n\n---\n\n");
+}
+
+function normalizeOptions(options) {
+  return options
+    .map((option) => option.trim())
+    .filter(Boolean);
+}
+
+function normalizeOptionalValue(value) {
+  return value?.trim() ? value.trim() : "";
 }

@@ -493,7 +493,6 @@ public class ExamsController : ControllerBase
             Questions = suggestions
         });
     }
-
     [HttpPost("{id:guid}/results/publish")]
     [Authorize(Roles = "Professor")]
     public async Task<IActionResult> PublishResults(Guid id, [FromBody] PublishExamResultsDto? dto = null)

@@ -44,7 +44,6 @@ public class StudentExamResultDto
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
 }
-
 public class AiTextEvaluationResponseDto
 {
     public Guid AttemptId { get; set; }

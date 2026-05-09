@@ -5,7 +5,13 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { listUsers } from "../../lib/usersApi";
 import {
   activateSemesterEnrollment,
+  assignCarryOverOffering,
+  cancelCarryOver,
+  closeCarryOver,
+  createStudentCarryOver,
   createSemesterEnrollment,
+  listCourses,
+  listOfferings,
   listSemesterEnrollments,
   listStudentCarryOvers,
   listStudentCourseEnrollments,
@@ -41,8 +47,17 @@ export default function AdminEnrollmentsPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [students, setStudents] = useState([]);
   const [terms, setTerms] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [offerings, setOfferings] = useState([]);
   const [semesterEnrollments, setSemesterEnrollments] = useState([]);
   const [filters, setFilters] = useState(initialFilters);
+  const [carryOverForm, setCarryOverForm] = useState({
+    courseId: "",
+    originTermId: "",
+    originSemesterNo: 1,
+    reason: "Failed",
+  });
+  const [unlockOfferingId, setUnlockOfferingId] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [focusedStudentId, setFocusedStudentId] = useState("");
   const [focusedDetails, setFocusedDetails] = useState({
@@ -115,15 +130,19 @@ export default function AdminEnrollmentsPage() {
       setLoadingData(true);
       setPageError("");
 
-      const [termData, studentData, enrollmentData] = await Promise.all([
+      const [termData, studentData, enrollmentData, courseData, offeringData] = await Promise.all([
         listTerms(),
         listUsers({ role: "Student", isActive: true }),
         listSemesterEnrollments(),
+        listCourses(),
+        listOfferings(),
       ]);
 
       setTerms(Array.isArray(termData) ? termData : []);
       setStudents(Array.isArray(studentData) ? studentData : []);
       setSemesterEnrollments(Array.isArray(enrollmentData) ? enrollmentData : []);
+      setCourses(Array.isArray(courseData) ? courseData : []);
+      setOfferings(Array.isArray(offeringData) ? offeringData : []);
     } catch (error) {
       setPageError(readError(error, "Failed to load enrollment data."));
     } finally {
@@ -174,6 +193,16 @@ export default function AdminEnrollmentsPage() {
       setFilters((current) => ({ ...current, termId: preferredTerm.id }));
     }
   }, [visibleTerms, filters.termId]);
+
+  useEffect(() => {
+    if (!carryOverForm.originTermId && terms.length > 0) {
+      const previousTerm = [...terms]
+        .filter((term) => term.id !== filters.termId)
+        .sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0))[0];
+      const fallbackTerm = previousTerm || terms[0];
+      setCarryOverForm((current) => ({ ...current, originTermId: fallbackTerm.id }));
+    }
+  }, [terms, filters.termId, carryOverForm.originTermId]);
 
   useEffect(() => {
     if (!validSemesterOptions.includes(Number(filters.semesterNo))) {
@@ -371,6 +400,86 @@ export default function AdminEnrollmentsPage() {
     setProcessingKey("");
     if (focusedStudentId) {
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
+    }
+  }
+
+  async function handleCreateCarryOver() {
+    if (!focusedStudentId) {
+      setPageError("Select a student before creating a carry-over record.");
+      return;
+    }
+
+    if (!carryOverForm.courseId || !carryOverForm.originTermId) {
+      setPageError("Select the failed course and origin term before creating carry-over.");
+      return;
+    }
+
+    try {
+      setProcessingKey("create-carry-over");
+      setPageError("");
+      setPageSuccess("");
+      await createStudentCarryOver(focusedStudentId, {
+        courseId: carryOverForm.courseId,
+        originTermId: carryOverForm.originTermId,
+        originSemesterNo: Number(carryOverForm.originSemesterNo),
+        reason: carryOverForm.reason,
+      });
+      setPageSuccess("Carry-over record created for the focused student.");
+      await loadFocusedStudentDetails(focusedStudentId, filters.termId);
+    } catch (error) {
+      setPageError(readError(error, "Carry-over creation failed."));
+    } finally {
+      setProcessingKey("");
+    }
+  }
+
+  async function handleAssignCarryOver(carryOverId) {
+    if (!unlockOfferingId) {
+      setPageError("Select a target offering before unlocking this carry-over.");
+      return;
+    }
+
+    try {
+      setProcessingKey(`assign-${carryOverId}`);
+      setPageError("");
+      setPageSuccess("");
+      await assignCarryOverOffering(carryOverId, { courseOfferingId: unlockOfferingId });
+      setPageSuccess("Carry-over unlocked into the selected offering and exam eligibility was created.");
+      await loadFocusedStudentDetails(focusedStudentId, filters.termId);
+    } catch (error) {
+      setPageError(readError(error, "Carry-over unlock failed."));
+    } finally {
+      setProcessingKey("");
+    }
+  }
+
+  async function handleCloseCarryOver(carryOverId) {
+    try {
+      setProcessingKey(`close-${carryOverId}`);
+      setPageError("");
+      setPageSuccess("");
+      await closeCarryOver(carryOverId, unlockOfferingId ? { courseOfferingId: unlockOfferingId } : {});
+      setPageSuccess("Carry-over record closed.");
+      await loadFocusedStudentDetails(focusedStudentId, filters.termId);
+    } catch (error) {
+      setPageError(readError(error, "Carry-over close failed."));
+    } finally {
+      setProcessingKey("");
+    }
+  }
+
+  async function handleCancelCarryOver(carryOverId) {
+    try {
+      setProcessingKey(`cancel-${carryOverId}`);
+      setPageError("");
+      setPageSuccess("");
+      await cancelCarryOver(carryOverId);
+      setPageSuccess("Carry-over record cancelled.");
+      await loadFocusedStudentDetails(focusedStudentId, filters.termId);
+    } catch (error) {
+      setPageError(readError(error, "Carry-over cancellation failed."));
+    } finally {
+      setProcessingKey("");
     }
   }
 
@@ -718,7 +827,104 @@ export default function AdminEnrollmentsPage() {
             <div className="sectionHeader">
               <h3>Carry-over visibility</h3>
             </div>
-            <div className="sectionBody">
+            <div className="sectionBody stackLg">
+              <div className="pageStateCard">
+                <strong>Controlled unlock flow:</strong> create a carry-over from a previous semester, then assign it to an active offering to create exam eligibility.
+              </div>
+
+              <div className="questionBankFormGrid">
+                <div className="field">
+                  <label className="label">Failed / carried course</label>
+                  <select
+                    className="input"
+                    value={carryOverForm.courseId}
+                    onChange={(e) => setCarryOverForm((current) => ({ ...current, courseId: e.target.value }))}
+                    disabled={!focusedStudent || processingKey !== ""}
+                  >
+                    <option value="">Select course</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code} - {course.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="label">Origin term</label>
+                  <select
+                    className="input"
+                    value={carryOverForm.originTermId}
+                    onChange={(e) => setCarryOverForm((current) => ({ ...current, originTermId: e.target.value }))}
+                    disabled={!focusedStudent || processingKey !== ""}
+                  >
+                    <option value="">Select term</option>
+                    {terms.map((term) => (
+                      <option key={term.id} value={term.id}>
+                        {term.code} - {term.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="label">Origin semester</label>
+                  <select
+                    className="input"
+                    value={carryOverForm.originSemesterNo}
+                    onChange={(e) => setCarryOverForm((current) => ({ ...current, originSemesterNo: Number(e.target.value) }))}
+                    disabled={!focusedStudent || processingKey !== ""}
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((semester) => (
+                      <option key={semester} value={semester}>Semester {semester}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="label">Reason</label>
+                  <select
+                    className="input"
+                    value={carryOverForm.reason}
+                    onChange={(e) => setCarryOverForm((current) => ({ ...current, reason: e.target.value }))}
+                    disabled={!focusedStudent || processingKey !== ""}
+                  >
+                    <option value="Failed">Failed</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Deferred">Deferred</option>
+                    <option value="NotCompleted">Not completed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="label">Target offering for unlock</label>
+                <select
+                  className="input"
+                  value={unlockOfferingId}
+                  onChange={(e) => setUnlockOfferingId(e.target.value)}
+                  disabled={!focusedStudent || processingKey !== ""}
+                >
+                  <option value="">Select offering when assigning carry-over</option>
+                  {offerings.map((offering) => (
+                    <option key={offering.id} value={offering.id}>
+                      {formatOfferingLabel(offering)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="row" style={{ justifyContent: "flex-start" }}>
+                <button
+                  className="btn btnPrimary"
+                  type="button"
+                  onClick={handleCreateCarryOver}
+                  disabled={!focusedStudent || processingKey !== ""}
+                >
+                  {processingKey === "create-carry-over" ? "Creating..." : "Create carry-over"}
+                </button>
+              </div>
+
               {!focusedStudent ? (
                 <div className="pageStateCard">Select a student to review carry-over history.</div>
               ) : loadingFocusedDetails ? (
@@ -732,12 +938,13 @@ export default function AdminEnrollmentsPage() {
                         <th>Origin term</th>
                         <th>Origin semester</th>
                         <th>Status</th>
+                        <th>Unlock actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {focusedDetails.carryOvers.length === 0 ? (
                         <tr>
-                          <td colSpan={4}>No carry-over records for the selected student.</td>
+                          <td colSpan={5}>No carry-over records for the selected student.</td>
                         </tr>
                       ) : (
                         focusedDetails.carryOvers.map((carryOver) => (
@@ -749,6 +956,40 @@ export default function AdminEnrollmentsPage() {
                               <span className={`statusPill ${STATUS_TONE[carryOver.status] || "statusDraft"}`}>
                                 {carryOver.status}
                               </span>
+                            </td>
+                            <td>
+                              <div className="resourceActionGroup">
+                                {carryOver.status === "Open" ? (
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => handleAssignCarryOver(carryOver.id)}
+                                    disabled={processingKey !== ""}
+                                  >
+                                    {processingKey === `assign-${carryOver.id}` ? "Unlocking..." : "Unlock"}
+                                  </button>
+                                ) : null}
+                                {carryOver.status !== "Closed" && carryOver.status !== "Cancelled" ? (
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => handleCloseCarryOver(carryOver.id)}
+                                    disabled={processingKey !== ""}
+                                  >
+                                    {processingKey === `close-${carryOver.id}` ? "Closing..." : "Close"}
+                                  </button>
+                                ) : null}
+                                {carryOver.status === "Open" ? (
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => handleCancelCarryOver(carryOver.id)}
+                                    disabled={processingKey !== ""}
+                                  >
+                                    {processingKey === `cancel-${carryOver.id}` ? "Cancelling..." : "Cancel"}
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -819,4 +1060,16 @@ function buildBatchMessage(results, label) {
   const skippedCount = results.filter((item) => item.outcome === "Skipped").length;
 
   return `Processed ${results.length} ${label}: ${successCount} successful, ${failedCount} failed, ${skippedCount} skipped.`;
+}
+
+function formatOfferingLabel(offering) {
+  const course = offering.course?.code
+    ? `${offering.course.code} - ${offering.course.name || "Course"}`
+    : "Course";
+  const term = offering.term?.code || "Term";
+  const semester = offering.semesterNo ? `S${offering.semesterNo}` : "S-";
+  const section = offering.sectionCode || "-";
+  const status = offering.status || "Draft";
+
+  return `${course} / ${term} / ${semester} / Section ${section} / ${status}`;
 }

@@ -47,11 +47,7 @@ public class ExamsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
- feat/sprint-11-monaco-editor
             var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId.Value);
-
-            var offeringIds = await GetEligibleOfferingIdsAsync(userId.Value);
- main
             query = query.Where(x =>
                 x.IsPublished &&
                 x.Status == "Published" &&
@@ -233,6 +229,13 @@ public class ExamsController : ControllerBase
 
         if (!await CanStudentAccessExamAsync(userId.Value, exam))
             return Forbid();
+
+        var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
+            a.ExamId == examId &&
+            a.StudentId == userId.Value);
+
+        if (alreadySubmitted)
+            return BadRequest(new { message = "You have already submitted this exam." });
 
         var details = new List<QuestionScoreDetailDto>();
         double score = 0;

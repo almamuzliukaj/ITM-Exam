@@ -44,6 +44,7 @@ export default function ExamsListPage() {
   }
 
   const canCreate = canManageExams(user.role);
+  const isStudent = user.role === "Student";
 
   async function onPublish(examId) {
     try {
@@ -121,7 +122,9 @@ export default function ExamsListPage() {
                         {publishingId === exam.id ? "Publishing..." : "Publish"}
                       </button>
                     ) : null}
-                    <Link className="btn" to={`/exams/${exam.id}`}>{t("examsList.open")}</Link>
+                    <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/session` : `/exams/${exam.id}`}>
+                      {isStudent ? "Start" : t("examsList.open")}
+                    </Link>
                   </div>
                 </div>
               </article>

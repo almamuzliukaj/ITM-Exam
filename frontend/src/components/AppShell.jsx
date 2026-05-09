@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { logout } from "../lib/auth";
@@ -35,14 +35,9 @@ export default function AppShell({
   children,
 }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { t } = useTranslation();
   const items = navigationByRole[user?.role] || navigationByRole.Student;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [location.pathname]);
 
   function handleLogout() {
     logout();
@@ -79,6 +74,7 @@ export default function AppShell({
               key={item.to}
               to={item.to}
               className={({ isActive }) => `navItem${isActive ? " navItemActive" : ""}`}
+              onClick={() => setIsMobileMenuOpen(false)}
             >
               {t(item.labelKey)}
             </NavLink>

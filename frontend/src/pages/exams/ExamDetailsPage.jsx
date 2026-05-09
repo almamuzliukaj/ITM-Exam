@@ -19,6 +19,7 @@ export default function ExamDetailsPage() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const canEdit = canManageExams(user?.role);
+  const isStudent = user?.role === "Student";
 
   useEffect(() => {
     if (!examId) return;
@@ -112,6 +113,7 @@ export default function ExamDetailsPage() {
               {publishing ? "Publishing..." : "Publish exam"}
             </button>
           ) : null}
+          {isStudent && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/session`}>Start session</Link> : null}
           {canEdit && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
         </>
       }

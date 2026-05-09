@@ -223,7 +223,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
           <span>Final: {formatScore(attempt.finalScore)}</span>
         </div>
 
-        <div className="questionBankFormGrid" style={{ marginTop: 12 }}>
+        <div className="questionBankFormGrid gradebookScoreGrid">
           <div className="field">
             <label className="label">Manual score</label>
             <input
@@ -250,7 +250,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
           </div>
         </div>
 
-        <div className="field" style={{ marginTop: 12 }}>
+        <div className="field gradebookNotesField">
           <label className="label">Human review notes</label>
           <textarea
             className="input textareaCompact"
@@ -263,7 +263,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
 
         {aiReview ? <AiReviewPanel review={aiReview} /> : null}
 
-        <div className="resourceActionGroup" style={{ marginTop: 12 }}>
+        <div className="resourceActionGroup gradebookActions">
           <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
             {reviewing ? "Reviewing..." : "AI text review"}
           </button>
@@ -278,7 +278,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
 
 function AiReviewPanel({ review }) {
   return (
-    <div className="technicalQuestionPreview" style={{ marginTop: 12 }}>
+    <div className="technicalQuestionPreview gradebookAiReview">
       <div>
         <span className="summaryLabel">AI-assisted suggestion</span>
         <pre>{`Suggested manual score: ${formatScore(review.suggestedManualScore)}\n${review.reviewReminder || ""}`}</pre>

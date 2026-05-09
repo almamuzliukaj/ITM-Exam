@@ -300,7 +300,7 @@ public class ExamsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/publish")]
-    [Authorize(Roles = "Professor")]
+    [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> PublishExam(Guid id, [FromBody] PublishExamDto? dto = null)
     {
         var exam = await _context.Exams.FindAsync(id);
@@ -314,12 +314,13 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
         var hasAccess = exam.CreatedByUserId == userId.Value ||
                         (exam.CourseOfferingId != null && await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
                             a.CourseOfferingId == exam.CourseOfferingId &&
                             a.UserId == userId.Value &&
                             a.IsActive &&
-                            a.RoleInOffering == "Professor"));
+                            a.RoleInOffering == assignmentRole));
 
         if (!hasAccess)
             return Forbid();
@@ -330,13 +331,13 @@ public class ExamsController : ControllerBase
                 a.CourseOfferingId == dto.CourseOfferingId.Value &&
                 a.UserId == userId.Value &&
                 a.IsActive &&
-                a.RoleInOffering == "Professor");
+                a.RoleInOffering == assignmentRole);
 
             var isPrimaryProfessor = await _context.CourseOfferings.AnyAsync(x =>
                 x.Id == dto.CourseOfferingId.Value &&
                 x.PrimaryProfessorId == userId.Value);
 
-            if (!canAssignOffering && !isPrimaryProfessor)
+            if (!canAssignOffering && !(User.IsInRole("Professor") && isPrimaryProfessor))
                 return Forbid();
 
             exam.CourseOfferingId = dto.CourseOfferingId.Value;
@@ -344,6 +345,10 @@ public class ExamsController : ControllerBase
 
         if (!exam.CourseOfferingId.HasValue)
             return BadRequest(new { message = "Exam must be linked to a course offering before publishing." });
+
+        var hasQuestions = await _context.Questions.AnyAsync(q => q.ExamId == id);
+        if (!hasQuestions)
+            return BadRequest(new { message = "Exam must have at least one question before publishing." });
 
         exam.Status = "Published";
         exam.IsPublished = true;
@@ -390,6 +395,9 @@ public class ExamsController : ControllerBase
             .Take(dto.NumberOfQuestions)
             .Select(q => new { q.Id, q.Text, q.Points, q.Type })
             .ToListAsync();
+
+        return Ok(random);
+    }
 
     [HttpPost("{examId:guid}/generate-random")]
     [Authorize(Roles = "Professor,Assistant")]
@@ -493,13 +501,13 @@ public class ExamsController : ControllerBase
 
         return Ok(MapToExamQuestionResponse(existingQuestion));
     }
-        return Ok(random);
-    }
 
     private Guid? GetCurrentUserId()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         return Guid.TryParse(userId, out var parsed) ? parsed : null;
+    }
+
     private async Task<bool> CanManageExamAsync(Exam exam)
     {
         var userId = GetCurrentUserId();
@@ -602,7 +610,6 @@ public class ExamsController : ControllerBase
     private static string BuildQuestionBankDescription(Guid offeringId)
     {
         return $"{QuestionBankMarker}{offeringId}";
-    }
     }
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)

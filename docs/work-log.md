@@ -1,4 +1,11 @@
-﻿# Work Log (Agnesa14)
+# Work Log (Agnesa14)
+
+## 2026-05-09
+- Updated repository planning documentation to match the Notion task board screenshots.
+- Replaced the old six-sprint delivery model with the current Sprint 1 through Sprint 14 board structure.
+- Documented Agnesa-owned tasks across Sprint 1 through Sprint 14 in `docs/12-roadmap-and-mvp.md`.
+- Noted that Sprint 15 was not visible in the provided screenshots and should be added later if it exists in Notion.
+- Confirmed Sprint 12 manual exam authoring work is now represented in Git documentation after implementation.
 
 ## 2026-04-03
 - Set up local development environment on Windows.

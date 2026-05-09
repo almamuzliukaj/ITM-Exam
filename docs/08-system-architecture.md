@@ -1,19 +1,26 @@
-# 8. Arkitektura e Sistemit
+# 8. System Architecture
 
-## 8.1 Komponentët
-- Frontend (React + Tailwind + Monaco)
-- Backend (ASP.NET Core Web API)
-- Database (PostgreSQL)
-- Sandbox (Judge0)
-- Deployment (Docker Compose)
+## 8.1 Components
 
-## 8.2 Rrjedha (Flow)
-- UI -> API (JWT)
-- API -> DB (EF Core)
-- API -> Judge0 (submit + poll)
-- API -> UI (results/status)
+- **Frontend:** React and Vite application with role-based routes and reusable UI components.
+- **Backend:** ASP.NET Core Web API using controllers, DTOs, models, and Entity Framework Core.
+- **Database:** PostgreSQL for users, academic structure, exams, questions, attempts, and enrollments.
+- **Authentication:** JWT-based login flow.
+- **Documentation:** Markdown files aligned with the Notion sprint board.
 
-## 8.3 Pse Judge0
-- izolim/siguri
-- kontroll i resurseve
-- standardizim i ekzekutimit
+## 8.2 Request Flow
+
+1. User logs in through the frontend.
+2. Backend validates credentials and returns a token.
+3. Frontend sends authenticated API requests.
+4. Backend applies role and ownership rules.
+5. Data is stored or queried through Entity Framework Core.
+6. Frontend renders role-specific workspaces.
+
+## 8.3 Architecture Principles
+
+- Keep admin workflows separate from academic authoring workflows.
+- Tie staff access to assigned offerings.
+- Tie student access to eligibility records.
+- Keep question bank logic separate from normal exam records.
+- Prefer explicit validation over implicit UI-only restrictions.

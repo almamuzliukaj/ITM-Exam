@@ -1,47 +1,53 @@
-# 12. Roadmap 12-javor (6 Sprint-e) dhe MVP
+# 12. Roadmap and MVP
 
-## 12.1 Qëllimi
-Të realizohet një MVP funksional brenda 12 javëve, me fokus në stabilitet, siguri bazë dhe funksionalitetet kryesore të provimeve.
+The project roadmap has been updated to match the team's Notion task board. The previous roadmap used a smaller six-sprint planning model; the active planning model now tracks Sprint 1 through Sprint 14.
 
-## 12.2 Sprint 1 (Java 1–2): Themelet
-- Setup repo + workflow (PR/branches)
-- DB model bazë (Users/Roles, Semesters, Courses, Groups, Enrollments)
-- Auth (JWT) + RBAC
-- Skeleton UI (login + routing bazike)
+## 12.1 Current Sprint Model
 
-## 12.3 Sprint 2 (Java 3–4): Banka e Pyetjeve
-- CRUD Questions për MCQ/Text/Code
-- MCQ Options + correct answer
-- Code: Test cases (public/hidden)
-- Validime + error handling
+- Sprint 1: Project Foundation
+- Sprint 2: Requirements and UX Planning
+- Sprint 3: Architecture and Interface Design
+- Sprint 4: Authentication
+- Sprint 5: User and Identity Management
+- Sprint 6: Academic Structure
+- Sprint 7: Course Offerings
+- Sprint 8: Exam Foundation
+- Sprint 9: Product Alignment and Hardening
+- Sprint 10: Enrollment and Role Workspaces
+- Sprint 11: Assistant, Question Bank, and Code Authoring
+- Sprint 12: Exam Authoring and Delivery
+- Sprint 13: Evaluation, Grading, and Results
+- Sprint 14: Finalization and Delivery Readiness
 
-## 12.4 Sprint 3 (Java 5–6): Provimet (Generation + Scheduling)
-- Krijim provimi + start/end time
-- Gjenerim provimi nga banka sipas rregullave
-- Snapshot/immutability e pyetjeve në provim
-- Statuset bazë (Draft/Scheduled/Active/Closed)
+## 12.2 Agnesa Scope From Notion Board
 
-## 12.5 Sprint 4 (Java 7–8): Exam Arena + Submissions
-- Exam Arena one-at-a-time
-- Timer server-side
-- Auto-save (30s + on change)
-- Final submit + lock attempt (1 attempt)
+Agnesa-owned tasks visible in the Notion screenshots:
 
-## 12.6 Sprint 5 (Java 9–10): Auto-grading (MCQ + Code C#)
-- MCQ auto-grading
-- Judge0 integrim për C#
-- Student view: vetëm pass/fail
-- Ruhet vetëm final submission (i fundit)
+| Sprint | Feature | Status in Notion screenshot |
+| --- | --- | --- |
+| Sprint 1 | Project Foundation | Done |
+| Sprint 2 | Requirements Engineering | Done |
+| Sprint 3 | Architecture | Done |
+| Sprint 4 | Authentication UX | Done |
+| Sprint 5 | User Management | Done |
+| Sprint 6 | Academic Structure | Done |
+| Sprint 7 | Offering Management | Done |
+| Sprint 8 | Exam Planning | Done |
+| Sprint 9 | Product Alignment | Done |
+| Sprint 10 | Enrollment Management | Done |
+| Sprint 11 | Assistant Workflow | In Progress |
+| Sprint 12 | Manual Exam Authoring | To Do in screenshot; implementation has been added to Git in `Build manual exam authoring workflow`. |
+| Sprint 13 | AI Text Evaluation | To Do |
+| Sprint 14 | Progression and Carry-Over | To Do |
 
-## 12.7 Sprint 6 (Java 11–12): Manual grading + Results + Security + Deployment
-- Manual grading për Text
-- Manual override për Code
-- Publish results (vetëm kur profesori vendos)
-- Proctoring MVP: IP whitelist + PIN/QR + focus tracking + watermark
-- Docker-compose + dokumentim final për demo
+## 12.3 Repository Alignment
 
-## 12.8 Kritere të MVP (Definition of Done)
-- Funksionalitetet kryesore punojnë end-to-end (Admin → Profesor → Student).
-- Pa build artifacts në repo (`bin/`, `obj/`, `.vs/`).
-- Dokumentimi i plotë në `docs/`.
-- Demo flow i qartë për prezantim.
+The repository documentation should now be read together with:
+
+- `docs/14-delivery-plan.md` for the full Notion sprint board snapshot.
+- `docs/work-log.md` for Agnesa's local work log.
+- `docs/work-log-albiona.md` for Albiona's implementation notes.
+
+## 12.4 Missing Sprint 15
+
+Sprint 15 is not visible in the screenshots provided on 2026-05-09. If Sprint 15 exists in Notion, it should be added after the team shares its owner, feature, status, acceptance criteria, and definition of done.

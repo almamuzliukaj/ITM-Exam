@@ -37,7 +37,7 @@ Agnesa-owned tasks visible in the Notion screenshots:
 | Sprint 10 | Enrollment Management | Done |
 | Sprint 11 | Assistant Workflow | In Progress |
 | Sprint 12 | Manual Exam Authoring | To Do in screenshot; implementation has been added to Git in `Build manual exam authoring workflow`. |
-| Sprint 13 | AI Text Evaluation | To Do |
+| Sprint 13 | AI Text Evaluation | Done in baseline form; AI-assisted text review is integrated into the gradebook with required human approval. |
 | Sprint 14 | Progression and Carry-Over | To Do |
 
 ## 12.3 Repository Alignment

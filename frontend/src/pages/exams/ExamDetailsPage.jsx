@@ -164,6 +164,7 @@ export default function ExamDetailsPage() {
       actions={
         <>
           <Link className="btn" to="/exams">{t("examDetails.backToExams")}</Link>
+          {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/gradebook`}>Gradebook</Link> : null}
           {isDraft ? (
             <button className="btn btnPrimary" type="button" onClick={onPublish} disabled={publishing || !canPublishDraft}>
               {publishing ? "Publishing..." : "Publish exam"}

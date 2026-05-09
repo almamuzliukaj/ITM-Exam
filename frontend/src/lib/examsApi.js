@@ -50,6 +50,11 @@ export async function gradeExamAttempt(attemptId, payload) {
   return response.data;
 }
 
+export async function evaluateTextAttempt(attemptId) {
+  const response = await api.post(`/api/exams/attempts/${attemptId}/ai-text-evaluation`);
+  return response.data;
+}
+
 export async function publishExamResults(examId, payload = { publishAll: true, attemptIds: [] }) {
   const response = await api.post(`/api/exams/${examId}/results/publish`, payload);
   return response.data;

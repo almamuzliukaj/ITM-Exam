@@ -455,6 +455,45 @@ public class ExamsController : ControllerBase
         });
     }
 
+    [HttpPost("attempts/{attemptId:guid}/ai-text-evaluation")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> EvaluateTextAttempt(Guid attemptId)
+    {
+        var attempt = await _context.ExamAttempts
+            .Include(x => x.Exam)
+            .FirstOrDefaultAsync(x => x.Id == attemptId);
+
+        if (attempt == null)
+            return NotFound(new { message = "Attempt not found." });
+
+        if (!await CanManageExamAsync(attempt.Exam))
+            return Forbid();
+
+        var questions = await _context.Questions
+            .Where(x => x.ExamId == attempt.ExamId)
+            .ToListAsync();
+
+        var answers = ParseAttemptAnswers(attempt.AnswersJson);
+        var suggestions = new List<AiTextEvaluationQuestionDto>();
+
+        foreach (var question in questions.Where(q => string.Equals(q.Type, "Text", StringComparison.OrdinalIgnoreCase)))
+        {
+            var answer = answers.FirstOrDefault(x => x.QuestionId == question.Id);
+            var response = answer?.Response ?? string.Empty;
+            var suggestion = BuildTextEvaluationSuggestion(question, response);
+            suggestions.Add(suggestion);
+        }
+
+        return Ok(new AiTextEvaluationResponseDto
+        {
+            AttemptId = attempt.Id,
+            ExamId = attempt.ExamId,
+            SuggestedManualScore = Math.Round(suggestions.Sum(x => x.SuggestedPoints), 2),
+            ReviewReminder = "AI assistance is a baseline suggestion only. Staff must review the answer and save the final grade manually.",
+            Questions = suggestions
+        });
+    }
+
     [HttpPost("{id:guid}/results/publish")]
     [Authorize(Roles = "Professor")]
     public async Task<IActionResult> PublishResults(Guid id, [FromBody] PublishExamResultsDto? dto = null)
@@ -753,6 +792,93 @@ public class ExamsController : ControllerBase
         {
             return [];
         }
+    }
+
+    private static List<AnswerDto> ParseAttemptAnswers(string answersJson)
+    {
+        if (string.IsNullOrWhiteSpace(answersJson))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<AnswerDto>>(answersJson) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)
+    {
+        var expectedAnswer = NormalizeOptionalValue(question.CorrectAnswer);
+        var cleanResponse = response.Trim();
+
+        if (string.IsNullOrWhiteSpace(cleanResponse))
+        {
+            return new AiTextEvaluationQuestionDto
+            {
+                QuestionId = question.Id,
+                Prompt = question.Text,
+                Response = cleanResponse,
+                ExpectedAnswer = expectedAnswer,
+                MaxPoints = question.Points,
+                SuggestedPoints = 0,
+                Confidence = "High",
+                Rationale = "No answer was submitted for this text question."
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(expectedAnswer))
+        {
+            return new AiTextEvaluationQuestionDto
+            {
+                QuestionId = question.Id,
+                Prompt = question.Text,
+                Response = cleanResponse,
+                ExpectedAnswer = expectedAnswer,
+                MaxPoints = question.Points,
+                SuggestedPoints = 0,
+                Confidence = "Low",
+                Rationale = "No expected answer or grading note is available, so staff review is required."
+            };
+        }
+
+        var expectedTokens = TokenizeForEvaluation(expectedAnswer);
+        var responseTokens = TokenizeForEvaluation(cleanResponse);
+        var overlapRatio = expectedTokens.Count == 0
+            ? 0
+            : expectedTokens.Count(token => responseTokens.Contains(token)) / (double)expectedTokens.Count;
+        var lengthRatio = expectedTokens.Count == 0
+            ? 0
+            : Math.Min(responseTokens.Count / (double)expectedTokens.Count, 1);
+        var scoreRatio = Math.Clamp((overlapRatio * 0.75) + (lengthRatio * 0.25), 0, 1);
+        var confidence = overlapRatio >= 0.75 ? "High" : overlapRatio >= 0.4 ? "Medium" : "Low";
+
+        return new AiTextEvaluationQuestionDto
+        {
+            QuestionId = question.Id,
+            Prompt = question.Text,
+            Response = cleanResponse,
+            ExpectedAnswer = expectedAnswer,
+            MaxPoints = question.Points,
+            SuggestedPoints = Math.Round(question.Points * scoreRatio, 2),
+            Confidence = confidence,
+            Rationale = $"Baseline text similarity matched {Math.Round(overlapRatio * 100)}% of expected grading terms. Staff must confirm the final score."
+        };
+    }
+
+    private static HashSet<string> TokenizeForEvaluation(string value)
+    {
+        var normalizedChars = value
+            .ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ')
+            .ToArray();
+
+        return new string(normalizedChars)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length > 2)
+            .ToHashSet();
     }
 
     private static bool IsSameQuestionContent(Question left, Question right)

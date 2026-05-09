@@ -107,7 +107,7 @@ Note: the screenshots reviewed for this update show Sprint 1 through Sprint 14. 
 
 | Owner | Feature | Priority | Status | Acceptance criteria | Definition of Done |
 | --- | --- | --- | --- | --- | --- |
-| Agnesa | AI Text Evaluation | High | To Do | Text answers can be reviewed with AI assistance but remain under academic review control. | AI-assisted text evaluation flow is defined and integrated in baseline form. |
+| Agnesa | AI Text Evaluation | High | Done | Text answers can be reviewed with AI assistance but remain under academic review control. | AI-assisted text evaluation flow is defined and integrated in baseline form. |
 | Albiona | Grading and Results | High | To Do | Results remain hidden until published and role boundaries are enforced in grading access. | Results pipeline and visibility rules are implemented. |
 | Alma | Result Experience | High | To Do | Staff can review attempts in queue and students can view published results in a clean interface. | Review queue and result pages are available in UI. |
 | Team | Integration | High | To Do | AI evaluation, grading, and result publication are reviewed together. | Team validation pass is completed. |

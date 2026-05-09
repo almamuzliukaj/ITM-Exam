@@ -24,13 +24,13 @@ The repository currently includes:
 ## 13.3 Remaining Risks
 
 - Sprint statuses in Notion may not always match implementation status after recent commits.
-- Grading, results, AI-assisted evaluation, and final publication flows still require implementation.
+- Final grading polish, result experience, carry-over progression, and security hardening still require implementation.
 - Carry-over progression and final security hardening are not complete.
 - Some older documentation was based on an earlier six-sprint plan and has been replaced.
 
 ## 13.4 Recommended Next Steps
 
 1. Confirm Notion statuses for Sprint 11 and Sprint 12 after the latest Git changes.
-2. Start Sprint 13 planning for AI text evaluation, grading, and result visibility.
+2. Continue Sprint 13 integration for result experience and team validation.
 3. Add test cases for manual exam authoring, question bank generation, and student eligibility.
 4. Keep documentation updates aligned with Git commits and pull requests.

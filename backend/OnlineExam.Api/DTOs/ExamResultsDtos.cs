@@ -44,3 +44,24 @@ public class StudentExamResultDto
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
 }
+
+public class AiTextEvaluationResponseDto
+{
+    public Guid AttemptId { get; set; }
+    public Guid ExamId { get; set; }
+    public double SuggestedManualScore { get; set; }
+    public string ReviewReminder { get; set; } = string.Empty;
+    public List<AiTextEvaluationQuestionDto> Questions { get; set; } = [];
+}
+
+public class AiTextEvaluationQuestionDto
+{
+    public Guid QuestionId { get; set; }
+    public string Prompt { get; set; } = string.Empty;
+    public string Response { get; set; } = string.Empty;
+    public string? ExpectedAnswer { get; set; }
+    public double MaxPoints { get; set; }
+    public double SuggestedPoints { get; set; }
+    public string Confidence { get; set; } = string.Empty;
+    public string Rationale { get; set; } = string.Empty;
+}

@@ -47,6 +47,22 @@ public class StudentExamResultDto
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
 }
+
+public class StudentExamResultDetailDto
+{
+    public Guid AttemptId { get; set; }
+    public Guid ExamId { get; set; }
+    public string ExamTitle { get; set; } = string.Empty;
+    public DateTime? SubmittedAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public bool IsPublished { get; set; }
+    public double? FinalScore { get; set; }
+    public double? AutoScore { get; set; }
+    public string? GradingNotes { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public bool RequiresManualGrading { get; set; }
+    public bool IsGraded { get; set; }
+}
 public class AiTextEvaluationResponseDto
 {
     public Guid AttemptId { get; set; }

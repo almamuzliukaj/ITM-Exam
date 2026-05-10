@@ -834,7 +834,61 @@ public class ExamsController : ControllerBase
             .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
 
+        await _auditLogService.LogAsync("StudentResults.ListViewed", "User", userId.Value, new
+        {
+            studentId = userId.Value,
+            totalResults = results.Count,
+            publishedResults = results.Count(x => x.IsPublished),
+            pendingResults = results.Count(x => !x.IsPublished)
+        }, "Results");
+
         return Ok(results);
+    }
+
+    [HttpGet("results/me/{attemptId:guid}")]
+    [Authorize(Roles = "Student")]
+    public async Task<IActionResult> GetMyResultDetails(Guid attemptId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var result = await _context.ExamAttempts
+            .Where(x => x.Id == attemptId && x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
+            .Join(
+                _context.Exams,
+                attempt => attempt.ExamId,
+                exam => exam.Id,
+                (attempt, exam) => new StudentExamResultDetailDto
+                {
+                    AttemptId = attempt.Id,
+                    ExamId = attempt.ExamId,
+                    ExamTitle = exam.Title,
+                    SubmittedAt = attempt.SubmittedAt,
+                    Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
+                    IsPublished = attempt.IsPublished,
+                    FinalScore = attempt.IsPublished ? attempt.FinalScore : null,
+                    AutoScore = attempt.IsPublished ? attempt.AutoScore : null,
+                    GradingNotes = attempt.IsPublished ? attempt.GradingNotes : null,
+                    PublishedAt = attempt.PublishedAt,
+                    RequiresManualGrading = attempt.RequiresManualGrading,
+                    IsGraded = attempt.IsGraded
+                })
+            .FirstOrDefaultAsync();
+
+        if (result == null)
+            return NotFound(new { message = "Result not found." });
+
+        await _auditLogService.LogAsync("StudentResult.DetailViewed", "ExamAttempt", attemptId, new
+        {
+            studentId = userId.Value,
+            result.AttemptId,
+            result.ExamId,
+            result.IsPublished,
+            result.Status
+        }, "Results");
+
+        return Ok(result);
     }
 
     [HttpPost("build-random")]

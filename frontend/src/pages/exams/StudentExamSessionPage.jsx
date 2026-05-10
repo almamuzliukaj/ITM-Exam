@@ -156,7 +156,12 @@ export default function StudentExamSessionPage() {
         {error ? <div className="alert">{error}</div> : null}
 
         {result ? (
-          <SubmissionResult result={result} totalPoints={sumPoints(questions)} onDone={() => navigate("/exams")} />
+          <SubmissionResult
+            result={result}
+            answeredCount={answeredCount}
+            questionsCount={questions.length}
+            onDone={() => navigate("/exams")}
+          />
         ) : null}
 
         {showSubmitReview ? (
@@ -261,6 +266,8 @@ export default function StudentExamSessionPage() {
 function QuestionAnswerCard({ index, question, value, flagged, onChange, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
+  const isMcq = question.type === "MCQ";
+  const options = Array.isArray(question.options) ? question.options : [];
   const answered = String(value || "").trim().length > 0;
 
   return (
@@ -294,12 +301,29 @@ function QuestionAnswerCard({ index, question, value, flagged, onChange, onToggl
             </>
           ) : null}
         </div>
-        <textarea
-          className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
-        />
+        {isMcq && options.length > 0 ? (
+          <div className="examMcqOptions">
+            {options.map((option) => (
+              <label key={option} className={`examMcqOption${value === option ? " selected" : ""}`}>
+                <input
+                  type="radio"
+                  name={`question-${question.id}`}
+                  value={option}
+                  checked={value === option}
+                  onChange={(event) => onChange(event.target.value)}
+                />
+                <span>{option}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <textarea
+            className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+          />
+        )}
       </div>
     </article>
   );
@@ -328,7 +352,7 @@ function SubmitReviewPanel({ answeredCount, flaggedCount, questionsCount, submit
   );
 }
 
-function SubmissionResult({ result, totalPoints, onDone }) {
+function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
   return (
     <section className="surfaceCard">
       <div className="sectionHeader">
@@ -341,17 +365,20 @@ function SubmissionResult({ result, totalPoints, onDone }) {
       <div className="sectionBody">
         <div className="summaryStrip">
           <article className="summaryCard">
-            <span className="summaryLabel">Score</span>
-            <strong>{result.score ?? 0}</strong>
+            <span className="summaryLabel">Status</span>
+            <strong>Submitted</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Max points</span>
-            <strong>{totalPoints}</strong>
+            <span className="summaryLabel">Answered</span>
+            <strong>{answeredCount}/{questionsCount}</strong>
           </article>
           <article className="summaryCard">
             <span className="summaryLabel">Attempt</span>
             <strong>{String(result.examAttemptId || "").slice(0, 8) || "-"}</strong>
           </article>
+        </div>
+        <div className="pageStateCard examResultNotice">
+          Your submission is saved. Scores and feedback become visible only after staff review and result publication.
         </div>
         <div className="heroActions examDoneActions">
           <button className="btn btnPrimary" type="button" onClick={onDone}>Return to exams</button>

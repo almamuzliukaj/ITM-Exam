@@ -17,6 +17,7 @@ public class QuestionsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
+    private const string ExamAttemptSubmittedStatus = "Submitted";
     private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text", "CSharp", "SQL"];
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
@@ -493,7 +494,8 @@ public class QuestionsController : ControllerBase
 
         var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
             a.ExamId == exam.Id &&
-            a.StudentId == userId);
+            a.StudentId == userId &&
+            a.Status == ExamAttemptSubmittedStatus);
 
         if (alreadySubmitted)
             return "You have already submitted this exam.";

@@ -5,7 +5,10 @@ public class ExamAttempt
     public Guid Id { get; set; }
     public Guid ExamId { get; set; }
     public Guid StudentId { get; set; }
-    public DateTime SubmittedAt { get; set; }
+    public string Status { get; set; } = "InProgress";
+    public DateTime StartedAt { get; set; }
+    public DateTime? LastSavedAt { get; set; }
+    public DateTime? SubmittedAt { get; set; }
     public string AnswersJson { get; set; } = null!;
     public double AutoScore { get; set; }
     public double ManualScore { get; set; }

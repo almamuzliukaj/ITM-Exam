@@ -11,6 +11,7 @@ namespace OnlineExam.Api.Controllers;
 [Authorize]
 public class DashboardController : ControllerBase
 {
+    private const string ExamAttemptSubmittedStatus = "Submitted";
     private readonly AppDbContext _context;
 
     public DashboardController(AppDbContext context)
@@ -74,7 +75,7 @@ public class DashboardController : ControllerBase
         var examIds = await exams.Select(x => x.Id).ToListAsync();
         var draftExams = await exams.CountAsync(x => !x.IsPublished || x.Status == "Draft");
         var questionBank = await _context.Questions.CountAsync(x => examIds.Contains(x.ExamId));
-        var grading = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId));
+        var grading = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId) && x.Status == ExamAttemptSubmittedStatus);
 
         return new
         {
@@ -101,7 +102,7 @@ public class DashboardController : ControllerBase
         var examIds = await exams.Select(x => x.Id).ToListAsync();
         var assignedOfferings = offeringIds.Count;
         var supportExams = await exams.CountAsync();
-        var reviewTasks = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId));
+        var reviewTasks = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId) && x.Status == ExamAttemptSubmittedStatus);
         var activeSessions = await exams.CountAsync(x => x.IsPublished && x.StartsAt <= now && x.EndsAt >= now);
 
         return new
@@ -130,7 +131,7 @@ public class DashboardController : ControllerBase
 
         var eligibleExams = await eligibleExamsQuery.CountAsync();
         var upcoming = await eligibleExamsQuery.CountAsync(x => x.StartsAt >= now && x.StartsAt <= nextWeek);
-        var results = await _context.ExamAttempts.CountAsync(x => x.StudentId == userId);
+        var results = await _context.ExamAttempts.CountAsync(x => x.StudentId == userId && x.Status == ExamAttemptSubmittedStatus);
         var carryOver = await _context.CarryOverCourses.CountAsync(x => x.StudentId == userId && x.Status == "Open");
 
         return new

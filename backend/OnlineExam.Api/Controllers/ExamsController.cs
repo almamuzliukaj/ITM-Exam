@@ -247,6 +247,9 @@ public class ExamsController : ControllerBase
         if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be deleted. Only draft exams can be deleted." });
+
         var userId = GetCurrentUserId();
         if (userId == null)
             return Unauthorized();
@@ -282,6 +285,9 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
+        if (exam.Questions.Count == 0)
+            return BadRequest(new { message = "This exam cannot be submitted because it has no questions." });
+
         var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
         if (sessionAccessError != null)
         {
@@ -298,8 +304,13 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "You have already submitted this exam." });
 
         var submittedAnswers = dto.Answers ?? [];
+        var validationError = ValidateAttemptAnswers(exam, submittedAnswers);
+        if (validationError != null)
+            return BadRequest(new { message = validationError });
+
         var (details, autoScore, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
         var now = DateTime.UtcNow;
+        var createdNewAttempt = false;
 
         if (attempt == null)
         {
@@ -322,6 +333,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            createdNewAttempt = true;
         }
         else
         {
@@ -349,6 +361,16 @@ public class ExamsController : ControllerBase
         catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
         {
             return BadRequest(new { message = "You have already submitted this exam." });
+        }
+
+        if (createdNewAttempt)
+        {
+            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
+            {
+                attempt.ExamId,
+                attempt.StudentId,
+                attempt.StartedAt
+            }, "ExamDelivery");
         }
 
         await _auditLogService.LogAsync("ExamAttempt.Submitted", "ExamAttempt", attempt.Id, new
@@ -393,10 +415,52 @@ public class ExamsController : ControllerBase
         }
 
         var attempt = await _context.ExamAttempts
-            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
-        return Ok(attempt == null ? null : MapToDraftDto(attempt));
+        if (attempt == null)
+        {
+            var now = DateTime.UtcNow;
+            attempt = new ExamAttempt
+            {
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptInProgressStatus,
+                StartedAt = now,
+                LastSavedAt = null,
+                SubmittedAt = null,
+                AnswersJson = JsonSerializer.Serialize(new List<AnswerDto>()),
+                AutoScore = 0,
+                ManualScore = 0,
+                FinalScore = 0,
+                RequiresManualGrading = false,
+                IsGraded = false,
+                IsPublished = false
+            };
+
+            _context.ExamAttempts.Add(attempt);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
+            {
+                attempt = await _context.ExamAttempts
+                    .AsNoTracking()
+                    .FirstAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+                return Ok(MapToDraftDto(attempt));
+            }
+
+            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
+            {
+                attempt.ExamId,
+                attempt.StudentId,
+                attempt.StartedAt
+            }, "ExamDelivery");
+        }
+
+        return Ok(MapToDraftDto(attempt));
     }
 
     [HttpPut("{examId:guid}/attempt/draft")]
@@ -414,6 +478,9 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
+        if (!await _context.Questions.AnyAsync(q => q.ExamId == examId))
+            return BadRequest(new { message = "This exam cannot accept draft answers because it has no questions." });
+
         var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
         if (sessionAccessError != null)
         {
@@ -428,11 +495,17 @@ public class ExamsController : ControllerBase
 
         var now = DateTime.UtcNow;
         var answers = dto.Answers ?? [];
+        var validationError = ValidateAttemptAnswers(exam, answers);
+        if (validationError != null)
+            return BadRequest(new { message = validationError });
+
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
         if (attempt?.Status == ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "You have already submitted this exam." });
+
+        var createdNewAttempt = false;
 
         if (attempt == null)
         {
@@ -455,6 +528,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            createdNewAttempt = true;
         }
         else
         {
@@ -471,6 +545,16 @@ public class ExamsController : ControllerBase
         catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
         {
             return Conflict(new { message = "An attempt already exists for this exam. Refresh the page to load the latest draft." });
+        }
+
+        if (createdNewAttempt)
+        {
+            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
+            {
+                attempt.ExamId,
+                attempt.StudentId,
+                attempt.StartedAt
+            }, "ExamDelivery");
         }
 
         await _auditLogService.LogAsync("ExamAttempt.DraftSaved", "ExamAttempt", attempt.Id, new
@@ -1128,6 +1212,24 @@ public class ExamsController : ControllerBase
         {
             return [];
         }
+    }
+
+    private static string? ValidateAttemptAnswers(Exam exam, List<AnswerDto> answers)
+    {
+        var duplicateQuestionIds = answers
+            .GroupBy(x => x.QuestionId)
+            .Where(group => group.Key != Guid.Empty && group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+        if (duplicateQuestionIds.Count > 0)
+            return "Each question can only be answered once per request.";
+
+        var validQuestionIds = exam.Questions.Select(x => x.Id).ToHashSet();
+        if (answers.Any(x => x.QuestionId == Guid.Empty || !validQuestionIds.Contains(x.QuestionId)))
+            return "One or more answers reference questions that do not belong to this exam.";
+
+        return null;
     }
 
     private static (List<QuestionScoreDetailDto> details, double autoScore, bool requiresManualGrading) BuildAttemptEvaluation(Exam exam, List<AnswerDto> submittedAnswers)

@@ -79,6 +79,10 @@ public class AppDbContext : DbContext
             .HasForeignKey(a => a.StudentId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<ExamAttempt>()
+            .HasIndex(x => new { x.ExamId, x.StudentId })
+            .IsUnique();
+
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)
             .IsUnique();

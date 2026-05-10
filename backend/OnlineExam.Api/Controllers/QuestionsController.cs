@@ -16,6 +16,7 @@ namespace OnlineExam.Api.Controllers;
 public class QuestionsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
+    private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
     private static readonly string[] AllowedQuestionBankTypes = ["MCQ", "Text", "CSharp", "SQL"];
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
@@ -37,8 +38,25 @@ public class QuestionsController : ControllerBase
         if (question == null || question.Exam == null)
             return NotFound();
 
-        if (!await CanAccessExamAsync(question.Exam))
+        if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+            var accessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, question.Exam);
+            if (accessError != null)
+            {
+                if (accessError == StudentExamNotEligibleMessage)
+                    return Forbid();
+
+                return BadRequest(new { message = accessError });
+            }
+        }
+        else if (!await CanAccessExamAsync(question.Exam))
+        {
             return Forbid();
+        }
 
         return Ok(new ExamQuestionResponseDto
         {
@@ -168,8 +186,25 @@ public class QuestionsController : ControllerBase
         if (exam == null)
             return NotFound();
 
-        if (!await CanAccessExamAsync(exam))
+        if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+            var accessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam);
+            if (accessError != null)
+            {
+                if (accessError == StudentExamNotEligibleMessage)
+                    return Forbid();
+
+                return BadRequest(new { message = accessError });
+            }
+        }
+        else if (!await CanAccessExamAsync(exam))
+        {
             return Forbid();
+        }
 
         var questions = await _context.Questions
             .Where(q => q.ExamId == examId)
@@ -417,29 +452,53 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Student"))
         {
-            if (!exam.IsPublished || !exam.CourseOfferingId.HasValue)
-                return false;
-
-            var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
-                x.StudentId == userId.Value &&
-                x.CourseOfferingId == exam.CourseOfferingId.Value &&
-                x.EligibleForExam &&
-                x.Status == "Eligible");
-
-            if (hasEligibleEnrollment)
-                return true;
-
-            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId.Value);
-            if (hasAnyEnrollment)
-                return false;
-
-            return await _context.CourseOfferings.AnyAsync(x =>
-                x.Id == exam.CourseOfferingId.Value &&
-                x.Term != null &&
-                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
+            return await GetStudentExamSessionAccessErrorAsync(userId.Value, exam) == null;
         }
 
         return false;
+    }
+
+    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam)
+    {
+        if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
+            return "This exam is not available for students.";
+
+        var now = DateTime.UtcNow;
+        if (now < exam.StartsAt)
+            return "This exam has not started yet.";
+
+        if (now > exam.EndsAt)
+            return "This exam is no longer accepting submissions.";
+
+        var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
+            x.StudentId == userId &&
+            x.CourseOfferingId == exam.CourseOfferingId.Value &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+
+        if (!hasEligibleEnrollment)
+        {
+            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId);
+            if (hasAnyEnrollment)
+                return StudentExamNotEligibleMessage;
+
+            var canUseCurrentTermFallback = await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == exam.CourseOfferingId.Value &&
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
+
+            if (!canUseCurrentTermFallback)
+                return StudentExamNotEligibleMessage;
+        }
+
+        var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
+            a.ExamId == exam.Id &&
+            a.StudentId == userId);
+
+        if (alreadySubmitted)
+            return "You have already submitted this exam.";
+
+        return null;
     }
 
     private async Task<bool> CanManageExamAsync(Exam exam)

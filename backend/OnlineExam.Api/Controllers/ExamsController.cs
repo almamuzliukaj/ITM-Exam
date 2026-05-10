@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Models;
@@ -279,8 +280,14 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
-        if (!await CanStudentAccessExamAsync(userId.Value, exam))
-            return Forbid();
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null)
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
 
         var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
             a.ExamId == examId &&
@@ -292,8 +299,9 @@ public class ExamsController : ControllerBase
         var details = new List<QuestionScoreDetailDto>();
         double autoScore = 0;
         var requiresManualGrading = false;
+        var submittedAnswers = dto.Answers ?? [];
 
-        foreach (var answer in dto.Answers)
+        foreach (var answer in submittedAnswers)
         {
             var question = exam.Questions.FirstOrDefault(x => x.Id == answer.QuestionId);
             if (question == null)
@@ -339,7 +347,15 @@ public class ExamsController : ControllerBase
         };
 
         _context.ExamAttempts.Add(attempt);
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
+        {
+            return BadRequest(new { message = "You have already submitted this exam." });
+        }
+
         await _auditLogService.LogAsync("ExamAttempt.Submitted", "ExamAttempt", attempt.Id, new
         {
             attempt.ExamId,
@@ -354,6 +370,62 @@ public class ExamsController : ControllerBase
             Score = attempt.FinalScore,
             Questions = details
         });
+    }
+
+    private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
+
+    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission)
+    {
+        if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
+            return "This exam is not available for students.";
+
+        var now = DateTime.UtcNow;
+        if (now < exam.StartsAt)
+            return "This exam has not started yet.";
+
+        if (now > exam.EndsAt)
+            return "This exam is no longer accepting submissions.";
+
+        var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
+            x.StudentId == userId &&
+            x.CourseOfferingId == exam.CourseOfferingId.Value &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+
+        var canUseCurrentTermFallback = false;
+        if (!hasEligibleEnrollment)
+        {
+            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId);
+            if (hasAnyEnrollment)
+                return StudentExamNotEligibleMessage;
+
+            canUseCurrentTermFallback = await _context.CourseOfferings.AnyAsync(x =>
+                x.Id == exam.CourseOfferingId.Value &&
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
+
+            if (!canUseCurrentTermFallback)
+                return StudentExamNotEligibleMessage;
+        }
+
+        if (blockResubmission)
+        {
+            var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
+                a.ExamId == exam.Id &&
+                a.StudentId == userId);
+
+            if (alreadySubmitted)
+                return "You have already submitted this exam.";
+        }
+
+        return null;
+    }
+
+    private static bool IsDuplicateExamAttemptException(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException postgresException &&
+               postgresException.SqlState == PostgresErrorCodes.UniqueViolation &&
+               string.Equals(postgresException.ConstraintName, "IX_ExamAttempts_ExamId_StudentId", StringComparison.Ordinal);
     }
 
     [HttpPost("{id:guid}/publish")]

@@ -376,6 +376,9 @@ namespace OnlineExam.Api.Migrations
 
                     b.HasIndex("ExamId");
 
+                    b.HasIndex("ExamId", "StudentId")
+                        .IsUnique();
+
                     b.HasIndex("StudentId");
 
                     b.ToTable("ExamAttempts");

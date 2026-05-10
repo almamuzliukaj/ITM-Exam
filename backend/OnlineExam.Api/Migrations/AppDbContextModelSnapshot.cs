@@ -357,6 +357,9 @@ namespace OnlineExam.Api.Migrations
                     b.Property<double>("ManualScore")
                         .HasColumnType("double precision");
 
+                    b.Property<DateTime?>("LastSavedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -366,10 +369,17 @@ namespace OnlineExam.Api.Migrations
                     b.Property<bool>("RequiresManualGrading")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("SubmittedAt")
+                    b.Property<DateTime?>("SubmittedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");

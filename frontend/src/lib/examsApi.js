@@ -29,6 +29,19 @@ export async function listQuestions(examId) {
   return response.data;
 }
 
+export async function getCurrentExamAttempt(examId) {
+  const response = await api.get(`/api/exams/${examId}/attempt`);
+  return response.data;
+}
+
+export async function saveExamAttemptDraft(examId, payload) {
+  const response = await api.put(`/api/exams/${examId}/attempt/draft`, {
+    examId,
+    answers: payload.answers || [],
+  });
+  return response.data;
+}
+
 export async function submitExamAttempt(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/attempt`, {
     examId,

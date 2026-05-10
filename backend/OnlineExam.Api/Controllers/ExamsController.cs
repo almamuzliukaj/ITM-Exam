@@ -17,6 +17,8 @@ namespace OnlineExam.Api.Controllers;
 public class ExamsController : ControllerBase
 {
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
+    private const string ExamAttemptInProgressStatus = "InProgress";
+    private const string ExamAttemptSubmittedStatus = "Submitted";
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
 
@@ -289,64 +291,57 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = sessionAccessError });
         }
 
-        var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
-            a.ExamId == examId &&
-            a.StudentId == userId.Value);
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
-        if (alreadySubmitted)
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "You have already submitted this exam." });
 
-        var details = new List<QuestionScoreDetailDto>();
-        double autoScore = 0;
-        var requiresManualGrading = false;
         var submittedAnswers = dto.Answers ?? [];
+        var (details, autoScore, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
+        var now = DateTime.UtcNow;
 
-        foreach (var answer in submittedAnswers)
+        if (attempt == null)
         {
-            var question = exam.Questions.FirstOrDefault(x => x.Id == answer.QuestionId);
-            if (question == null)
-                continue;
-
-            var awarded = 0d;
-            if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase))
+            attempt = new ExamAttempt
             {
-                if (!string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
-                    string.Equals(question.CorrectAnswer.Trim(), answer.Response.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    awarded = question.Points;
-                }
-            }
-            else
-            {
-                requiresManualGrading = true;
-            }
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptSubmittedStatus,
+                StartedAt = now,
+                LastSavedAt = now,
+                SubmittedAt = now,
+                AnswersJson = JsonSerializer.Serialize(submittedAnswers),
+                AutoScore = autoScore,
+                ManualScore = 0,
+                FinalScore = autoScore,
+                RequiresManualGrading = requiresManualGrading,
+                IsGraded = !requiresManualGrading,
+                IsPublished = false
+            };
 
-            details.Add(new QuestionScoreDetailDto
-            {
-                QuestionId = question.Id,
-                PointsAwarded = awarded,
-                MaxPoints = question.Points
-            });
-
-            autoScore += awarded;
+            _context.ExamAttempts.Add(attempt);
         }
-
-        var attempt = new ExamAttempt
+        else
         {
-            Id = Guid.NewGuid(),
-            ExamId = examId,
-            StudentId = userId.Value,
-            SubmittedAt = DateTime.UtcNow,
-            AnswersJson = JsonSerializer.Serialize(dto.Answers),
-            AutoScore = autoScore,
-            ManualScore = 0,
-            FinalScore = autoScore,
-            RequiresManualGrading = requiresManualGrading,
-            IsGraded = !requiresManualGrading,
-            IsPublished = false
-        };
-
-        _context.ExamAttempts.Add(attempt);
+            attempt.Status = ExamAttemptSubmittedStatus;
+            attempt.StartedAt = attempt.StartedAt == default ? now : attempt.StartedAt;
+            attempt.LastSavedAt = now;
+            attempt.SubmittedAt = now;
+            attempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
+            attempt.AutoScore = autoScore;
+            attempt.ManualScore = 0;
+            attempt.FinalScore = autoScore;
+            attempt.RequiresManualGrading = requiresManualGrading;
+            attempt.IsGraded = !requiresManualGrading;
+            attempt.IsPublished = false;
+            attempt.GradedAt = null;
+            attempt.GradedByUserId = null;
+            attempt.GradingNotes = null;
+            attempt.PublishedAt = null;
+            attempt.PublishedByUserId = null;
+        }
         try
         {
             await _context.SaveChangesAsync();
@@ -367,9 +362,126 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAttemptResultDto
         {
             ExamAttemptId = attempt.Id,
+            Status = attempt.Status,
+            StartedAt = attempt.StartedAt,
+            LastSavedAt = attempt.LastSavedAt,
+            SubmittedAt = attempt.SubmittedAt,
             Score = attempt.FinalScore,
             Questions = details
         });
+    }
+
+    [HttpGet("{examId:guid}/attempt")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAttemptDraftDto?>> GetCurrentAttempt(Guid examId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null && sessionAccessError != "This exam is no longer accepting submissions.")
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var attempt = await _context.ExamAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+        return Ok(attempt == null ? null : MapToDraftDto(attempt));
+    }
+
+    [HttpPut("{examId:guid}/attempt/draft")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAttemptDraftDto>> SaveDraftAttempt(Guid examId, [FromBody] CreateExamAttemptDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (dto.ExamId != Guid.Empty && dto.ExamId != examId)
+            return BadRequest(new { message = "ExamId in body does not match route." });
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null)
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            if (sessionAccessError == "This exam is no longer accepting submissions.")
+                return BadRequest(new { message = "Draft saving is closed because the exam session has ended." });
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var now = DateTime.UtcNow;
+        var answers = dto.Answers ?? [];
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "You have already submitted this exam." });
+
+        if (attempt == null)
+        {
+            attempt = new ExamAttempt
+            {
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptInProgressStatus,
+                StartedAt = now,
+                LastSavedAt = now,
+                SubmittedAt = null,
+                AnswersJson = JsonSerializer.Serialize(answers),
+                AutoScore = 0,
+                ManualScore = 0,
+                FinalScore = 0,
+                RequiresManualGrading = false,
+                IsGraded = false,
+                IsPublished = false
+            };
+
+            _context.ExamAttempts.Add(attempt);
+        }
+        else
+        {
+            attempt.Status = ExamAttemptInProgressStatus;
+            attempt.StartedAt = attempt.StartedAt == default ? now : attempt.StartedAt;
+            attempt.LastSavedAt = now;
+            attempt.AnswersJson = JsonSerializer.Serialize(answers);
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
+        {
+            return Conflict(new { message = "An attempt already exists for this exam. Refresh the page to load the latest draft." });
+        }
+
+        await _auditLogService.LogAsync("ExamAttempt.DraftSaved", "ExamAttempt", attempt.Id, new
+        {
+            attempt.ExamId,
+            attempt.StudentId,
+            attempt.Status,
+            attempt.LastSavedAt
+        }, "ExamDelivery");
+
+        return Ok(MapToDraftDto(attempt));
     }
 
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
@@ -412,7 +524,8 @@ public class ExamsController : ControllerBase
         {
             var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
                 a.ExamId == exam.Id &&
-                a.StudentId == userId);
+                a.StudentId == userId &&
+                a.Status == ExamAttemptSubmittedStatus);
 
             if (alreadySubmitted)
                 return "You have already submitted this exam.";
@@ -502,7 +615,7 @@ public class ExamsController : ControllerBase
             return Forbid();
 
         var attempts = await _context.ExamAttempts
-            .Where(a => a.ExamId == id)
+            .Where(a => a.ExamId == id && a.Status == ExamAttemptSubmittedStatus)
             .Join(
                 _context.Users,
                 attempt => attempt.StudentId,
@@ -514,6 +627,9 @@ public class ExamsController : ControllerBase
                     StudentId = attempt.StudentId,
                     StudentName = user.FullName,
                     StudentEmail = user.Email,
+                    Status = attempt.Status,
+                    StartedAt = attempt.StartedAt,
+                    LastSavedAt = attempt.LastSavedAt,
                     SubmittedAt = attempt.SubmittedAt,
                     AutoScore = attempt.AutoScore,
                     ManualScore = attempt.ManualScore,
@@ -543,6 +659,9 @@ public class ExamsController : ControllerBase
 
         if (!await CanManageExamAsync(attempt.Exam))
             return Forbid();
+
+        if (attempt.Status != ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "Only submitted attempts can be graded." });
 
         var examPoints = await _context.Questions
             .Where(x => x.ExamId == attempt.ExamId)
@@ -582,6 +701,9 @@ public class ExamsController : ControllerBase
             AttemptId = attempt.Id,
             ExamId = attempt.ExamId,
             StudentId = attempt.StudentId,
+            Status = attempt.Status,
+            StartedAt = attempt.StartedAt,
+            LastSavedAt = attempt.LastSavedAt,
             SubmittedAt = attempt.SubmittedAt,
             AutoScore = attempt.AutoScore,
             ManualScore = attempt.ManualScore,
@@ -607,6 +729,9 @@ public class ExamsController : ControllerBase
 
         if (!await CanManageExamAsync(attempt.Exam))
             return Forbid();
+
+        if (attempt.Status != ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "AI review is available only for submitted attempts." });
 
         var questions = await _context.Questions
             .Where(x => x.ExamId == attempt.ExamId)
@@ -647,7 +772,7 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var query = _context.ExamAttempts.Where(x => x.ExamId == id && x.IsGraded);
+        var query = _context.ExamAttempts.Where(x => x.ExamId == id && x.Status == ExamAttemptSubmittedStatus && x.IsGraded);
 
         if (dto?.PublishAll == false)
         {
@@ -688,7 +813,7 @@ public class ExamsController : ControllerBase
             return Unauthorized();
 
         var results = await _context.ExamAttempts
-            .Where(x => x.StudentId == userId.Value)
+            .Where(x => x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
             .Join(
                 _context.Exams,
                 attempt => attempt.ExamId,
@@ -949,6 +1074,58 @@ public class ExamsController : ControllerBase
         {
             return [];
         }
+    }
+
+    private static (List<QuestionScoreDetailDto> details, double autoScore, bool requiresManualGrading) BuildAttemptEvaluation(Exam exam, List<AnswerDto> submittedAnswers)
+    {
+        var details = new List<QuestionScoreDetailDto>();
+        double autoScore = 0;
+        var requiresManualGrading = false;
+
+        foreach (var answer in submittedAnswers)
+        {
+            var question = exam.Questions.FirstOrDefault(x => x.Id == answer.QuestionId);
+            if (question == null)
+                continue;
+
+            var awarded = 0d;
+            if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
+                    string.Equals(question.CorrectAnswer.Trim(), answer.Response.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    awarded = question.Points;
+                }
+            }
+            else
+            {
+                requiresManualGrading = true;
+            }
+
+            details.Add(new QuestionScoreDetailDto
+            {
+                QuestionId = question.Id,
+                PointsAwarded = awarded,
+                MaxPoints = question.Points
+            });
+
+            autoScore += awarded;
+        }
+
+        return (details, autoScore, requiresManualGrading);
+    }
+
+    private static ExamAttemptDraftDto MapToDraftDto(ExamAttempt attempt)
+    {
+        return new ExamAttemptDraftDto
+        {
+            ExamAttemptId = attempt.Id,
+            Status = attempt.Status,
+            StartedAt = attempt.StartedAt,
+            LastSavedAt = attempt.LastSavedAt,
+            SubmittedAt = attempt.SubmittedAt,
+            Answers = ParseAttemptAnswers(attempt.AnswersJson)
+        };
     }
 
     private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)

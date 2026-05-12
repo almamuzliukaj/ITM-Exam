@@ -479,10 +479,6 @@ public class QuestionsController : ControllerBase
 
         if (!hasEligibleEnrollment)
         {
-            var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId);
-            if (hasAnyEnrollment)
-                return StudentExamNotEligibleMessage;
-
             var canUseCurrentTermFallback = await _context.CourseOfferings.AnyAsync(x =>
                 x.Id == exam.CourseOfferingId.Value &&
                 x.Term != null &&

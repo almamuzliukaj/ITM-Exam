@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getExam, listQuestions, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -20,9 +20,14 @@ export default function StudentExamSessionPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitReview, setShowSubmitReview] = useState(false);
+  const [showFinalWarning, setShowFinalWarning] = useState(false);
+  const [attemptId, setAttemptId] = useState("");
+  const [integrityEvents, setIntegrityEvents] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const submittedRef = useRef(false);
+  const violationCount = integrityEvents.length;
+  const interactionLocked = violationCount >= 5;
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -38,11 +43,12 @@ export default function StudentExamSessionPage() {
       try {
         setLoading(true);
         setError("");
-        const [examData, questionData] = await Promise.all([getExam(examId), listQuestions(examId)]);
+        const [examData, questionData, attemptData] = await Promise.all([getExam(examId), listQuestions(examId), getCurrentExamAttempt(examId)]);
         if (!active) return;
 
         setExam(examData);
         setQuestions(Array.isArray(questionData) ? questionData : []);
+        setAttemptId(attemptData?.examAttemptId || "");
 
         const restored = readDraft(storageKey);
         const timing = buildSessionTiming(examData, restored);
@@ -96,6 +102,79 @@ export default function StudentExamSessionPage() {
     return () => window.clearTimeout(timeout);
   }, [answers, flaggedQuestions, loading, result, sessionTiming, storageKey]);
 
+  const recordViolation = useCallback((eventType, message) => {
+    if (!examId || result || submittedRef.current) return;
+
+    setIntegrityEvents((current) => {
+      const nextCount = current.length + 1;
+      const nextEvent = {
+        eventType,
+        message,
+        createdAt: new Date().toISOString(),
+        violationCount: nextCount,
+      };
+
+      if (nextCount >= 3) {
+        setShowFinalWarning(true);
+      }
+
+      recordExamIntegrityEvent(examId, {
+        attemptId: attemptId || null,
+        eventType,
+        violationCount: nextCount,
+        message,
+      }).catch(() => {});
+
+      return [nextEvent, ...current].slice(0, 12);
+    });
+  }, [attemptId, examId, result]);
+
+  useEffect(() => {
+    if (loading || result) return;
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        recordViolation("TabHidden", "Exam tab was hidden during the session.");
+      }
+    }
+
+    function onWindowBlur() {
+      recordViolation("WindowBlur", "Exam window lost focus.");
+    }
+
+    function onFullscreenChange() {
+      if (!document.fullscreenElement) {
+        recordViolation("FullscreenExit", "Fullscreen mode was exited.");
+      }
+    }
+
+    function onBlockedInteraction(event) {
+      event.preventDefault();
+      const eventType = event.type === "contextmenu"
+        ? "RightClickAttempt"
+        : event.type === "copy"
+          ? "CopyAttempt"
+          : "PasteAttempt";
+      recordViolation(eventType, "Restricted browser interaction was attempted.");
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("contextmenu", onBlockedInteraction);
+    document.addEventListener("copy", onBlockedInteraction);
+    document.addEventListener("paste", onBlockedInteraction);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("contextmenu", onBlockedInteraction);
+      document.removeEventListener("copy", onBlockedInteraction);
+      document.removeEventListener("paste", onBlockedInteraction);
+    };
+  }, [loading, recordViolation, result]);
+
   const submit = useCallback(async (reason = "manual") => {
     if (!examId || submittedRef.current) return;
 
@@ -134,6 +213,15 @@ export default function StudentExamSessionPage() {
   const answeredCount = questions.filter((question) => String(answers[question.id] || "").trim().length > 0).length;
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
+  const isFullscreen = Boolean(document.fullscreenElement);
+
+  async function enterFullscreen() {
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {
+      recordViolation("FullscreenRequestFailed", "Fullscreen mode could not be entered.");
+    }
+  }
 
   return (
     <AppShell
@@ -145,7 +233,12 @@ export default function StudentExamSessionPage() {
         <>
           <Link className="btn" to="/exams">Back to exams</Link>
           {!result ? (
-            <button className="btn btnPrimary examSubmitBtn" type="button" onClick={() => setShowSubmitReview(true)} disabled={submitting || loading || questions.length === 0}>
+            <button className="btn" type="button" onClick={enterFullscreen}>
+              {isFullscreen ? "Fullscreen active" : "Enter fullscreen"}
+            </button>
+          ) : null}
+          {!result ? (
+            <button className="btn btnPrimary examSubmitBtn" type="button" onClick={() => setShowSubmitReview(true)} disabled={submitting || loading || questions.length === 0 || interactionLocked}>
               {submitting ? "Submitting..." : "Submit exam"}
             </button>
           ) : null}
@@ -154,6 +247,14 @@ export default function StudentExamSessionPage() {
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
+        {!result ? (
+          <IntegrityWarningBanner
+            violationCount={violationCount}
+            locked={interactionLocked}
+            events={integrityEvents}
+            onFullscreen={enterFullscreen}
+          />
+        ) : null}
 
         {result ? (
           <SubmissionResult
@@ -173,6 +274,14 @@ export default function StudentExamSessionPage() {
             timeRemaining={timeRemaining}
             onCancel={() => setShowSubmitReview(false)}
             onConfirm={() => submit("manual")}
+          />
+        ) : null}
+
+        {showFinalWarning ? (
+          <FinalWarningModal
+            violationCount={violationCount}
+            locked={interactionLocked}
+            onClose={() => setShowFinalWarning(false)}
           />
         ) : null}
 
@@ -219,6 +328,7 @@ export default function StudentExamSessionPage() {
                       question={question}
                       value={answers[question.id] || ""}
                       flagged={Boolean(flaggedQuestions[question.id])}
+                      disabled={interactionLocked}
                       onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
@@ -263,7 +373,7 @@ export default function StudentExamSessionPage() {
   );
 }
 
-function QuestionAnswerCard({ index, question, value, flagged, onChange, onToggleFlag }) {
+function QuestionAnswerCard({ index, question, value, flagged, disabled, onChange, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
@@ -311,6 +421,7 @@ function QuestionAnswerCard({ index, question, value, flagged, onChange, onToggl
                   value={option}
                   checked={value === option}
                   onChange={(event) => onChange(event.target.value)}
+                  disabled={disabled}
                 />
                 <span>{option}</span>
               </label>
@@ -322,10 +433,50 @@ function QuestionAnswerCard({ index, question, value, flagged, onChange, onToggl
             value={value}
             onChange={(event) => onChange(event.target.value)}
             placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+            disabled={disabled}
           />
         )}
       </div>
     </article>
+  );
+}
+
+function IntegrityWarningBanner({ violationCount, locked, events, onFullscreen }) {
+  const latest = events[0];
+  return (
+    <section className={`integrityBanner ${locked ? "integrityBannerLocked" : violationCount >= 3 ? "integrityBannerWarn" : ""}`}>
+      <div>
+        <span className="summaryLabel">Exam integrity guard</span>
+        <strong>{locked ? "Interaction locked" : `${violationCount} violation${violationCount === 1 ? "" : "s"}`}</strong>
+        <p>
+          {locked
+            ? "Too many integrity warnings were recorded. Contact staff before continuing."
+            : latest?.message || "Stay in fullscreen, keep this tab active, and avoid copy/paste or right-click actions."}
+        </p>
+      </div>
+      <button className="btn" type="button" onClick={onFullscreen}>Fullscreen</button>
+    </section>
+  );
+}
+
+function FinalWarningModal({ violationCount, locked, onClose }) {
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true">
+      <section className="modalCard integrityModal">
+        <span className="summaryLabel">Final warning</span>
+        <h3>{locked ? "Exam interaction is locked" : "Suspicious activity detected"}</h3>
+        <p>
+          {locked
+            ? "The session recorded repeated fullscreen/tab/clipboard violations. Your answers remain saved, but manual interaction is blocked for review."
+            : `You have ${violationCount} integrity warnings. Further violations may lock the session or trigger staff review.`}
+        </p>
+        <div className="heroActions">
+          <button className="btn btnPrimary" type="button" onClick={onClose}>
+            I understand
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

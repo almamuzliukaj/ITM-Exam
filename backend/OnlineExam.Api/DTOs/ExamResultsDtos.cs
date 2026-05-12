@@ -32,6 +32,9 @@ public class ExamAttemptSummaryDto
     public bool IsPublished { get; set; }
     public DateTime? GradedAt { get; set; }
     public string? GradingNotes { get; set; }
+    public int IntegrityViolationCount { get; set; }
+    public DateTime? IntegrityLastEventAt { get; set; }
+    public List<ExamIntegrityEventDto> IntegrityEvents { get; set; } = [];
 }
 
 public class StudentExamResultDto
@@ -82,4 +85,20 @@ public class AiTextEvaluationQuestionDto
     public double SuggestedPoints { get; set; }
     public string Confidence { get; set; } = string.Empty;
     public string Rationale { get; set; } = string.Empty;
+}
+
+public class CreateExamIntegrityEventDto
+{
+    public Guid? AttemptId { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public int ViolationCount { get; set; }
+    public string? Message { get; set; }
+}
+
+public class ExamIntegrityEventDto
+{
+    public string EventType { get; set; } = string.Empty;
+    public int ViolationCount { get; set; }
+    public string? Message { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

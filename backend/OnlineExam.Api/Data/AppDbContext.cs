@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Exam> Exams { get; set; }
     public DbSet<ExamAttempt> ExamAttempts { get; set; }
+    public DbSet<ExamIntegrityEvent> ExamIntegrityEvents { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Question> Questions { get; set; }
     public DbSet<Term> Terms { get; set; }
@@ -80,8 +81,23 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ExamAttempt>()
+            .HasIndex(x => x.ExamId);
+
+        modelBuilder.Entity<ExamAttempt>()
             .HasIndex(x => new { x.ExamId, x.StudentId })
             .IsUnique();
+
+        modelBuilder.Entity<ExamIntegrityEvent>()
+            .HasOne(x => x.ExamAttempt)
+            .WithMany(x => x.IntegrityEvents)
+            .HasForeignKey(x => x.ExamAttemptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamIntegrityEvent>()
+            .HasIndex(x => new { x.ExamAttemptId, x.RecordedAt });
+
+        modelBuilder.Entity<ExamIntegrityEvent>()
+            .HasIndex(x => new { x.ExamId, x.StudentId, x.RecordedAt });
 
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)

@@ -149,6 +149,9 @@ public class ExamsController : ControllerBase
             DurationMinutes = durationMinutes,
             IsPublished = dto.IsPublished,
             Status = dto.IsPublished ? "Published" : "Draft",
+            RequiresLockdown = dto.RequiresLockdown,
+            AllowedClient = NormalizeLockdownClient(dto.AllowedClient),
+            LockdownMode = NormalizeLockdownMode(dto.LockdownMode),
             CreatedByUserId = userId.Value,
             CreatedAt = DateTime.UtcNow,
             CourseOfferingId = dto.CourseOfferingId
@@ -572,6 +575,9 @@ public class ExamsController : ControllerBase
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return "This exam is not available for students.";
 
+        if (exam.RequiresLockdown && !IsAllowedLockdownClient(exam))
+            return "This exam requires lockdown mode before it can be started.";
+
         var now = DateTime.UtcNow;
         if (now < exam.StartsAt)
             return "This exam has not started yet.";
@@ -694,6 +700,16 @@ public class ExamsController : ControllerBase
 
         if (!await CanManageExamAsync(exam))
             return Forbid();
+
+        var integrityLogs = await _context.AuditLogs
+            .Where(x => x.Action == "ExamIntegrity.Event" && x.Scope == "ExamIntegrity")
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+        var integrityByAttempt = integrityLogs
+            .Select(x => new { x.EntityId, Event = TryMapIntegrityEvent(x) })
+            .Where(x => x.EntityId.HasValue && x.Event != null)
+            .GroupBy(x => x.EntityId!.Value)
+            .ToDictionary(x => x.Key, x => x.Select(item => item.Event!).ToList());
 
         var attempts = await _context.ExamAttempts
             .Where(a => a.ExamId == id && a.Status == ExamAttemptSubmittedStatus)

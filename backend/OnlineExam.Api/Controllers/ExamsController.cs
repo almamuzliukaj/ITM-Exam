@@ -225,6 +225,9 @@ public class ExamsController : ControllerBase
         exam.IsPublished = dto.IsPublished;
         exam.Status = dto.IsPublished ? "Published" : exam.Status;
         exam.CourseOfferingId = dto.CourseOfferingId;
+        exam.RequiresLockdown = dto.RequiresLockdown;
+        exam.AllowedClient = NormalizeLockdownClient(dto.AllowedClient);
+        exam.LockdownMode = NormalizeLockdownMode(dto.LockdownMode);
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Updated", "Exam", exam.Id, new

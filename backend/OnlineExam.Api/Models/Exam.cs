@@ -12,6 +12,9 @@ public class Exam
     public DateTime CreatedAt { get; set; }
     public bool IsPublished { get; set; }
     public string Status { get; set; } = "Draft";
+    public bool RequiresLockdown { get; set; }
+    public string AllowedClient { get; set; } = "StandardBrowser";
+    public string LockdownMode { get; set; } = "Advisory";
 
     public Guid? CourseOfferingId { get; set; }
     public CourseOffering? CourseOffering { get; set; }

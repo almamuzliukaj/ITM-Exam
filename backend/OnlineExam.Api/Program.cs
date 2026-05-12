@@ -111,6 +111,7 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("Applying pending database migrations (attempt {Attempt}/{MaxAttempts})...", attempt, maxAttempts);
             db.Database.Migrate();
+            EnsureRuntimeSchema(db, logger);
             logger.LogInformation("Database migrations applied successfully.");
             break;
         }
@@ -180,6 +181,99 @@ static void EnsureDemoUsers(WebApplication app)
     }
 
     db.SaveChanges();
+}
+
+static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
+{
+    try
+    {
+        db.Database.ExecuteSqlRaw("""
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'Draft';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "RequiresLockdown" boolean NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "AllowedClient" text NOT NULL DEFAULT 'StandardBrowser';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "LockdownMode" text NOT NULL DEFAULT 'Advisory';
+
+            UPDATE "Exams"
+            SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
+            WHERE "Status" IS NULL OR "Status" = '';
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "StartedAt" timestamp with time zone NOT NULL DEFAULT NOW();
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "LastSavedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "AutoScore" double precision NOT NULL DEFAULT 0;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "ManualScore" double precision NOT NULL DEFAULT 0;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "FinalScore" double precision NOT NULL DEFAULT 0;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "RequiresManualGrading" boolean NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "IsGraded" boolean NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "IsPublished" boolean NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "GradedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "GradedByUserId" uuid NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "GradingNotes" text NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "PublishedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "PublishedByUserId" uuid NULL;
+
+            UPDATE "ExamAttempts"
+            SET "Status" = CASE WHEN "SubmittedAt" IS NULL THEN 'InProgress' ELSE 'Submitted' END
+            WHERE "Status" IS NULL OR "Status" = '';
+
+            UPDATE "ExamAttempts"
+            SET "StartedAt" = COALESCE("SubmittedAt", "StartedAt", NOW()),
+                "LastSavedAt" = COALESCE("LastSavedAt", "SubmittedAt", "StartedAt");
+
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'ExamAttempts'
+                      AND column_name = 'Score'
+                ) THEN
+                    UPDATE "ExamAttempts"
+                    SET "AutoScore" = CASE WHEN "AutoScore" = 0 THEN "Score" ELSE "AutoScore" END,
+                        "FinalScore" = CASE WHEN "FinalScore" = 0 THEN "Score" ELSE "FinalScore" END;
+                END IF;
+            END $$;
+            """);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Runtime schema compatibility check could not be completed.");
+    }
 }
 
 static void EnsureStableDemoData(WebApplication app)

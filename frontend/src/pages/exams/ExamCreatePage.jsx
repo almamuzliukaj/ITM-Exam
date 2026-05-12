@@ -15,6 +15,9 @@ export default function ExamCreatePage() {
     description: "",
     durationMinutes: 60,
     courseOfferingId: "",
+    requiresLockdown: false,
+    allowedClient: "StandardBrowser",
+    lockdownMode: "Advisory",
   });
   const [offerings, setOfferings] = useState([]);
   const [offeringsLoading, setOfferingsLoading] = useState(true);
@@ -68,6 +71,9 @@ export default function ExamCreatePage() {
         durationMinutes: Number(form.durationMinutes) || 60,
         courseOfferingId: form.courseOfferingId || null,
         isPublished: false,
+        requiresLockdown: form.requiresLockdown,
+        allowedClient: form.allowedClient,
+        lockdownMode: form.lockdownMode,
       });
       nav(`/exams/${created.id}`);
     } catch (err) {
@@ -164,6 +170,54 @@ export default function ExamCreatePage() {
               <div className="publishNotice">
                 <strong>Draft and publish workflow</strong>
                 <span>Save the exam draft first, attach questions in the builder, then publish it for eligible students.</span>
+              </div>
+
+              <div className="lockdownConfig">
+                <div>
+                  <span className="summaryLabel">Safe exam readiness</span>
+                  <strong>Lockdown mode</strong>
+                  <p>Use this when a high-stakes exam should require a controlled browser or kiosk client.</p>
+                </div>
+                <label className="toggleRow">
+                  <input
+                    type="checkbox"
+                    checked={form.requiresLockdown}
+                    onChange={(e) => setForm({ ...form, requiresLockdown: e.target.checked })}
+                  />
+                  <span>Require lockdown mode</span>
+                </label>
+                <div className="questionBankFormGrid">
+                  <div className="field">
+                    <label className="label">Allowed client</label>
+                    <select
+                      className="input"
+                      value={form.allowedClient}
+                      onChange={(e) => setForm({ ...form, allowedClient: e.target.value })}
+                      disabled={!form.requiresLockdown}
+                    >
+                      <option value="StandardBrowser">Standard browser with warnings</option>
+                      <option value="SafeExamBrowser">Safe Exam Browser</option>
+                      <option value="KioskClient">Kiosk client</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label">Policy mode</label>
+                    <select
+                      className="input"
+                      value={form.lockdownMode}
+                      onChange={(e) => setForm({ ...form, lockdownMode: e.target.value })}
+                      disabled={!form.requiresLockdown}
+                    >
+                      <option value="Advisory">Advisory warnings</option>
+                      <option value="Strict">Strict start validation</option>
+                    </select>
+                  </div>
+                </div>
+                <ul className="readinessChecklist">
+                  <li>Fullscreen warning flow enabled</li>
+                  <li>Tab, blur, copy, paste, and fullscreen exit events logged</li>
+                  <li>Gradebook shows integrity timeline for professor review</li>
+                </ul>
               </div>
 
               <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>

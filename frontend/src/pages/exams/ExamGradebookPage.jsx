@@ -56,6 +56,10 @@ export default function ExamGradebookPage() {
 
   const gradedCount = useMemo(() => attempts.filter((attempt) => attempt.isGraded).length, [attempts]);
   const pendingCount = useMemo(() => attempts.filter((attempt) => !attempt.isGraded).length, [attempts]);
+  const integrityCount = useMemo(
+    () => attempts.reduce((total, attempt) => total + Number(attempt.integrityViolationCount || 0), 0),
+    [attempts],
+  );
 
   if (userLoading) {
     return <div className="pageState">Loading gradebook...</div>;
@@ -162,6 +166,10 @@ export default function ExamGradebookPage() {
             <span className="summaryLabel">Needs review</span>
             <strong>{pendingCount}</strong>
           </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Integrity flags</span>
+            <strong>{integrityCount}</strong>
+          </article>
         </section>
 
         <section className="surfaceCard">
@@ -223,6 +231,8 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
           <span>Final: {formatScore(attempt.finalScore)}</span>
         </div>
 
+        <IntegrityReviewPanel attempt={attempt} />
+
         <div className="questionBankFormGrid gradebookScoreGrid">
           <div className="field">
             <label className="label">Manual score</label>
@@ -274,6 +284,36 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
       </div>
     </article>
   );
+}
+
+function IntegrityReviewPanel({ attempt }) {
+  const events = Array.isArray(attempt.integrityEvents) ? attempt.integrityEvents : [];
+  const violationCount = Number(attempt.integrityViolationCount || 0);
+
+  return (
+    <div className={`integrityReview ${violationCount > 0 ? "integrityReviewWarn" : ""}`}>
+      <div>
+        <span className="summaryLabel">Integrity review</span>
+        <strong>{violationCount > 0 ? `${violationCount} violation${violationCount === 1 ? "" : "s"}` : "No violations"}</strong>
+      </div>
+      {events.length > 0 ? (
+        <ol>
+          {events.slice(0, 4).map((event, index) => (
+            <li key={`${event.eventType}-${event.createdAt}-${index}`}>
+              <span>{formatIntegrityEvent(event.eventType)}</span>
+              <small>{event.message || "Recorded during exam session."}</small>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>No suspicious activity was recorded for this attempt.</p>
+      )}
+    </div>
+  );
+}
+
+function formatIntegrityEvent(value) {
+  return String(value || "Integrity event").replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 function AiReviewPanel({ review }) {

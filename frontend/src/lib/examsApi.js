@@ -50,6 +50,11 @@ export async function submitExamAttempt(examId, payload) {
   return response.data;
 }
 
+export async function recordExamIntegrityEvent(examId, payload) {
+  const response = await api.post(`/api/exams/${examId}/integrity-events`, payload);
+  return response.data;
+}
+
 export async function addQuestion(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/questions`, payload);
   return response.data;

@@ -149,6 +149,9 @@ public class ExamsController : ControllerBase
             DurationMinutes = durationMinutes,
             IsPublished = dto.IsPublished,
             Status = dto.IsPublished ? "Published" : "Draft",
+            RequiresLockdown = dto.RequiresLockdown,
+            AllowedClient = NormalizeLockdownClient(dto.AllowedClient),
+            LockdownMode = NormalizeLockdownMode(dto.LockdownMode),
             CreatedByUserId = userId.Value,
             CreatedAt = DateTime.UtcNow,
             CourseOfferingId = dto.CourseOfferingId
@@ -225,6 +228,9 @@ public class ExamsController : ControllerBase
         exam.IsPublished = dto.IsPublished;
         exam.Status = dto.IsPublished ? "Published" : exam.Status;
         exam.CourseOfferingId = dto.CourseOfferingId;
+        exam.RequiresLockdown = dto.RequiresLockdown;
+        exam.AllowedClient = NormalizeLockdownClient(dto.AllowedClient);
+        exam.LockdownMode = NormalizeLockdownMode(dto.LockdownMode);
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Updated", "Exam", exam.Id, new
@@ -569,6 +575,9 @@ public class ExamsController : ControllerBase
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return "This exam is not available for students.";
 
+        if (exam.RequiresLockdown && !IsAllowedLockdownClient(exam))
+            return "This exam requires lockdown mode before it can be started.";
+
         var now = DateTime.UtcNow;
         if (now < exam.StartsAt)
             return "This exam has not started yet.";
@@ -692,6 +701,16 @@ public class ExamsController : ControllerBase
         if (!await CanManageExamAsync(exam))
             return Forbid();
 
+        var integrityLogs = await _context.AuditLogs
+            .Where(x => x.Action == "ExamIntegrity.Event" && x.Scope == "ExamIntegrity")
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+        var integrityByAttempt = integrityLogs
+            .Select(x => new { x.EntityId, Event = TryMapIntegrityEvent(x) })
+            .Where(x => x.EntityId.HasValue && x.Event != null)
+            .GroupBy(x => x.EntityId!.Value)
+            .ToDictionary(x => x.Key, x => x.Select(item => item.Event!).ToList());
+
         var attempts = await _context.ExamAttempts
             .Where(a => a.ExamId == id && a.Status == ExamAttemptSubmittedStatus)
             .Join(
@@ -721,7 +740,49 @@ public class ExamsController : ControllerBase
             .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
 
+        foreach (var attempt in attempts)
+        {
+            if (!integrityByAttempt.TryGetValue(attempt.AttemptId, out var events))
+                continue;
+
+            attempt.IntegrityEvents = events
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(8)
+                .ToList();
+            attempt.IntegrityViolationCount = events.Max(x => x.ViolationCount);
+            attempt.IntegrityLastEventAt = events.Max(x => x.CreatedAt);
+        }
+
         return Ok(attempts);
+    }
+
+    [HttpPost("{examId:guid}/integrity-events")]
+    [Authorize(Roles = "Student")]
+    public async Task<IActionResult> RecordIntegrityEvent(Guid examId, [FromBody] CreateExamIntegrityEventDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var attempt = await _context.ExamAttempts.FirstOrDefaultAsync(x =>
+            x.ExamId == examId &&
+            x.StudentId == userId.Value &&
+            (!dto.AttemptId.HasValue || x.Id == dto.AttemptId.Value));
+
+        if (attempt == null)
+            return NotFound(new { message = "Attempt not found for integrity event." });
+
+        var violationCount = Math.Max(1, dto.ViolationCount);
+        await _auditLogService.LogAsync("ExamIntegrity.Event", "ExamAttempt", attempt.Id, new
+        {
+            examId,
+            attemptId = attempt.Id,
+            eventType = NormalizeOptionalValue(dto.EventType) ?? "IntegrityEvent",
+            violationCount,
+            message = NormalizeOptionalValue(dto.Message)
+        }, "ExamIntegrity");
+
+        return Ok(new { message = "Integrity event recorded.", violationCount });
     }
 
     [HttpPost("attempts/{attemptId:guid}/grade")]
@@ -1361,6 +1422,55 @@ public class ExamsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private bool IsAllowedLockdownClient(Exam exam)
+    {
+        if (!exam.RequiresLockdown)
+            return true;
+
+        if (string.Equals(exam.AllowedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var client = Request.Headers["X-Exam-Client"].FirstOrDefault();
+        return string.Equals(client, exam.AllowedClient, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeLockdownClient(string? value)
+    {
+        var normalized = NormalizeOptionalValue(value);
+        return normalized is "SafeExamBrowser" or "KioskClient" or "StandardBrowser"
+            ? normalized
+            : "StandardBrowser";
+    }
+
+    private static string NormalizeLockdownMode(string? value)
+    {
+        var normalized = NormalizeOptionalValue(value);
+        return normalized is "Strict" or "Advisory" ? normalized : "Advisory";
+    }
+
+    private static ExamIntegrityEventDto? TryMapIntegrityEvent(AuditLog log)
+    {
+        if (string.IsNullOrWhiteSpace(log.DetailsJson))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(log.DetailsJson);
+            var root = document.RootElement;
+            return new ExamIntegrityEventDto
+            {
+                EventType = root.TryGetProperty("eventType", out var eventType) ? eventType.GetString() ?? "IntegrityEvent" : "IntegrityEvent",
+                ViolationCount = root.TryGetProperty("violationCount", out var count) && count.TryGetInt32(out var parsedCount) ? parsedCount : 1,
+                Message = root.TryGetProperty("message", out var message) ? message.GetString() : null,
+                CreatedAt = log.CreatedAt
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string BuildQuestionBankDescription(Guid offeringId)
     {
         return $"{QuestionBankMarker}{offeringId}";
@@ -1373,16 +1483,18 @@ public class ExamsController : ControllerBase
             .Select(x => x.CourseOfferingId)
             .ToListAsync();
 
-        if (eligibleOfferingIds.Count > 0)
-            return eligibleOfferingIds;
-
-        return await _context.CourseOfferings
+        var currentTermOfferingIds = await _context.CourseOfferings
             .Where(x =>
                 x.Term != null &&
                 (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft") &&
                 _context.Exams.Any(e => e.CourseOfferingId == x.Id && e.IsPublished && e.Status == "Published"))
             .Select(x => x.Id)
             .ToListAsync();
+
+        return eligibleOfferingIds
+            .Concat(currentTermOfferingIds)
+            .Distinct()
+            .ToList();
     }
 
     private async Task<bool> CanStudentAccessExamAsync(Guid userId, Exam exam)
@@ -1398,10 +1510,6 @@ public class ExamsController : ControllerBase
 
         if (hasEligibleEnrollment)
             return true;
-
-        var hasAnyEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x => x.StudentId == userId);
-        if (hasAnyEnrollment)
-            return false;
 
         return await _context.CourseOfferings.AnyAsync(x =>
             x.Id == exam.CourseOfferingId.Value &&

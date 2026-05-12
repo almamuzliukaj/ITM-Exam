@@ -295,7 +295,6 @@ public class ExamsController : ControllerBase
 
         if (exam.Questions.Count == 0)
             return BadRequest(new { message = "This exam cannot be submitted because it has no questions." });
-
         var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
         if (sessionAccessError != null)
         {
@@ -370,7 +369,6 @@ public class ExamsController : ControllerBase
         {
             return BadRequest(new { message = "You have already submitted this exam." });
         }
-
         if (createdNewAttempt)
         {
             await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
@@ -488,7 +486,6 @@ public class ExamsController : ControllerBase
 
         if (!await _context.Questions.AnyAsync(q => q.ExamId == examId))
             return BadRequest(new { message = "This exam cannot accept draft answers because it has no questions." });
-
         var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
         if (sessionAccessError != null)
         {
@@ -506,7 +503,6 @@ public class ExamsController : ControllerBase
         var validationError = ValidateAttemptAnswers(exam, answers);
         if (validationError != null)
             return BadRequest(new { message = validationError });
-
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
@@ -514,7 +510,6 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "You have already submitted this exam." });
 
         var createdNewAttempt = false;
-
         if (attempt == null)
         {
             attempt = new ExamAttempt
@@ -564,7 +559,6 @@ public class ExamsController : ControllerBase
                 attempt.StartedAt
             }, "ExamDelivery");
         }
-
         await _auditLogService.LogAsync("ExamAttempt.DraftSaved", "ExamAttempt", attempt.Id, new
         {
             attempt.ExamId,
@@ -691,7 +685,6 @@ public class ExamsController : ControllerBase
             AttemptViolationCount = sequenceNumber
         });
     }
-
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
     private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission)
@@ -1355,7 +1348,6 @@ public class ExamsController : ControllerBase
 
         return null;
     }
-
     private static (List<QuestionScoreDetailDto> details, double autoScore, bool requiresManualGrading) BuildAttemptEvaluation(Exam exam, List<AnswerDto> submittedAnswers)
     {
         var details = new List<QuestionScoreDetailDto>();
@@ -1416,7 +1408,6 @@ public class ExamsController : ControllerBase
 
         return AllowedIntegrityEventTypes.First(x => string.Equals(x, trimmed, StringComparison.OrdinalIgnoreCase));
     }
-
     private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)
     {
         var expectedAnswer = NormalizeOptionalValue(question.CorrectAnswer);

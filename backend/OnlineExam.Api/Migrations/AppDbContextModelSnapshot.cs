@@ -360,6 +360,9 @@ namespace OnlineExam.Api.Migrations
                     b.Property<double>("ManualScore")
                         .HasColumnType("double precision");
 
+                    b.Property<DateTime?>("LastSavedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -385,6 +388,9 @@ namespace OnlineExam.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExamId");
+
+                    b.HasIndex("ExamId", "StudentId")
+                        .IsUnique();
 
                     b.HasIndex("StudentId");
 

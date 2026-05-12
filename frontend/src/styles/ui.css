@@ -1264,6 +1264,38 @@
   font-family: var(--font-mono);
 }
 
+.examMcqOptions{
+  display: grid;
+  gap: 12px;
+}
+
+.examMcqOption{
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--heading);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.examMcqOption.selected{
+  border-color: rgba(23,99,61,.3);
+  background: #edf8f1;
+}
+
+.examMcqOption input{
+  margin-top: 4px;
+}
+
+.examResultNotice{
+  margin-top: 16px;
+}
+
 .examNavigator{
   position: sticky;
   top: 20px;

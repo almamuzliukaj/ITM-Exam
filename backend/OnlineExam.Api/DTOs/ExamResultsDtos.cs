@@ -33,6 +33,9 @@ public class ExamAttemptSummaryDto
     public DateTime? GradedAt { get; set; }
     public string? GradingNotes { get; set; }
     public int IntegrityViolationCount { get; set; }
+    public DateTime? IntegrityLastViolationAt { get; set; }
+    public string IntegrityPolicyAction { get; set; } = "None";
+    public DateTime? IntegrityAutoActionTriggeredAt { get; set; }
     public DateTime? IntegrityLastEventAt { get; set; }
     public List<ExamIntegrityEventDto> IntegrityEvents { get; set; } = [];
 }

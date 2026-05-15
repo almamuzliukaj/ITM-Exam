@@ -23,4 +23,5 @@ public class ExamAttempt
     public Guid? PublishedByUserId { get; set; }
 
     public Exam Exam { get; set; } = null!;
+    public List<ExamIntegrityEvent> IntegrityEvents { get; set; } = new();
 }

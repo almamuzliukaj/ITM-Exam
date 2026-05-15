@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using OnlineExam.Api.Data;
 
 #nullable disable
 
 namespace OnlineExam.Api.Migrations
 {
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260510143000_AddUniqueExamAttemptConstraint")]
     public partial class AddUniqueExamAttemptConstraint : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

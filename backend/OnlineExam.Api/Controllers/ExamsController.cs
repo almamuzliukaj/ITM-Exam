@@ -19,6 +19,14 @@ public class ExamsController : ControllerBase
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
+    private static readonly HashSet<string> AllowedIntegrityEventTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TabHidden",
+        "WindowBlur",
+        "FullscreenExit",
+        "CopyAttempt",
+        "PasteAttempt"
+    };
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
 
@@ -568,6 +576,121 @@ public class ExamsController : ControllerBase
         return Ok(MapToDraftDto(attempt));
     }
 
+    [HttpPost("{examId:guid}/attempt/integrity-events")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamIntegrityEventResultDto>> RecordIntegrityEvent(
+        Guid examId,
+        [FromBody] RecordExamIntegrityEventDto dto,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(dto.EventType))
+            return BadRequest(new { message = "EventType is required." });
+
+        var normalizedEventType = NormalizeIntegrityEventType(dto.EventType);
+        if (normalizedEventType == null)
+            return BadRequest(new { message = "Unsupported integrity event type." });
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null)
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value, cancellationToken);
+
+        if (attempt == null)
+        {
+            var now = DateTime.UtcNow;
+            attempt = new ExamAttempt
+            {
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptInProgressStatus,
+                StartedAt = now,
+                LastSavedAt = null,
+                SubmittedAt = null,
+                AnswersJson = JsonSerializer.Serialize(new List<AnswerDto>()),
+                AutoScore = 0,
+                ManualScore = 0,
+                FinalScore = 0,
+                RequiresManualGrading = false,
+                IsGraded = false,
+                IsPublished = false
+            };
+
+            _context.ExamAttempts.Add(attempt);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
+            {
+                attempt.ExamId,
+                attempt.StudentId,
+                attempt.StartedAt
+            }, "ExamDelivery", cancellationToken);
+        }
+
+        if (dto.ExamAttemptId.HasValue && dto.ExamAttemptId.Value != attempt.Id)
+            return BadRequest(new { message = "ExamAttemptId does not match the active attempt for this exam." });
+
+        if (attempt.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "Cannot record integrity events for a submitted attempt." });
+
+        var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
+        var sequenceNumber = await _context.ExamIntegrityEvents
+            .Where(x => x.ExamAttemptId == attempt.Id)
+            .CountAsync(cancellationToken) + 1;
+
+        var integrityEvent = new ExamIntegrityEvent
+        {
+            Id = Guid.NewGuid(),
+            ExamAttemptId = attempt.Id,
+            ExamId = examId,
+            StudentId = userId.Value,
+            EventType = normalizedEventType,
+            OccurredAt = occurredAt,
+            MetadataJson = dto.Metadata.HasValue ? dto.Metadata.Value.GetRawText() : null,
+            ClientSessionId = string.IsNullOrWhiteSpace(dto.ClientSessionId) ? null : dto.ClientSessionId.Trim(),
+            UserAgent = Request.Headers.UserAgent.ToString(),
+            SequenceNumber = sequenceNumber,
+            RecordedAt = DateTime.UtcNow
+        };
+
+        _context.ExamIntegrityEvents.Add(integrityEvent);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await _auditLogService.LogAsync("ExamIntegrityEvent.Recorded", "ExamAttempt", attempt.Id, new
+        {
+            integrityEvent.Id,
+            integrityEvent.ExamId,
+            integrityEvent.StudentId,
+            integrityEvent.EventType,
+            integrityEvent.OccurredAt,
+            integrityEvent.ClientSessionId,
+            integrityEvent.SequenceNumber
+        }, "ExamIntegrity", cancellationToken);
+
+        return Ok(new ExamIntegrityEventResultDto
+        {
+            EventId = integrityEvent.Id,
+            ExamAttemptId = attempt.Id,
+            EventType = integrityEvent.EventType,
+            OccurredAt = integrityEvent.OccurredAt,
+            AttemptViolationCount = sequenceNumber
+        });
+    }
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
     private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission)
@@ -1338,6 +1461,14 @@ public class ExamsController : ControllerBase
         };
     }
 
+    private static string? NormalizeIntegrityEventType(string rawEventType)
+    {
+        var trimmed = rawEventType.Trim();
+        if (!AllowedIntegrityEventTypes.Contains(trimmed))
+            return null;
+
+        return AllowedIntegrityEventTypes.First(x => string.Equals(x, trimmed, StringComparison.OrdinalIgnoreCase));
+    }
     private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)
     {
         var expectedAnswer = NormalizeOptionalValue(question.CorrectAnswer);

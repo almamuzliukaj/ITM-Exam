@@ -15,6 +15,7 @@ export default function StudentExamSessionPage() {
   const [loadedDraftAt, setLoadedDraftAt] = useState("");
   const [savedAt, setSavedAt] = useState("");
   const [saveState, setSaveState] = useState("idle");
+  const [draftRestored, setDraftRestored] = useState(false);
   const [sessionTiming, setSessionTiming] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -53,9 +54,11 @@ export default function StudentExamSessionPage() {
           setAnswers(restored.answers);
           setLoadedDraftAt(restored.savedAt || "");
           setSavedAt(restored.savedAt || "");
+          setDraftRestored(true);
         }
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
           setFlaggedQuestions(restored.flaggedQuestions);
+          setDraftRestored(true);
         }
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
@@ -82,19 +85,62 @@ export default function StudentExamSessionPage() {
     return () => window.clearInterval(timer);
   }, [sessionTiming]);
 
+  const persistDraft = useCallback((state = "saved") => {
+    if (!storageKey || !sessionTiming || result) return;
+
+    try {
+      const nextSavedAt = new Date().toISOString();
+      localStorage.setItem(storageKey, JSON.stringify({
+        answers,
+        flaggedQuestions,
+        savedAt: nextSavedAt,
+        ...sessionTiming,
+      }));
+      setSavedAt(nextSavedAt);
+      setSaveState(state);
+    } catch {
+      setSaveState("error");
+    }
+  }, [answers, flaggedQuestions, result, sessionTiming, storageKey]);
+
   useEffect(() => {
     if (!storageKey || loading || result || !sessionTiming) return;
 
     setSaveState("saving");
-    const timeout = window.setTimeout(() => {
-      const nextSavedAt = new Date().toISOString();
-      localStorage.setItem(storageKey, JSON.stringify({ answers, flaggedQuestions, savedAt: nextSavedAt, ...sessionTiming }));
-      setSavedAt(nextSavedAt);
-      setSaveState("saved");
-    }, 650);
-
+    const timeout = window.setTimeout(() => persistDraft("saved"), 650);
     return () => window.clearTimeout(timeout);
-  }, [answers, flaggedQuestions, loading, result, sessionTiming, storageKey]);
+  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || loading || result || !sessionTiming) return;
+
+    function saveOnExit() {
+      persistDraft("saved");
+    }
+
+    function warnBeforeUnload(event) {
+      if (Object.values(answers).some((answer) => String(answer || "").trim().length > 0)) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    }
+
+    function saveWhenHidden() {
+      if (document.visibilityState === "hidden") {
+        persistDraft("saved");
+      }
+    }
+
+    window.addEventListener("pagehide", saveOnExit);
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("visibilitychange", saveWhenHidden);
+
+    return () => {
+      window.removeEventListener("pagehide", saveOnExit);
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("visibilitychange", saveWhenHidden);
+    };
+  }, [answers, loading, persistDraft, result, sessionTiming, storageKey]);
 
   const submit = useCallback(async (reason = "manual") => {
     if (!examId || submittedRef.current) return;
@@ -135,6 +181,17 @@ export default function StudentExamSessionPage() {
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
 
+  function discardRestoredDraft() {
+    if (!storageKey) return;
+    localStorage.removeItem(storageKey);
+    setAnswers({});
+    setFlaggedQuestions({});
+    setLoadedDraftAt("");
+    setSavedAt("");
+    setDraftRestored(false);
+    setSaveState("idle");
+  }
+
   return (
     <AppShell
       user={user}
@@ -154,6 +211,18 @@ export default function StudentExamSessionPage() {
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
+
+        {draftRestored && !result ? (
+          <section className="draftRestoreBanner">
+            <div>
+              <strong>Draft restored</strong>
+              <span>Your previous answers were restored from this device. Last saved {formatSavedAt(loadedDraftAt || savedAt)}.</span>
+            </div>
+            <button className="btn" type="button" onClick={discardRestoredDraft} disabled={submitting}>
+              Clear restored draft
+            </button>
+          </section>
+        ) : null}
 
         {result ? (
           <SubmissionResult
@@ -194,7 +263,7 @@ export default function StudentExamSessionPage() {
               <div>
                 <span className="summaryLabel">Autosave</span>
                 <strong>{formatSavedAt(savedAt || loadedDraftAt)}</strong>
-                <small>{saveState === "saving" ? "Saving draft..." : "Draft saved on this device"}</small>
+                <small>{formatSaveState(saveState)}</small>
               </div>
             </section>
 
@@ -436,6 +505,13 @@ function formatSavedAt(value) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+}
+
+function formatSaveState(saveState) {
+  if (saveState === "saving") return "Saving draft...";
+  if (saveState === "error") return "Draft could not be saved on this device";
+  if (saveState === "idle") return "Draft starts after your first change";
+  return "Draft saved on this device";
 }
 
 function getQuestionNavClass(answer, flagged) {

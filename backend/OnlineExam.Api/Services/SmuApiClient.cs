@@ -20,6 +20,7 @@ public class SmuApiClient : ISmuApiClient
         EnsureConfigured();
 
         var students = await GetRequiredListAsync<SmuStudentDto>(_options.StudentsEndpoint, cancellationToken);
+        var staff = await GetRequiredListAsync<SmuStaffDto>(_options.StaffEndpoint, cancellationToken);
         var terms = await GetRequiredListAsync<SmuTermDto>(_options.TermsEndpoint, cancellationToken);
         var courses = await GetRequiredListAsync<SmuCourseDto>(_options.CoursesEndpoint, cancellationToken);
         var offerings = await GetRequiredListAsync<SmuCourseOfferingDto>(_options.OfferingsEndpoint, cancellationToken);
@@ -28,6 +29,7 @@ public class SmuApiClient : ISmuApiClient
         return new SmuSnapshotDto
         {
             Students = students,
+            Staff = staff,
             Terms = terms,
             Courses = courses,
             Offerings = offerings,

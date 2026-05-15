@@ -20,6 +20,7 @@ public class SmuMappingService : ISmuMappingService
             Endpoints =
             [
                 new SmuEndpointContractDto { Entity = "Students", RelativePath = _options.StudentsEndpoint, Purpose = "Student identities and active status come from SMU." },
+                new SmuEndpointContractDto { Entity = "Staff", RelativePath = _options.StaffEndpoint, Purpose = "Professor and assistant identities come from SMU staff feeds." },
                 new SmuEndpointContractDto { Entity = "Terms", RelativePath = _options.TermsEndpoint, Purpose = "Terms and semester windows are sourced from SMU." },
                 new SmuEndpointContractDto { Entity = "Courses", RelativePath = _options.CoursesEndpoint, Purpose = "Course catalogue data is sourced from SMU." },
                 new SmuEndpointContractDto { Entity = "Offerings", RelativePath = _options.OfferingsEndpoint, Purpose = "Course offering structure comes from SMU." },
@@ -28,6 +29,7 @@ public class SmuMappingService : ISmuMappingService
             SourceOfTruth =
             [
                 new SmuSourceOwnershipDto { Entity = "Students", SourceSystem = "SMU", Notes = "Online Exam consumes student identity, email, and active flag as read-only sync data." },
+                new SmuSourceOwnershipDto { Entity = "Staff", SourceSystem = "SMU", Notes = "Professor and assistant identities should be synchronized from SMU instead of manually maintained." },
                 new SmuSourceOwnershipDto { Entity = "Terms", SourceSystem = "SMU", Notes = "Academic term labels, dates, and current-term state come from SMU." },
                 new SmuSourceOwnershipDto { Entity = "Courses", SourceSystem = "SMU", Notes = "Course code, name, credits, and semester positioning come from SMU." },
                 new SmuSourceOwnershipDto { Entity = "Course Offerings", SourceSystem = "SMU", Notes = "Offering capacity, section, term, and lifecycle are synchronized from SMU." },
@@ -83,6 +85,17 @@ public class SmuMappingService : ISmuMappingService
             })
             .ToList();
 
+        var staff = snapshot.Staff
+            .Select(member => new SmuMappedStaffDto
+            {
+                StaffId = member.StaffId,
+                FullName = member.FullName.Trim(),
+                Email = member.Email.Trim().ToLowerInvariant(),
+                Role = NormalizeStaffRole(member.Role),
+                IsActive = member.IsActive
+            })
+            .ToList();
+
         var offerings = snapshot.Offerings
             .Select(offering => new SmuMappedOfferingDto
             {
@@ -91,7 +104,9 @@ public class SmuMappingService : ISmuMappingService
                 TermId = offering.TermId,
                 SectionCode = string.IsNullOrWhiteSpace(offering.SectionCode) ? "A" : offering.SectionCode.Trim().ToUpperInvariant(),
                 Status = NormalizeOfferingStatus(offering.Status),
-                Capacity = Math.Max(0, offering.Capacity)
+                Capacity = Math.Max(0, offering.Capacity),
+                PrimaryProfessorId = offering.PrimaryProfessorId,
+                AssistantId = offering.AssistantId
             })
             .ToList();
 
@@ -115,11 +130,20 @@ public class SmuMappingService : ISmuMappingService
         {
             Contract = BuildContractSummary(),
             Students = students,
+            Staff = staff,
             Terms = terms,
             Courses = courses,
             Offerings = offerings,
             Enrollments = enrollments,
             Warnings = warnings
+        };
+    }
+
+    public SmuSyncResultDto InitializeSyncResult()
+    {
+        return new SmuSyncResultDto
+        {
+            SyncedAt = DateTime.UtcNow
         };
     }
 
@@ -129,12 +153,19 @@ public class SmuMappingService : ISmuMappingService
         var termIds = snapshot.Terms.Select(x => x.TermId).ToHashSet();
         var offeringIds = snapshot.Offerings.Select(x => x.OfferingId).ToHashSet();
         var studentIds = snapshot.Students.Select(x => x.StudentId).ToHashSet();
+        var staffIds = snapshot.Staff.Select(x => x.StaffId).ToHashSet();
 
         foreach (var offering in snapshot.Offerings.Where(x => !courseIds.Contains(x.CourseId)))
             yield return $"Offering {offering.OfferingId} references missing course {offering.CourseId}.";
 
         foreach (var offering in snapshot.Offerings.Where(x => !termIds.Contains(x.TermId)))
             yield return $"Offering {offering.OfferingId} references missing term {offering.TermId}.";
+
+        foreach (var offering in snapshot.Offerings.Where(x => x.PrimaryProfessorId.HasValue && !staffIds.Contains(x.PrimaryProfessorId.Value)))
+            yield return $"Offering {offering.OfferingId} references missing professor {offering.PrimaryProfessorId}.";
+
+        foreach (var offering in snapshot.Offerings.Where(x => x.AssistantId.HasValue && !staffIds.Contains(x.AssistantId.Value)))
+            yield return $"Offering {offering.OfferingId} references missing assistant {offering.AssistantId}.";
 
         foreach (var enrollment in snapshot.Enrollments.Where(x => !studentIds.Contains(x.StudentId)))
             yield return $"Enrollment {enrollment.EnrollmentId} references missing student {enrollment.StudentId}.";
@@ -177,5 +208,15 @@ public class SmuMappingService : ISmuMappingService
     {
         var normalized = value.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
+    }
+
+    private static string NormalizeStaffRole(string value)
+    {
+        return value.Trim() switch
+        {
+            "Assistant" => "Assistant",
+            "Admin" => "Admin",
+            _ => "Professor"
+        };
     }
 }

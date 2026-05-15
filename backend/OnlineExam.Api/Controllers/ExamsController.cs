@@ -19,6 +19,12 @@ public class ExamsController : ControllerBase
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
+    private const int IntegrityFinalWarningThreshold = 3;
+    private const int IntegrityAutoActionThreshold = 5;
+    private const string IntegrityPolicyActionNone = "None";
+    private const string IntegrityPolicyActionWarning = "Warning";
+    private const string IntegrityPolicyActionFinalWarning = "FinalWarning";
+    private const string IntegrityPolicyActionAutoSubmit = "AutoSubmit";
     private static readonly HashSet<string> AllowedIntegrityEventTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "TabHidden",
@@ -342,7 +348,9 @@ public class ExamsController : ControllerBase
                 FinalScore = autoScore,
                 RequiresManualGrading = requiresManualGrading,
                 IsGraded = !requiresManualGrading,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -447,7 +455,9 @@ public class ExamsController : ControllerBase
                 FinalScore = 0,
                 RequiresManualGrading = false,
                 IsGraded = false,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -533,7 +543,9 @@ public class ExamsController : ControllerBase
                 FinalScore = 0,
                 RequiresManualGrading = false,
                 IsGraded = false,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -628,7 +640,9 @@ public class ExamsController : ControllerBase
                 FinalScore = 0,
                 RequiresManualGrading = false,
                 IsGraded = false,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -649,9 +663,16 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "Cannot record integrity events for a submitted attempt." });
 
         var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
-        var sequenceNumber = await _context.ExamIntegrityEvents
+        var attemptViolationCount = await _context.ExamIntegrityEvents
             .Where(x => x.ExamAttemptId == attempt.Id)
             .CountAsync(cancellationToken) + 1;
+        var studentViolationCount = await _context.ExamIntegrityEvents
+            .Where(x => x.StudentId == userId.Value)
+            .CountAsync(cancellationToken) + 1;
+        var policyAction = ResolveIntegrityPolicyAction(attemptViolationCount);
+        var autoActionTriggeredAt = policyAction == IntegrityPolicyActionAutoSubmit
+            ? attempt.IntegrityAutoActionTriggeredAt ?? DateTime.UtcNow
+            : attempt.IntegrityAutoActionTriggeredAt;
 
         var integrityEvent = new ExamIntegrityEvent
         {
@@ -664,9 +685,17 @@ public class ExamsController : ControllerBase
             MetadataJson = dto.Metadata.HasValue ? dto.Metadata.Value.GetRawText() : null,
             ClientSessionId = string.IsNullOrWhiteSpace(dto.ClientSessionId) ? null : dto.ClientSessionId.Trim(),
             UserAgent = Request.Headers.UserAgent.ToString(),
-            SequenceNumber = sequenceNumber,
+            SequenceNumber = attemptViolationCount,
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            PolicyAction = policyAction,
             RecordedAt = DateTime.UtcNow
         };
+
+        attempt.IntegrityViolationCount = attemptViolationCount;
+        attempt.IntegrityLastViolationAt = occurredAt;
+        attempt.IntegrityPolicyAction = policyAction;
+        attempt.IntegrityAutoActionTriggeredAt = autoActionTriggeredAt;
 
         _context.ExamIntegrityEvents.Add(integrityEvent);
         await _context.SaveChangesAsync(cancellationToken);
@@ -679,7 +708,10 @@ public class ExamsController : ControllerBase
             integrityEvent.EventType,
             integrityEvent.OccurredAt,
             integrityEvent.ClientSessionId,
-            integrityEvent.SequenceNumber
+            integrityEvent.SequenceNumber,
+            integrityEvent.AttemptViolationCount,
+            integrityEvent.StudentViolationCount,
+            integrityEvent.PolicyAction
         }, "ExamIntegrity", cancellationToken);
 
         return Ok(new ExamIntegrityEventResultDto
@@ -688,7 +720,72 @@ public class ExamsController : ControllerBase
             ExamAttemptId = attempt.Id,
             EventType = integrityEvent.EventType,
             OccurredAt = integrityEvent.OccurredAt,
-            AttemptViolationCount = sequenceNumber
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            Policy = BuildIntegrityPolicyDto(
+                attemptViolationCount,
+                studentViolationCount,
+                occurredAt,
+                autoActionTriggeredAt)
+        });
+    }
+
+    [HttpGet("{examId:guid}/attempt/integrity-summary")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(Guid examId, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null && sessionAccessError != "This exam is no longer accepting submissions.")
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var attempt = await _context.ExamAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value, cancellationToken);
+
+        if (attempt == null)
+            return NotFound(new { message = "Attempt not found." });
+
+        var events = await _context.ExamIntegrityEvents
+            .AsNoTracking()
+            .Where(x => x.ExamAttemptId == attempt.Id)
+            .OrderByDescending(x => x.RecordedAt)
+            .ToListAsync(cancellationToken);
+
+        var studentViolationCount = attempt.IntegrityViolationCount > 0
+            ? await _context.ExamIntegrityEvents
+                .Where(x => x.StudentId == userId.Value)
+                .CountAsync(cancellationToken)
+            : 0;
+
+        return Ok(new StudentExamIntegritySummaryDto
+        {
+            ExamId = examId,
+            ExamAttemptId = attempt.Id,
+            AttemptStatus = attempt.Status,
+            AttemptViolationCount = attempt.IntegrityViolationCount,
+            StudentViolationCount = studentViolationCount,
+            LastViolationAt = attempt.IntegrityLastViolationAt,
+            AutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt,
+            Policy = BuildIntegrityPolicyDto(
+                attempt.IntegrityViolationCount,
+                studentViolationCount,
+                attempt.IntegrityLastViolationAt,
+                attempt.IntegrityAutoActionTriggeredAt),
+            EventCounts = BuildIntegrityEventCounts(events),
+            Events = events.Select(MapIntegrityTimelineEvent).ToList()
         });
     }
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
@@ -858,7 +955,11 @@ public class ExamsController : ControllerBase
                     IsGraded = attempt.IsGraded,
                     IsPublished = attempt.IsPublished,
                     GradedAt = attempt.GradedAt,
-                    GradingNotes = attempt.GradingNotes
+                    GradingNotes = attempt.GradingNotes,
+                    IntegrityViolationCount = attempt.IntegrityViolationCount,
+                    IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
+                    IntegrityPolicyAction = attempt.IntegrityPolicyAction,
+                    IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
                 })
             .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
@@ -974,8 +1075,104 @@ public class ExamsController : ControllerBase
             IsGraded = attempt.IsGraded,
             IsPublished = attempt.IsPublished,
             GradedAt = attempt.GradedAt,
-            GradingNotes = attempt.GradingNotes
+            GradingNotes = attempt.GradingNotes,
+            IntegrityViolationCount = attempt.IntegrityViolationCount,
+            IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
+            IntegrityPolicyAction = attempt.IntegrityPolicyAction,
+            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
         });
+    }
+
+    [HttpGet("{id:guid}/integrity-summary")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamIntegritySummaryDto>> GetExamIntegritySummary(Guid id, CancellationToken cancellationToken)
+    {
+        var exam = await _context.Exams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+        if (exam == null)
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        var attempts = await _context.ExamAttempts
+            .AsNoTracking()
+            .Where(x => x.ExamId == id)
+            .Join(
+                _context.Users.AsNoTracking(),
+                attempt => attempt.StudentId,
+                user => user.Id,
+                (attempt, user) => new
+                {
+                    Attempt = attempt,
+                    User = user
+                })
+            .OrderByDescending(x => x.Attempt.SubmittedAt ?? x.Attempt.LastSavedAt ?? x.Attempt.StartedAt)
+            .ToListAsync(cancellationToken);
+
+        var attemptIds = attempts.Select(x => x.Attempt.Id).ToList();
+        var studentIds = attempts.Select(x => x.Attempt.StudentId).Distinct().ToList();
+
+        var events = attemptIds.Count == 0
+            ? []
+            : await _context.ExamIntegrityEvents
+                .AsNoTracking()
+                .Where(x => attemptIds.Contains(x.ExamAttemptId))
+                .OrderByDescending(x => x.RecordedAt)
+                .ToListAsync(cancellationToken);
+
+        var studentViolationCounts = studentIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await _context.ExamIntegrityEvents
+                .AsNoTracking()
+                .Where(x => studentIds.Contains(x.StudentId))
+                .GroupBy(x => x.StudentId)
+                .Select(x => new { StudentId = x.Key, Count = x.Count() })
+                .ToDictionaryAsync(x => x.StudentId, x => x.Count, cancellationToken);
+
+        var eventsByAttemptId = events
+            .GroupBy(x => x.ExamAttemptId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+
+        var summary = new ExamIntegritySummaryDto
+        {
+            ExamId = exam.Id,
+            ExamTitle = exam.Title,
+            FinalWarningThreshold = IntegrityFinalWarningThreshold,
+            AutoActionThreshold = IntegrityAutoActionThreshold,
+            TotalViolations = events.Count,
+            StudentsWithViolations = attempts.Count(x => x.Attempt.IntegrityViolationCount > 0),
+            Attempts = attempts.Select(x =>
+            {
+                var attemptEvents = eventsByAttemptId.TryGetValue(x.Attempt.Id, out var list) ? list : [];
+                var studentViolationCount = studentViolationCounts.TryGetValue(x.Attempt.StudentId, out var count) ? count : 0;
+
+                return new ExamIntegrityAttemptSummaryDto
+                {
+                    AttemptId = x.Attempt.Id,
+                    ExamId = x.Attempt.ExamId,
+                    StudentId = x.Attempt.StudentId,
+                    StudentName = x.User.FullName,
+                    StudentEmail = x.User.Email,
+                    AttemptStatus = x.Attempt.Status,
+                    StartedAt = x.Attempt.StartedAt,
+                    SubmittedAt = x.Attempt.SubmittedAt,
+                    AttemptViolationCount = x.Attempt.IntegrityViolationCount,
+                    StudentViolationCount = studentViolationCount,
+                    LastViolationAt = x.Attempt.IntegrityLastViolationAt,
+                    AutoActionTriggeredAt = x.Attempt.IntegrityAutoActionTriggeredAt,
+                    CurrentPolicyAction = string.IsNullOrWhiteSpace(x.Attempt.IntegrityPolicyAction)
+                        ? IntegrityPolicyActionNone
+                        : x.Attempt.IntegrityPolicyAction,
+                    EventCounts = BuildIntegrityEventCounts(attemptEvents),
+                    Events = attemptEvents.Select(MapIntegrityTimelineEvent).ToList()
+                };
+            }).ToList()
+        };
+
+        return Ok(summary);
     }
 
     [HttpPost("attempts/{attemptId:guid}/ai-text-evaluation")]
@@ -1458,6 +1655,74 @@ public class ExamsController : ControllerBase
             LastSavedAt = attempt.LastSavedAt,
             SubmittedAt = attempt.SubmittedAt,
             Answers = ParseAttemptAnswers(attempt.AnswersJson)
+        };
+    }
+
+    private static string ResolveIntegrityPolicyAction(int attemptViolationCount)
+    {
+        if (attemptViolationCount >= IntegrityAutoActionThreshold)
+            return IntegrityPolicyActionAutoSubmit;
+
+        if (attemptViolationCount >= IntegrityFinalWarningThreshold)
+            return IntegrityPolicyActionFinalWarning;
+
+        if (attemptViolationCount > 0)
+            return IntegrityPolicyActionWarning;
+
+        return IntegrityPolicyActionNone;
+    }
+
+    private static ExamIntegrityPolicyDto BuildIntegrityPolicyDto(
+        int attemptViolationCount,
+        int studentViolationCount,
+        DateTime? lastViolationAt,
+        DateTime? autoActionTriggeredAt)
+    {
+        var recommendedAction = ResolveIntegrityPolicyAction(attemptViolationCount);
+
+        return new ExamIntegrityPolicyDto
+        {
+            FinalWarningThreshold = IntegrityFinalWarningThreshold,
+            AutoActionThreshold = IntegrityAutoActionThreshold,
+            RecommendedAction = recommendedAction,
+            ShouldShowFinalWarning = attemptViolationCount >= IntegrityFinalWarningThreshold,
+            ShouldBlockInteraction = attemptViolationCount >= IntegrityAutoActionThreshold,
+            ShouldAutoSubmit = attemptViolationCount >= IntegrityAutoActionThreshold,
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            LastViolationAt = lastViolationAt,
+            AutoActionTriggeredAt = autoActionTriggeredAt
+        };
+    }
+
+    private static List<ExamIntegrityEventCountDto> BuildIntegrityEventCounts(IEnumerable<ExamIntegrityEvent> events)
+    {
+        return events
+            .GroupBy(x => x.EventType)
+            .OrderByDescending(x => x.Count())
+            .ThenBy(x => x.Key)
+            .Select(x => new ExamIntegrityEventCountDto
+            {
+                EventType = x.Key,
+                Count = x.Count()
+            })
+            .ToList();
+    }
+
+    private static ExamIntegrityTimelineEventDto MapIntegrityTimelineEvent(ExamIntegrityEvent integrityEvent)
+    {
+        return new ExamIntegrityTimelineEventDto
+        {
+            EventId = integrityEvent.Id,
+            EventType = integrityEvent.EventType,
+            OccurredAt = integrityEvent.OccurredAt,
+            RecordedAt = integrityEvent.RecordedAt,
+            SequenceNumber = integrityEvent.SequenceNumber,
+            AttemptViolationCount = integrityEvent.AttemptViolationCount,
+            StudentViolationCount = integrityEvent.StudentViolationCount,
+            PolicyAction = integrityEvent.PolicyAction,
+            MetadataJson = integrityEvent.MetadataJson,
+            ClientSessionId = integrityEvent.ClientSessionId
         };
     }
 

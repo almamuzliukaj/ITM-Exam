@@ -12,11 +12,16 @@ public class SmuIntegrationController : ControllerBase
 {
     private readonly ISmuApiClient _smuApiClient;
     private readonly ISmuMappingService _smuMappingService;
+    private readonly ISmuSyncService _smuSyncService;
 
-    public SmuIntegrationController(ISmuApiClient smuApiClient, ISmuMappingService smuMappingService)
+    public SmuIntegrationController(
+        ISmuApiClient smuApiClient,
+        ISmuMappingService smuMappingService,
+        ISmuSyncService smuSyncService)
     {
         _smuApiClient = smuApiClient;
         _smuMappingService = smuMappingService;
+        _smuSyncService = smuSyncService;
     }
 
     [HttpGet("contract")]
@@ -43,5 +48,24 @@ public class SmuIntegrationController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    [HttpPost("sync")]
+    public async Task<ActionResult<SmuSyncResultDto>> Sync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _smuSyncService.SyncAsync(cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("sync-from-payload")]
+    public async Task<ActionResult<SmuSyncResultDto>> SyncFromPayload([FromBody] SmuSnapshotDto snapshot, CancellationToken cancellationToken)
+    {
+        return Ok(await _smuSyncService.SyncAsync(snapshot, cancellationToken));
     }
 }

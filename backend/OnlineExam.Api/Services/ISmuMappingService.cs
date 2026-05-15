@@ -6,4 +6,5 @@ public interface ISmuMappingService
 {
     SmuContractSummaryDto BuildContractSummary();
     SmuMappedPreviewDto BuildMappedPreview(SmuSnapshotDto snapshot);
+    SmuSyncResultDto InitializeSyncResult();
 }

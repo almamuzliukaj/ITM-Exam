@@ -34,6 +34,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.Configure<SmuIntegrationOptions>(builder.Configuration.GetSection("SmuIntegration"));
 builder.Services.AddScoped<ISmuMappingService, SmuMappingService>();
+builder.Services.AddScoped<ISmuSyncService, SmuSyncService>();
 builder.Services.AddHttpClient<ISmuApiClient, SmuApiClient>((serviceProvider, client) =>
 {
     var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmuIntegrationOptions>>().Value;

@@ -435,7 +435,9 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        var exam = await _context.Exams
+            .Include(e => e.Questions)
+            .FirstOrDefaultAsync(e => e.Id == examId);
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
@@ -538,7 +540,9 @@ public class ExamsController : ControllerBase
         if (dto.ExamId != Guid.Empty && dto.ExamId != examId)
             return BadRequest(new { message = "ExamId in body does not match route." });
 
-        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        var exam = await _context.Exams
+            .Include(e => e.Questions)
+            .FirstOrDefaultAsync(e => e.Id == examId);
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 

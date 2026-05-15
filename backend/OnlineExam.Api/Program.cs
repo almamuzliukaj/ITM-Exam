@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using OnlineExam.Api.DTOs;
 using OnlineExam.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +32,17 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.Configure<SmuIntegrationOptions>(builder.Configuration.GetSection("SmuIntegration"));
+builder.Services.AddScoped<ISmuMappingService, SmuMappingService>();
+builder.Services.AddHttpClient<ISmuApiClient, SmuApiClient>((serviceProvider, client) =>
+{
+    var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmuIntegrationOptions>>().Value;
+
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+        client.BaseAddress = new Uri(options.BaseUrl);
+
+    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 15);
+});
 
 // ================= SWAGGER JWT AUTH ======================
 builder.Services.AddSwaggerGen(c =>

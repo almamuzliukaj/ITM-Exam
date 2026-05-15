@@ -122,6 +122,10 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
 
+        var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
+
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? DateTime.UtcNow;
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
@@ -177,7 +181,10 @@ public class ExamsController : ControllerBase
         {
             exam.Title,
             exam.CourseOfferingId,
-            exam.Status
+            exam.Status,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
 
         return CreatedAtAction(nameof(GetExam), new { id = exam.Id }, exam);
@@ -206,6 +213,10 @@ public class ExamsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
+
+        var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
 
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? exam.StartsAt;
@@ -251,7 +262,10 @@ public class ExamsController : ControllerBase
         {
             exam.Title,
             exam.CourseOfferingId,
-            exam.Status
+            exam.Status,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
         return Ok(exam);
     }
@@ -483,6 +497,34 @@ public class ExamsController : ControllerBase
         }
 
         return Ok(MapToDraftDto(attempt));
+    }
+
+    [HttpGet("{examId:guid}/lockdown-readiness")]
+    [Authorize(Roles = "Student,Professor,Assistant")]
+    public async Task<ActionResult<ExamLockdownReadinessDto>> GetLockdownReadiness(Guid examId, CancellationToken cancellationToken)
+    {
+        var exam = await _context.Exams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+            if (!await CanStudentAccessExamAsync(userId.Value, exam))
+                return Forbid();
+        }
+        else if (!await CanManageExamAsync(exam))
+        {
+            return Forbid();
+        }
+
+        return Ok(BuildLockdownReadinessDto(exam));
     }
 
     [HttpPut("{examId:guid}/attempt/draft")]
@@ -796,7 +838,7 @@ public class ExamsController : ControllerBase
             return "This exam is not available for students.";
 
         if (exam.RequiresLockdown && !IsAllowedLockdownClient(exam))
-            return "This exam requires lockdown mode before it can be started.";
+            return BuildLockdownReadinessDto(exam).Message;
 
         var now = DateTime.UtcNow;
         if (now < exam.StartsAt)
@@ -899,12 +941,19 @@ public class ExamsController : ControllerBase
         if (!hasQuestions)
             return BadRequest(new { message = "Exam must have at least one question before publishing." });
 
+        var lockdownConfigurationError = ValidateLockdownConfiguration(exam.RequiresLockdown, exam.AllowedClient, exam.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
+
         exam.Status = "Published";
         exam.IsPublished = true;
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Published", "Exam", exam.Id, new
         {
-            exam.CourseOfferingId
+            exam.CourseOfferingId,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
 
         return Ok(new { message = "Exam published!", examId = id });
@@ -1818,7 +1867,74 @@ public class ExamsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)
+    {
+        var normalizedClient = NormalizeLockdownClient(allowedClient);
+        var normalizedMode = NormalizeLockdownMode(lockdownMode);
+
+        if (!requiresLockdown)
+            return null;
+
+        if (normalizedClient == "StandardBrowser")
+            return "Lockdown exams must specify a protected client such as SafeExamBrowser or KioskClient.";
+
+        if (normalizedMode != "Strict")
+            return "Lockdown exams must use Strict mode before they can be published or started.";
+
+        return null;
+    }
+
+    private ExamLockdownReadinessDto BuildLockdownReadinessDto(Exam exam)
+    {
+        var currentClient = GetCurrentExamClient();
+        var isAllowedClient = IsAllowedLockdownClient(exam, currentClient);
+        var canStartAttempt = !exam.RequiresLockdown || isAllowedClient;
+
+        var message = !exam.RequiresLockdown
+            ? "This exam can be started in a standard browser."
+            : isAllowedClient
+                ? $"{FormatLockdownClient(exam.AllowedClient)} detected. Lockdown requirements are satisfied."
+                : $"This exam requires {FormatLockdownClient(exam.AllowedClient)} before the attempt can be started.";
+
+        return new ExamLockdownReadinessDto
+        {
+            ExamId = exam.Id,
+            RequiresLockdown = exam.RequiresLockdown,
+            AllowedClient = exam.AllowedClient,
+            LockdownMode = exam.LockdownMode,
+            CurrentClient = currentClient,
+            IsAllowedClient = isAllowedClient,
+            CanStartAttempt = canStartAttempt,
+            Status = canStartAttempt ? "Ready" : "Blocked",
+            Message = message
+        };
+    }
+
+    private static string FormatLockdownClient(string value)
+    {
+        return value switch
+        {
+            "SafeExamBrowser" => "Safe Exam Browser",
+            "KioskClient" => "Kiosk client",
+            _ => "standard browser"
+        };
+    }
+
+    private string GetCurrentExamClient()
+    {
+        var client = NormalizeOptionalValue(Request.Headers["X-Exam-Client"].FirstOrDefault());
+        if (!string.IsNullOrWhiteSpace(client))
+            return client;
+
+        return "StandardBrowser";
+    }
+
     private bool IsAllowedLockdownClient(Exam exam)
+    {
+        return IsAllowedLockdownClient(exam, GetCurrentExamClient());
+    }
+
+    private static bool IsAllowedLockdownClient(Exam exam, string? detectedClient)
     {
         if (!exam.RequiresLockdown)
             return true;
@@ -1826,8 +1942,7 @@ public class ExamsController : ControllerBase
         if (string.Equals(exam.AllowedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        var client = Request.Headers["X-Exam-Client"].FirstOrDefault();
-        return string.Equals(client, exam.AllowedClient, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(NormalizeOptionalValue(detectedClient), exam.AllowedClient, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeLockdownClient(string? value)

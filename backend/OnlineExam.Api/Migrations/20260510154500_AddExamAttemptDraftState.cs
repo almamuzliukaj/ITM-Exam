@@ -13,39 +13,35 @@ namespace OnlineExam.Api.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<DateTime>(
-                name: "StartedAt",
-                table: "ExamAttempts",
-                type: "timestamp with time zone",
-                nullable: false,
-                defaultValueSql: "NOW()");
+            migrationBuilder.Sql("""
+                ALTER TABLE "ExamAttempts"
+                ADD COLUMN IF NOT EXISTS "StartedAt" timestamp with time zone;
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "LastSavedAt",
-                table: "ExamAttempts",
-                type: "timestamp with time zone",
-                nullable: true);
+                ALTER TABLE "ExamAttempts"
+                ADD COLUMN IF NOT EXISTS "LastSavedAt" timestamp with time zone NULL;
 
-            migrationBuilder.AddColumn<string>(
-                name: "Status",
-                table: "ExamAttempts",
-                type: "text",
-                nullable: false,
-                defaultValue: "InProgress");
+                ALTER TABLE "ExamAttempts"
+                ADD COLUMN IF NOT EXISTS "Status" text;
 
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "SubmittedAt",
-                table: "ExamAttempts",
-                type: "timestamp with time zone",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "timestamp with time zone");
+                ALTER TABLE "ExamAttempts"
+                ALTER COLUMN "SubmittedAt" DROP NOT NULL;
+
+                UPDATE "ExamAttempts"
+                SET "StartedAt" = COALESCE("StartedAt", "SubmittedAt", NOW()),
+                    "Status" = COALESCE(NULLIF("Status", ''), 'InProgress');
+
+                ALTER TABLE "ExamAttempts"
+                ALTER COLUMN "StartedAt" SET DEFAULT NOW(),
+                ALTER COLUMN "StartedAt" SET NOT NULL,
+                ALTER COLUMN "Status" SET DEFAULT 'InProgress',
+                ALTER COLUMN "Status" SET NOT NULL;
+                """);
 
             migrationBuilder.Sql("""
                 UPDATE "ExamAttempts"
                 SET "Status" = 'Submitted',
-                    "StartedAt" = COALESCE("SubmittedAt", NOW()),
-                    "LastSavedAt" = "SubmittedAt"
+                    "StartedAt" = COALESCE("StartedAt", "SubmittedAt", NOW()),
+                    "LastSavedAt" = COALESCE("LastSavedAt", "SubmittedAt")
                 WHERE "SubmittedAt" IS NOT NULL;
                 """);
         }

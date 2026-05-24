@@ -19,6 +19,20 @@ public class ExamsController : ControllerBase
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
+    private const int IntegrityFinalWarningThreshold = 3;
+    private const int IntegrityAutoActionThreshold = 5;
+    private const string IntegrityPolicyActionNone = "None";
+    private const string IntegrityPolicyActionWarning = "Warning";
+    private const string IntegrityPolicyActionFinalWarning = "FinalWarning";
+    private const string IntegrityPolicyActionAutoSubmit = "AutoSubmit";
+    private static readonly HashSet<string> AllowedIntegrityEventTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TabHidden",
+        "WindowBlur",
+        "FullscreenExit",
+        "CopyAttempt",
+        "PasteAttempt"
+    };
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
 
@@ -108,6 +122,10 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
 
+        var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
+
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? DateTime.UtcNow;
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
@@ -163,7 +181,10 @@ public class ExamsController : ControllerBase
         {
             exam.Title,
             exam.CourseOfferingId,
-            exam.Status
+            exam.Status,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
 
         return CreatedAtAction(nameof(GetExam), new { id = exam.Id }, exam);
@@ -192,6 +213,10 @@ public class ExamsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
+
+        var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
 
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? exam.StartsAt;
@@ -237,7 +262,10 @@ public class ExamsController : ControllerBase
         {
             exam.Title,
             exam.CourseOfferingId,
-            exam.Status
+            exam.Status,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
         return Ok(exam);
     }
@@ -334,7 +362,9 @@ public class ExamsController : ControllerBase
                 FinalScore = autoScore,
                 RequiresManualGrading = requiresManualGrading,
                 IsGraded = !requiresManualGrading,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -405,7 +435,9 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        var exam = await _context.Exams
+            .Include(e => e.Questions)
+            .FirstOrDefaultAsync(e => e.Id == examId);
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
@@ -439,7 +471,9 @@ public class ExamsController : ControllerBase
                 FinalScore = 0,
                 RequiresManualGrading = false,
                 IsGraded = false,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -467,6 +501,34 @@ public class ExamsController : ControllerBase
         return Ok(MapToDraftDto(attempt));
     }
 
+    [HttpGet("{examId:guid}/lockdown-readiness")]
+    [Authorize(Roles = "Student,Professor,Assistant")]
+    public async Task<ActionResult<ExamLockdownReadinessDto>> GetLockdownReadiness(Guid examId, CancellationToken cancellationToken)
+    {
+        var exam = await _context.Exams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized();
+
+            if (!await CanStudentAccessExamAsync(userId.Value, exam))
+                return Forbid();
+        }
+        else if (!await CanManageExamAsync(exam))
+        {
+            return Forbid();
+        }
+
+        return Ok(BuildLockdownReadinessDto(exam));
+    }
+
     [HttpPut("{examId:guid}/attempt/draft")]
     [Authorize(Roles = "Student")]
     public async Task<ActionResult<ExamAttemptDraftDto>> SaveDraftAttempt(Guid examId, [FromBody] CreateExamAttemptDto dto)
@@ -478,7 +540,9 @@ public class ExamsController : ControllerBase
         if (dto.ExamId != Guid.Empty && dto.ExamId != examId)
             return BadRequest(new { message = "ExamId in body does not match route." });
 
-        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+        var exam = await _context.Exams
+            .Include(e => e.Questions)
+            .FirstOrDefaultAsync(e => e.Id == examId);
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
@@ -525,7 +589,9 @@ public class ExamsController : ControllerBase
                 FinalScore = 0,
                 RequiresManualGrading = false,
                 IsGraded = false,
-                IsPublished = false
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
             };
 
             _context.ExamAttempts.Add(attempt);
@@ -568,6 +634,206 @@ public class ExamsController : ControllerBase
         return Ok(MapToDraftDto(attempt));
     }
 
+    [HttpPost("{examId:guid}/attempt/integrity-events")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamIntegrityEventResultDto>> RecordIntegrityEvent(
+        Guid examId,
+        [FromBody] RecordExamIntegrityEventDto dto,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(dto.EventType))
+            return BadRequest(new { message = "EventType is required." });
+
+        var normalizedEventType = NormalizeIntegrityEventType(dto.EventType);
+        if (normalizedEventType == null)
+            return BadRequest(new { message = "Unsupported integrity event type." });
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null)
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value, cancellationToken);
+
+        if (attempt == null)
+        {
+            var now = DateTime.UtcNow;
+            attempt = new ExamAttempt
+            {
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptInProgressStatus,
+                StartedAt = now,
+                LastSavedAt = null,
+                SubmittedAt = null,
+                AnswersJson = JsonSerializer.Serialize(new List<AnswerDto>()),
+                AutoScore = 0,
+                ManualScore = 0,
+                FinalScore = 0,
+                RequiresManualGrading = false,
+                IsGraded = false,
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
+            };
+
+            _context.ExamAttempts.Add(attempt);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
+            {
+                attempt.ExamId,
+                attempt.StudentId,
+                attempt.StartedAt
+            }, "ExamDelivery", cancellationToken);
+        }
+
+        if (dto.ExamAttemptId.HasValue && dto.ExamAttemptId.Value != attempt.Id)
+            return BadRequest(new { message = "ExamAttemptId does not match the active attempt for this exam." });
+
+        if (attempt.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "Cannot record integrity events for a submitted attempt." });
+
+        var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
+        var attemptViolationCount = await _context.ExamIntegrityEvents
+            .Where(x => x.ExamAttemptId == attempt.Id)
+            .CountAsync(cancellationToken) + 1;
+        var studentViolationCount = await _context.ExamIntegrityEvents
+            .Where(x => x.StudentId == userId.Value)
+            .CountAsync(cancellationToken) + 1;
+        var policyAction = ResolveIntegrityPolicyAction(attemptViolationCount);
+        var autoActionTriggeredAt = policyAction == IntegrityPolicyActionAutoSubmit
+            ? attempt.IntegrityAutoActionTriggeredAt ?? DateTime.UtcNow
+            : attempt.IntegrityAutoActionTriggeredAt;
+
+        var integrityEvent = new ExamIntegrityEvent
+        {
+            Id = Guid.NewGuid(),
+            ExamAttemptId = attempt.Id,
+            ExamId = examId,
+            StudentId = userId.Value,
+            EventType = normalizedEventType,
+            OccurredAt = occurredAt,
+            MetadataJson = dto.Metadata.HasValue ? dto.Metadata.Value.GetRawText() : null,
+            ClientSessionId = string.IsNullOrWhiteSpace(dto.ClientSessionId) ? null : dto.ClientSessionId.Trim(),
+            UserAgent = Request.Headers.UserAgent.ToString(),
+            SequenceNumber = attemptViolationCount,
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            PolicyAction = policyAction,
+            RecordedAt = DateTime.UtcNow
+        };
+
+        attempt.IntegrityViolationCount = attemptViolationCount;
+        attempt.IntegrityLastViolationAt = occurredAt;
+        attempt.IntegrityPolicyAction = policyAction;
+        attempt.IntegrityAutoActionTriggeredAt = autoActionTriggeredAt;
+
+        _context.ExamIntegrityEvents.Add(integrityEvent);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await _auditLogService.LogAsync("ExamIntegrityEvent.Recorded", "ExamAttempt", attempt.Id, new
+        {
+            integrityEvent.Id,
+            integrityEvent.ExamId,
+            integrityEvent.StudentId,
+            integrityEvent.EventType,
+            integrityEvent.OccurredAt,
+            integrityEvent.ClientSessionId,
+            integrityEvent.SequenceNumber,
+            integrityEvent.AttemptViolationCount,
+            integrityEvent.StudentViolationCount,
+            integrityEvent.PolicyAction
+        }, "ExamIntegrity", cancellationToken);
+
+        return Ok(new ExamIntegrityEventResultDto
+        {
+            EventId = integrityEvent.Id,
+            ExamAttemptId = attempt.Id,
+            EventType = integrityEvent.EventType,
+            OccurredAt = integrityEvent.OccurredAt,
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            Policy = BuildIntegrityPolicyDto(
+                attemptViolationCount,
+                studentViolationCount,
+                occurredAt,
+                autoActionTriggeredAt)
+        });
+    }
+
+    [HttpGet("{examId:guid}/attempt/integrity-summary")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(Guid examId, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FirstOrDefaultAsync(e => e.Id == examId, cancellationToken);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null && sessionAccessError != "This exam is no longer accepting submissions.")
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        var attempt = await _context.ExamAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value, cancellationToken);
+
+        if (attempt == null)
+            return NotFound(new { message = "Attempt not found." });
+
+        var events = await _context.ExamIntegrityEvents
+            .AsNoTracking()
+            .Where(x => x.ExamAttemptId == attempt.Id)
+            .OrderByDescending(x => x.RecordedAt)
+            .ToListAsync(cancellationToken);
+
+        var studentViolationCount = attempt.IntegrityViolationCount > 0
+            ? await _context.ExamIntegrityEvents
+                .Where(x => x.StudentId == userId.Value)
+                .CountAsync(cancellationToken)
+            : 0;
+
+        return Ok(new StudentExamIntegritySummaryDto
+        {
+            ExamId = examId,
+            ExamAttemptId = attempt.Id,
+            AttemptStatus = attempt.Status,
+            AttemptViolationCount = attempt.IntegrityViolationCount,
+            StudentViolationCount = studentViolationCount,
+            LastViolationAt = attempt.IntegrityLastViolationAt,
+            AutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt,
+            Policy = BuildIntegrityPolicyDto(
+                attempt.IntegrityViolationCount,
+                studentViolationCount,
+                attempt.IntegrityLastViolationAt,
+                attempt.IntegrityAutoActionTriggeredAt),
+            EventCounts = BuildIntegrityEventCounts(events),
+            Events = events.Select(MapIntegrityTimelineEvent).ToList()
+        });
+    }
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
     private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission)
@@ -576,7 +842,7 @@ public class ExamsController : ControllerBase
             return "This exam is not available for students.";
 
         if (exam.RequiresLockdown && !IsAllowedLockdownClient(exam))
-            return "This exam requires lockdown mode before it can be started.";
+            return BuildLockdownReadinessDto(exam).Message;
 
         var now = DateTime.UtcNow;
         if (now < exam.StartsAt)
@@ -679,12 +945,19 @@ public class ExamsController : ControllerBase
         if (!hasQuestions)
             return BadRequest(new { message = "Exam must have at least one question before publishing." });
 
+        var lockdownConfigurationError = ValidateLockdownConfiguration(exam.RequiresLockdown, exam.AllowedClient, exam.LockdownMode);
+        if (lockdownConfigurationError != null)
+            return BadRequest(new { message = lockdownConfigurationError });
+
         exam.Status = "Published";
         exam.IsPublished = true;
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Published", "Exam", exam.Id, new
         {
-            exam.CourseOfferingId
+            exam.CourseOfferingId,
+            exam.RequiresLockdown,
+            exam.AllowedClient,
+            exam.LockdownMode
         }, "ExamAuthoring");
 
         return Ok(new { message = "Exam published!", examId = id });
@@ -735,7 +1008,11 @@ public class ExamsController : ControllerBase
                     IsGraded = attempt.IsGraded,
                     IsPublished = attempt.IsPublished,
                     GradedAt = attempt.GradedAt,
-                    GradingNotes = attempt.GradingNotes
+                    GradingNotes = attempt.GradingNotes,
+                    IntegrityViolationCount = attempt.IntegrityViolationCount,
+                    IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
+                    IntegrityPolicyAction = attempt.IntegrityPolicyAction,
+                    IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
                 })
             .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
@@ -851,8 +1128,104 @@ public class ExamsController : ControllerBase
             IsGraded = attempt.IsGraded,
             IsPublished = attempt.IsPublished,
             GradedAt = attempt.GradedAt,
-            GradingNotes = attempt.GradingNotes
+            GradingNotes = attempt.GradingNotes,
+            IntegrityViolationCount = attempt.IntegrityViolationCount,
+            IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
+            IntegrityPolicyAction = attempt.IntegrityPolicyAction,
+            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
         });
+    }
+
+    [HttpGet("{id:guid}/integrity-summary")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamIntegritySummaryDto>> GetExamIntegritySummary(Guid id, CancellationToken cancellationToken)
+    {
+        var exam = await _context.Exams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+        if (exam == null)
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        var attempts = await _context.ExamAttempts
+            .AsNoTracking()
+            .Where(x => x.ExamId == id)
+            .Join(
+                _context.Users.AsNoTracking(),
+                attempt => attempt.StudentId,
+                user => user.Id,
+                (attempt, user) => new
+                {
+                    Attempt = attempt,
+                    User = user
+                })
+            .OrderByDescending(x => x.Attempt.SubmittedAt ?? x.Attempt.LastSavedAt ?? x.Attempt.StartedAt)
+            .ToListAsync(cancellationToken);
+
+        var attemptIds = attempts.Select(x => x.Attempt.Id).ToList();
+        var studentIds = attempts.Select(x => x.Attempt.StudentId).Distinct().ToList();
+
+        var events = attemptIds.Count == 0
+            ? []
+            : await _context.ExamIntegrityEvents
+                .AsNoTracking()
+                .Where(x => attemptIds.Contains(x.ExamAttemptId))
+                .OrderByDescending(x => x.RecordedAt)
+                .ToListAsync(cancellationToken);
+
+        var studentViolationCounts = studentIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await _context.ExamIntegrityEvents
+                .AsNoTracking()
+                .Where(x => studentIds.Contains(x.StudentId))
+                .GroupBy(x => x.StudentId)
+                .Select(x => new { StudentId = x.Key, Count = x.Count() })
+                .ToDictionaryAsync(x => x.StudentId, x => x.Count, cancellationToken);
+
+        var eventsByAttemptId = events
+            .GroupBy(x => x.ExamAttemptId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+
+        var summary = new ExamIntegritySummaryDto
+        {
+            ExamId = exam.Id,
+            ExamTitle = exam.Title,
+            FinalWarningThreshold = IntegrityFinalWarningThreshold,
+            AutoActionThreshold = IntegrityAutoActionThreshold,
+            TotalViolations = events.Count,
+            StudentsWithViolations = attempts.Count(x => x.Attempt.IntegrityViolationCount > 0),
+            Attempts = attempts.Select(x =>
+            {
+                var attemptEvents = eventsByAttemptId.TryGetValue(x.Attempt.Id, out var list) ? list : [];
+                var studentViolationCount = studentViolationCounts.TryGetValue(x.Attempt.StudentId, out var count) ? count : 0;
+
+                return new ExamIntegrityAttemptSummaryDto
+                {
+                    AttemptId = x.Attempt.Id,
+                    ExamId = x.Attempt.ExamId,
+                    StudentId = x.Attempt.StudentId,
+                    StudentName = x.User.FullName,
+                    StudentEmail = x.User.Email,
+                    AttemptStatus = x.Attempt.Status,
+                    StartedAt = x.Attempt.StartedAt,
+                    SubmittedAt = x.Attempt.SubmittedAt,
+                    AttemptViolationCount = x.Attempt.IntegrityViolationCount,
+                    StudentViolationCount = studentViolationCount,
+                    LastViolationAt = x.Attempt.IntegrityLastViolationAt,
+                    AutoActionTriggeredAt = x.Attempt.IntegrityAutoActionTriggeredAt,
+                    CurrentPolicyAction = string.IsNullOrWhiteSpace(x.Attempt.IntegrityPolicyAction)
+                        ? IntegrityPolicyActionNone
+                        : x.Attempt.IntegrityPolicyAction,
+                    EventCounts = BuildIntegrityEventCounts(attemptEvents),
+                    Events = attemptEvents.Select(MapIntegrityTimelineEvent).ToList()
+                };
+            }).ToList()
+        };
+
+        return Ok(summary);
     }
 
     [HttpPost("attempts/{attemptId:guid}/ai-text-evaluation")]
@@ -1338,6 +1711,82 @@ public class ExamsController : ControllerBase
         };
     }
 
+    private static string ResolveIntegrityPolicyAction(int attemptViolationCount)
+    {
+        if (attemptViolationCount >= IntegrityAutoActionThreshold)
+            return IntegrityPolicyActionAutoSubmit;
+
+        if (attemptViolationCount >= IntegrityFinalWarningThreshold)
+            return IntegrityPolicyActionFinalWarning;
+
+        if (attemptViolationCount > 0)
+            return IntegrityPolicyActionWarning;
+
+        return IntegrityPolicyActionNone;
+    }
+
+    private static ExamIntegrityPolicyDto BuildIntegrityPolicyDto(
+        int attemptViolationCount,
+        int studentViolationCount,
+        DateTime? lastViolationAt,
+        DateTime? autoActionTriggeredAt)
+    {
+        var recommendedAction = ResolveIntegrityPolicyAction(attemptViolationCount);
+
+        return new ExamIntegrityPolicyDto
+        {
+            FinalWarningThreshold = IntegrityFinalWarningThreshold,
+            AutoActionThreshold = IntegrityAutoActionThreshold,
+            RecommendedAction = recommendedAction,
+            ShouldShowFinalWarning = attemptViolationCount >= IntegrityFinalWarningThreshold,
+            ShouldBlockInteraction = attemptViolationCount >= IntegrityAutoActionThreshold,
+            ShouldAutoSubmit = attemptViolationCount >= IntegrityAutoActionThreshold,
+            AttemptViolationCount = attemptViolationCount,
+            StudentViolationCount = studentViolationCount,
+            LastViolationAt = lastViolationAt,
+            AutoActionTriggeredAt = autoActionTriggeredAt
+        };
+    }
+
+    private static List<ExamIntegrityEventCountDto> BuildIntegrityEventCounts(IEnumerable<ExamIntegrityEvent> events)
+    {
+        return events
+            .GroupBy(x => x.EventType)
+            .OrderByDescending(x => x.Count())
+            .ThenBy(x => x.Key)
+            .Select(x => new ExamIntegrityEventCountDto
+            {
+                EventType = x.Key,
+                Count = x.Count()
+            })
+            .ToList();
+    }
+
+    private static ExamIntegrityTimelineEventDto MapIntegrityTimelineEvent(ExamIntegrityEvent integrityEvent)
+    {
+        return new ExamIntegrityTimelineEventDto
+        {
+            EventId = integrityEvent.Id,
+            EventType = integrityEvent.EventType,
+            OccurredAt = integrityEvent.OccurredAt,
+            RecordedAt = integrityEvent.RecordedAt,
+            SequenceNumber = integrityEvent.SequenceNumber,
+            AttemptViolationCount = integrityEvent.AttemptViolationCount,
+            StudentViolationCount = integrityEvent.StudentViolationCount,
+            PolicyAction = integrityEvent.PolicyAction,
+            MetadataJson = integrityEvent.MetadataJson,
+            ClientSessionId = integrityEvent.ClientSessionId
+        };
+    }
+
+    private static string? NormalizeIntegrityEventType(string rawEventType)
+    {
+        var trimmed = rawEventType.Trim();
+        if (!AllowedIntegrityEventTypes.Contains(trimmed))
+            return null;
+
+        return AllowedIntegrityEventTypes.First(x => string.Equals(x, trimmed, StringComparison.OrdinalIgnoreCase));
+    }
     private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)
     {
         var expectedAnswer = NormalizeOptionalValue(question.CorrectAnswer);
@@ -1422,7 +1871,74 @@ public class ExamsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)
+    {
+        var normalizedClient = NormalizeLockdownClient(allowedClient);
+        var normalizedMode = NormalizeLockdownMode(lockdownMode);
+
+        if (!requiresLockdown)
+            return null;
+
+        if (normalizedClient == "StandardBrowser")
+            return "Lockdown exams must specify a protected client such as SafeExamBrowser or KioskClient.";
+
+        if (normalizedMode != "Strict")
+            return "Lockdown exams must use Strict mode before they can be published or started.";
+
+        return null;
+    }
+
+    private ExamLockdownReadinessDto BuildLockdownReadinessDto(Exam exam)
+    {
+        var currentClient = GetCurrentExamClient();
+        var isAllowedClient = IsAllowedLockdownClient(exam, currentClient);
+        var canStartAttempt = !exam.RequiresLockdown || isAllowedClient;
+
+        var message = !exam.RequiresLockdown
+            ? "This exam can be started in a standard browser."
+            : isAllowedClient
+                ? $"{FormatLockdownClient(exam.AllowedClient)} detected. Lockdown requirements are satisfied."
+                : $"This exam requires {FormatLockdownClient(exam.AllowedClient)} before the attempt can be started.";
+
+        return new ExamLockdownReadinessDto
+        {
+            ExamId = exam.Id,
+            RequiresLockdown = exam.RequiresLockdown,
+            AllowedClient = exam.AllowedClient,
+            LockdownMode = exam.LockdownMode,
+            CurrentClient = currentClient,
+            IsAllowedClient = isAllowedClient,
+            CanStartAttempt = canStartAttempt,
+            Status = canStartAttempt ? "Ready" : "Blocked",
+            Message = message
+        };
+    }
+
+    private static string FormatLockdownClient(string value)
+    {
+        return value switch
+        {
+            "SafeExamBrowser" => "Safe Exam Browser",
+            "KioskClient" => "Kiosk client",
+            _ => "standard browser"
+        };
+    }
+
+    private string GetCurrentExamClient()
+    {
+        var client = NormalizeOptionalValue(Request.Headers["X-Exam-Client"].FirstOrDefault());
+        if (!string.IsNullOrWhiteSpace(client))
+            return client;
+
+        return "StandardBrowser";
+    }
+
     private bool IsAllowedLockdownClient(Exam exam)
+    {
+        return IsAllowedLockdownClient(exam, GetCurrentExamClient());
+    }
+
+    private static bool IsAllowedLockdownClient(Exam exam, string? detectedClient)
     {
         if (!exam.RequiresLockdown)
             return true;
@@ -1430,8 +1946,7 @@ public class ExamsController : ControllerBase
         if (string.Equals(exam.AllowedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        var client = Request.Headers["X-Exam-Client"].FirstOrDefault();
-        return string.Equals(client, exam.AllowedClient, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(NormalizeOptionalValue(detectedClient), exam.AllowedClient, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeLockdownClient(string? value)

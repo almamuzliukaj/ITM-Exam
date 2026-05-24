@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using OnlineExam.Api.Data;
 
 #nullable disable
 
 namespace OnlineExam.Api.Migrations
 {
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260424003000_AddMissingExamCourseOfferingColumn")]
     public partial class AddMissingExamCourseOfferingColumn : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

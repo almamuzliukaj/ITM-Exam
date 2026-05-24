@@ -1,10 +1,14 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using OnlineExam.Api.Data;
 
 #nullable disable
 
 namespace OnlineExam.Api.Migrations
 {
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20260510154500_AddExamAttemptDraftState")]
     public partial class AddExamAttemptDraftState : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

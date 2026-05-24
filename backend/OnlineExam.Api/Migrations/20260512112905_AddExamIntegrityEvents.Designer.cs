@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OnlineExam.Api.Data;
@@ -11,9 +12,11 @@ using OnlineExam.Api.Data;
 namespace OnlineExam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512112905_AddExamIntegrityEvents")]
+    partial class AddExamIntegrityEvents
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -280,10 +283,6 @@ namespace OnlineExam.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AllowedClient")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<Guid?>("CourseOfferingId")
                         .HasColumnType("uuid");
 
@@ -304,13 +303,6 @@ namespace OnlineExam.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsPublished")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("LockdownMode")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("RequiresLockdown")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("StartsAt")
@@ -358,19 +350,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.Property<string>("GradingNotes")
                         .HasColumnType("text");
-
-                    b.Property<DateTime?>("IntegrityAutoActionTriggeredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("IntegrityLastViolationAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("IntegrityPolicyAction")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("IntegrityViolationCount")
-                        .HasColumnType("integer");
 
                     b.Property<bool>("IsGraded")
                         .HasColumnType("boolean");
@@ -424,9 +403,6 @@ namespace OnlineExam.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("AttemptViolationCount")
-                        .HasColumnType("integer");
-
                     b.Property<string>("ClientSessionId")
                         .HasColumnType("text");
 
@@ -446,10 +422,6 @@ namespace OnlineExam.Api.Migrations
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("PolicyAction")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("RecordedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -458,9 +430,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid");
-
-                    b.Property<int>("StudentViolationCount")
-                        .HasColumnType("integer");
 
                     b.Property<string>("UserAgent")
                         .HasColumnType("text");

@@ -1180,6 +1180,29 @@
   background: #f7fbff;
 }
 
+.draftRestoreBanner{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15,118,110,.22);
+  border-radius: 14px;
+  background: #ecfdf5;
+  color: #0f5132;
+}
+
+.draftRestoreBanner strong,
+.draftRestoreBanner span{
+  display: block;
+}
+
+.draftRestoreBanner span{
+  margin-top: 4px;
+  color: #276749;
+  line-height: 1.5;
+}
+
 .submitReviewMeta{
   display: flex;
   align-items: center;

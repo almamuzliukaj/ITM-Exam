@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OnlineExam.Api.Data;
@@ -11,9 +12,11 @@ using OnlineExam.Api.Data;
 namespace OnlineExam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260515061706_AddExamIntegrityPolicyState")]
+    partial class AddExamIntegrityPolicyState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -280,10 +283,6 @@ namespace OnlineExam.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AllowedClient")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<Guid?>("CourseOfferingId")
                         .HasColumnType("uuid");
 
@@ -304,13 +303,6 @@ namespace OnlineExam.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsPublished")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("LockdownMode")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("RequiresLockdown")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("StartsAt")

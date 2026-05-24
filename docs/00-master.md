@@ -18,6 +18,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 12. [Roadmap and MVP](12-roadmap-and-mvp.md)
 13. [Project Status and Gap Analysis](13-project-status-gap-analysis.md)
 14. [Delivery Plan and Notion Sprint Board](14-delivery-plan.md)
+15. [Manual Test Guide](test-guide.md)
 
 ## Supporting Documents
 
@@ -26,3 +27,4 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 - [Professor Assigned Offerings Workspace](professor-assigned-offerings-workspace.md)
 - [Agnesa Work Log](work-log.md)
 - [Albiona Work Log](work-log-albiona.md)
+- [Alma Work Log](work-log-alma.md)

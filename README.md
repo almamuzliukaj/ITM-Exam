@@ -1,6 +1,6 @@
 # Online Exam System
 
-Online Exam System is a faculty-focused web application for managing academic courses, role-based users, exam creation, question management, student eligibility, and assessment workflows.
+Online Exam System is a faculty-focused web application for managing academic courses, role-based users, exam creation, question banks, student eligibility, exam attempts, grading, and result visibility.
 
 The project is built as a full-stack system with an ASP.NET Core Web API backend, a React frontend, PostgreSQL persistence, JWT authentication, and a growing academic data model that supports administrators, professors, assistants, and students.
 
@@ -10,7 +10,7 @@ The project is built as a full-stack system with an ASP.NET Core Web API backend
 - Support role-based access for Admins, Professors, Assistants, and Students.
 - Model real academic structure: terms, courses, course offerings, staff assignments, enrollments, and carry-over courses.
 - Allow professors and assistants to create exams and questions for assigned course offerings.
-- Prepare the foundation for secure student exam attempts, grading, result publishing, and proctoring features.
+- Support student exam attempts, grading review, result publishing, and baseline academic-integrity tracking.
 
 ## Technology Stack
 
@@ -26,7 +26,7 @@ The project is built as a full-stack system with an ASP.NET Core Web API backend
 
 ## Current Status
 
-The repository currently contains a functional backend foundation, a working React frontend shell, database migrations, and detailed planning documentation.
+The repository currently contains a functional backend, a working React frontend, database migrations, seeded demo data, and aligned project documentation.
 
 Implemented areas:
 
@@ -39,19 +39,21 @@ Implemented areas:
 - Carry-over course model.
 - Exam CRUD.
 - Question CRUD.
-- Basic student exam attempt model.
+- Course question bank and random exam generation.
+- Manual exam authoring, readiness checks, and publish workflow.
+- Student exam attempt flow with draft save, final submit, and duplicate-submit protection.
+- Grading and result publication flow.
+- Student result visibility rules.
+- Baseline exam-integrity event tracking and lockdown readiness fields.
 - Audit logging for critical admin, authoring, grading, and publishing actions.
-- React login, protected routes, dashboards, admin pages, and exam pages.
+- React login, protected routes, dashboards, admin pages, exam pages, student attempt page, and student results page.
 
 Planned or partially implemented areas:
 
-- Complete question bank per course.
-- Exam generation from question bank rules.
-- Full student exam-taking flow.
-- Auto-save and final submission workflow.
-- MCQ/code/text grading pipeline.
-- Result publishing.
-- Security and proctoring features.
+- Deeper grading polish for text/code/SQL review.
+- More advanced integrity policy actions and professor review screens.
+- Safe Exam Browser or kiosk-mode integration readiness.
+- External SMU integration for academic data ownership.
 
 ## Repository Structure
 
@@ -123,6 +125,8 @@ Current controller areas:
 - `CarryOversController` - carry-over course handling.
 - `ExamsController` - exam creation and management.
 - `QuestionsController` - question creation and management.
+- `ExamAttemptsController` - student attempt draft, submit, grading, and result visibility.
+- `ExamIntegrityEventsController` - exam integrity event capture.
 
 Swagger is available when the backend runs in development mode.
 
@@ -139,7 +143,7 @@ Important areas:
 - `pages/Login.jsx` - login page.
 - `pages/Dashboard.jsx` - main dashboard.
 - `pages/admin/` - admin user and academic structure pages.
-- `pages/exams/` - exam list, creation, details, and question creation.
+- `pages/exams/` - exam list, creation, details, question creation, student attempts, grading, and results.
 - `routes/` - protected routes and role guards.
 - `lib/` - API clients and authentication helpers.
 - `components/` - shared application components.
@@ -160,7 +164,7 @@ Install the following before running the project locally:
 From the project root:
 
 ```powershell
-cd C:\Users\24538\OneDrive\Desktop\Online-Exam
+cd C:\Users\W11\Online-Exam
 docker compose up -d db
 ```
 
@@ -335,20 +339,17 @@ Supported filters:
 - CORS is configured for local Vite ports in `Program.cs`.
 - Swagger is enabled in development mode for testing API endpoints.
 - If `dotnet run` reports that `OnlineExam.Api.exe` is locked, an older backend instance is still running. Use `.\scripts\stop-backend.ps1` and then `.\scripts\start-backend.ps1`.
+- Build output and temporary verification folders must stay out of Git. Use `bin/`, `obj/`, `dist/`, and `temp_build*/` only as local generated output.
 
 ## Roadmap
 
 Near-term priorities:
 
-1. Stabilize authentication and seeded demo users.
-2. Finish admin onboarding and bulk user import workflow.
-3. Improve role-specific dashboards.
-4. Build a course-based question bank with difficulty levels.
-5. Add MCQ, text, C#, and SQL question support.
-6. Build exam generation and publishing workflow.
-7. Implement student exam session, timer, submission, and scoring.
-8. Add result publishing and student result visibility rules.
-9. Add security/proctoring features such as QR/PIN entry, focus tracking, and audit logs.
+1. Polish grading review for text, code, and SQL answers.
+2. Expand integrity policy actions and professor-facing violation review.
+3. Prepare Safe Exam Browser or kiosk-mode integration.
+4. Define and implement SMU integration for students, staff, terms, courses, offerings, and enrollments.
+5. Complete final responsive UI pass and demo validation.
 
 ## Documentation
 
@@ -357,6 +358,7 @@ Detailed project documentation is available in `docs/`.
 Recommended starting points:
 
 - [Project Status and Gap Analysis](docs/13-project-status-gap-analysis.md)
+- [Manual Test Guide](docs/test-guide.md)
 - [Roadmap and MVP](docs/12-roadmap-and-mvp.md)
 - [System Architecture](docs/08-system-architecture.md)
 - [API Overview](docs/09-api-overview.md)

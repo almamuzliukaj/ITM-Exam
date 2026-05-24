@@ -11,6 +11,7 @@ namespace OnlineExam.Api.Controllers;
 [Authorize]
 public class DashboardController : ControllerBase
 {
+    private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private readonly AppDbContext _context;
 
     public DashboardController(AppDbContext context)
@@ -42,11 +43,28 @@ public class DashboardController : ControllerBase
 
     private async Task<object> BuildAdminSummaryAsync()
     {
+        var now = DateTime.UtcNow;
         var activeUsers = await _context.Users.CountAsync(x => x.IsActive);
         var offerings = await _context.CourseOfferings.CountAsync();
         var pendingEnrollments = await _context.SemesterEnrollments.CountAsync(x => x.Status == "Pending");
         var alerts = await _context.CourseOfferings.CountAsync(x => x.Status == "Draft")
                      + await _context.Terms.CountAsync(x => x.Status == "Draft");
+        var activeExams = await _context.Exams.CountAsync(x =>
+            !x.Description.StartsWith(QuestionBankMarker) &&
+            x.IsPublished &&
+            x.Status == "Published" &&
+            x.StartsAt <= now &&
+            x.EndsAt >= now);
+        var pendingResults = await _context.ExamAttempts.CountAsync(x =>
+            x.Status == "Submitted" &&
+            !x.IsPublished);
+        var eligibility = await _context.StudentCourseEnrollments.CountAsync(x =>
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+        var violations = await _context.ExamAttempts.CountAsync(x => x.IntegrityViolationCount > 0);
+        var carryOver = await _context.CarryOverCourses.CountAsync(x =>
+            x.Status == "Open" ||
+            x.Status == "AssignedToTerm");
 
         return new
         {
@@ -56,7 +74,12 @@ public class DashboardController : ControllerBase
                 activeUsers,
                 offerings,
                 imports = pendingEnrollments,
-                alerts
+                alerts,
+                activeExams,
+                pendingResults,
+                eligibility,
+                violations,
+                carryOver
             }
         };
     }
@@ -64,6 +87,7 @@ public class DashboardController : ControllerBase
     private async Task<object> BuildProfessorSummaryAsync(Guid userId)
     {
         var offeringIds = await GetAssignedOfferingIds(userId, "Professor").ToListAsync();
+        var now = DateTime.UtcNow;
         var assignedCourses = await _context.CourseOfferings
             .Where(x => offeringIds.Contains(x.Id))
             .Select(x => x.CourseId)
@@ -73,8 +97,30 @@ public class DashboardController : ControllerBase
         var exams = GetAccessibleExamQuery(userId, offeringIds);
         var examIds = await exams.Select(x => x.Id).ToListAsync();
         var draftExams = await exams.CountAsync(x => !x.IsPublished || x.Status == "Draft");
-        var questionBank = await _context.Questions.CountAsync(x => examIds.Contains(x.ExamId));
+        var questionBankExamIds = await GetQuestionBankExamQuery(offeringIds).Select(x => x.Id).ToListAsync();
+        var questionBank = await _context.Questions.CountAsync(x => questionBankExamIds.Contains(x.ExamId));
         var grading = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId) && !x.IsGraded);
+        var activeExams = await exams.CountAsync(x =>
+            x.IsPublished &&
+            x.Status == "Published" &&
+            x.StartsAt <= now &&
+            x.EndsAt >= now);
+        var pendingResults = await _context.ExamAttempts.CountAsync(x =>
+            examIds.Contains(x.ExamId) &&
+            x.Status == "Submitted" &&
+            !x.IsPublished);
+        var eligibility = await _context.StudentCourseEnrollments.CountAsync(x =>
+            offeringIds.Contains(x.CourseOfferingId) &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+        var violations = await _context.ExamAttempts.CountAsync(x =>
+            examIds.Contains(x.ExamId) &&
+            x.IntegrityViolationCount > 0);
+        var carryOver = await _context.StudentCourseEnrollments.CountAsync(x =>
+            offeringIds.Contains(x.CourseOfferingId) &&
+            x.EligibleForExam &&
+            x.Status == "Eligible" &&
+            x.EnrollmentSource == "CarryOver");
 
         return new
         {
@@ -84,7 +130,12 @@ public class DashboardController : ControllerBase
                 assignedCourses,
                 draftExams,
                 questionBank,
-                grading
+                grading,
+                activeExams,
+                pendingResults,
+                eligibility,
+                violations,
+                carryOver
             }
         };
     }
@@ -94,15 +145,29 @@ public class DashboardController : ControllerBase
         var offeringIds = await GetAssignedOfferingIds(userId, "Assistant").ToListAsync();
         var now = DateTime.UtcNow;
 
-        var exams = _context.Exams.Where(x =>
-            x.CourseOfferingId.HasValue &&
-            offeringIds.Contains(x.CourseOfferingId.Value));
+        var exams = GetAccessibleExamQuery(userId, offeringIds);
 
         var examIds = await exams.Select(x => x.Id).ToListAsync();
         var assignedOfferings = offeringIds.Count;
         var supportExams = await exams.CountAsync();
         var reviewTasks = await _context.ExamAttempts.CountAsync(x => examIds.Contains(x.ExamId) && !x.IsGraded);
-        var activeSessions = await exams.CountAsync(x => x.IsPublished && x.StartsAt <= now && x.EndsAt >= now);
+        var activeSessions = await exams.CountAsync(x => x.IsPublished && x.Status == "Published" && x.StartsAt <= now && x.EndsAt >= now);
+        var pendingResults = await _context.ExamAttempts.CountAsync(x =>
+            examIds.Contains(x.ExamId) &&
+            x.Status == "Submitted" &&
+            !x.IsPublished);
+        var eligibility = await _context.StudentCourseEnrollments.CountAsync(x =>
+            offeringIds.Contains(x.CourseOfferingId) &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+        var violations = await _context.ExamAttempts.CountAsync(x =>
+            examIds.Contains(x.ExamId) &&
+            x.IntegrityViolationCount > 0);
+        var carryOver = await _context.StudentCourseEnrollments.CountAsync(x =>
+            offeringIds.Contains(x.CourseOfferingId) &&
+            x.EligibleForExam &&
+            x.Status == "Eligible" &&
+            x.EnrollmentSource == "CarryOver");
 
         return new
         {
@@ -112,7 +177,12 @@ public class DashboardController : ControllerBase
                 assignedOfferings,
                 supportExams,
                 reviewTasks,
-                activeSessions
+                activeSessions,
+                activeExams = activeSessions,
+                pendingResults,
+                eligibility,
+                violations,
+                carryOver
             }
         };
     }
@@ -125,13 +195,29 @@ public class DashboardController : ControllerBase
 
         var eligibleExamsQuery = _context.Exams.Where(x =>
             x.IsPublished &&
+            x.Status == "Published" &&
             x.CourseOfferingId.HasValue &&
+            !x.Description.StartsWith(QuestionBankMarker) &&
             offeringIds.Contains(x.CourseOfferingId.Value));
 
         var eligibleExams = await eligibleExamsQuery.CountAsync();
         var upcoming = await eligibleExamsQuery.CountAsync(x => x.StartsAt >= now && x.StartsAt <= nextWeek);
         var results = await _context.ExamAttempts.CountAsync(x => x.StudentId == userId && x.IsPublished);
-        var carryOver = await _context.CarryOverCourses.CountAsync(x => x.StudentId == userId && x.Status == "Open");
+        var activeExams = await eligibleExamsQuery.CountAsync(x => x.StartsAt <= now && x.EndsAt >= now);
+        var pendingResults = await _context.ExamAttempts.CountAsync(x =>
+            x.StudentId == userId &&
+            x.Status == "Submitted" &&
+            !x.IsPublished);
+        var eligibility = await _context.StudentCourseEnrollments.CountAsync(x =>
+            x.StudentId == userId &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+        var violations = await _context.ExamAttempts.CountAsync(x =>
+            x.StudentId == userId &&
+            x.IntegrityViolationCount > 0);
+        var carryOver = await _context.CarryOverCourses.CountAsync(x =>
+            x.StudentId == userId &&
+            (x.Status == "Open" || x.Status == "AssignedToTerm"));
 
         return new
         {
@@ -141,7 +227,11 @@ public class DashboardController : ControllerBase
                 eligibleExams,
                 upcoming,
                 results,
-                carryOver
+                carryOver,
+                activeExams,
+                pendingResults,
+                eligibility,
+                violations
             }
         };
     }
@@ -164,8 +254,17 @@ public class DashboardController : ControllerBase
     private IQueryable<OnlineExam.Api.Models.Exam> GetAccessibleExamQuery(Guid userId, IReadOnlyCollection<Guid> offeringIds)
     {
         return _context.Exams.Where(x =>
-            x.CreatedByUserId == userId ||
-            (x.CourseOfferingId.HasValue && offeringIds.Contains(x.CourseOfferingId.Value)));
+            !x.Description.StartsWith(QuestionBankMarker) &&
+            (x.CreatedByUserId == userId ||
+             (x.CourseOfferingId.HasValue && offeringIds.Contains(x.CourseOfferingId.Value))));
+    }
+
+    private IQueryable<OnlineExam.Api.Models.Exam> GetQuestionBankExamQuery(IReadOnlyCollection<Guid> offeringIds)
+    {
+        return _context.Exams.Where(x =>
+            x.CourseOfferingId.HasValue &&
+            offeringIds.Contains(x.CourseOfferingId.Value) &&
+            x.Description.StartsWith(QuestionBankMarker));
     }
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)

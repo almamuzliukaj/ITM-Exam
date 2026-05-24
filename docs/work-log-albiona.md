@@ -1,6 +1,13 @@
 # Work Log (Albiona)
 
 ## 2026-05-25
+- Completed Sprint 26 backend dashboard aggregate work for the next delivery cycle.
+- Expanded `GET /api/dashboard/summary` so role dashboards expose real aggregate counts for active exams, pending results, eligibility, integrity violations, and carry-over load.
+- Kept existing dashboard metrics stable for the current frontend while adding the new aggregate fields needed for dashboard professionalization.
+- Corrected dashboard exam aggregation so question bank container records are excluded from normal exam counts, while professor question bank totals still come from the scoped bank containers.
+- Verified the dashboard API hardening with a backend build.
+
+## 2026-05-25
 - Completed Sprint 14 stabilization hardening around exam publishing and result release controls.
 - Closed a backend bypass where draft exams could be created or edited as already published without passing the publish workflow readiness checks.
 - Tightened result publication so only graded, still-unpublished submitted attempts can be released, and empty publish actions now fail with a clear validation message.

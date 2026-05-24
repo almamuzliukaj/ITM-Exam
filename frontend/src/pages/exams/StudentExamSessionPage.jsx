@@ -22,6 +22,7 @@ export default function StudentExamSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitReview, setShowSubmitReview] = useState(false);
   const [showFinalWarning, setShowFinalWarning] = useState(false);
+  const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
@@ -30,12 +31,17 @@ export default function StudentExamSessionPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const submittedRef = useRef(false);
+  const autoSubmitAttemptedRef = useRef(false);
   const clientSessionIdRef = useRef(createClientSessionId());
   const lastViolationRef = useRef({ key: "", at: 0 });
   const violationCount = integrityEvents.length;
   const serverViolationCount = Number(integrityPolicy?.attemptViolationCount || 0);
   const effectiveViolationCount = Math.max(violationCount, serverViolationCount);
-  const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || effectiveViolationCount >= 5;
+  const finalWarningThreshold = Number(integrityPolicy?.finalWarningThreshold || 3);
+  const autoActionThreshold = Number(integrityPolicy?.autoActionThreshold || 5);
+  const shouldShowFinalWarning = Boolean(integrityPolicy?.shouldShowFinalWarning) || effectiveViolationCount >= finalWarningThreshold;
+  const shouldAutoSubmit = Boolean(integrityPolicy?.shouldAutoSubmit) || effectiveViolationCount >= autoActionThreshold;
+  const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -196,7 +202,7 @@ export default function StudentExamSessionPage() {
         violationCount: nextCount,
       };
 
-      if (nextCount >= 3) {
+      if (nextCount >= finalWarningThreshold) {
         setShowFinalWarning(true);
       }
 
@@ -233,7 +239,7 @@ export default function StudentExamSessionPage() {
 
       return [nextEvent, ...current].slice(0, 12);
     });
-  }, [attemptId, examId, result]);
+  }, [attemptId, examId, finalWarningThreshold, result]);
 
   useEffect(() => {
     if (loading || result) return;
@@ -348,6 +354,39 @@ export default function StudentExamSessionPage() {
   }, [answers, examId, storageKey]);
 
   useEffect(() => {
+    if (!shouldShowFinalWarning || result || loading) return;
+    setShowFinalWarning(true);
+  }, [loading, result, shouldShowFinalWarning]);
+
+  useEffect(() => {
+    if (!shouldAutoSubmit || result || submitting || loading || questions.length === 0) {
+      if (!shouldAutoSubmit) setAutoActionCountdown(null);
+      return;
+    }
+
+    setShowSubmitReview(false);
+    setShowFinalWarning(false);
+    setAutoActionCountdown((current) => current ?? 5);
+  }, [loading, questions.length, result, shouldAutoSubmit, submitting]);
+
+  useEffect(() => {
+    if (autoActionCountdown == null || result || submitting) return;
+
+    if (autoActionCountdown <= 0 && !autoSubmitAttemptedRef.current) {
+      autoSubmitAttemptedRef.current = true;
+      persistDraft("saved");
+      submit("integrity-policy");
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAutoActionCountdown((current) => (current == null ? current : current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [autoActionCountdown, persistDraft, result, submit, submitting]);
+
+  useEffect(() => {
     if (!loading && exam && questions.length > 0 && sessionTiming && timeRemaining === 0 && !result && !submitting) {
       submit("timer");
     }
@@ -414,6 +453,8 @@ export default function StudentExamSessionPage() {
             violationCount={violationCount}
             effectiveViolationCount={effectiveViolationCount}
             locked={interactionLocked}
+            autoSubmitActive={shouldAutoSubmit}
+            autoActionCountdown={autoActionCountdown}
             events={integrityEvents}
             policy={integrityPolicy}
             fullscreenActive={fullscreenActive}
@@ -428,7 +469,7 @@ export default function StudentExamSessionPage() {
               <strong>Draft restored</strong>
               <span>Your previous answers were restored from this device. Last saved {formatSavedAt(loadedDraftAt || savedAt)}.</span>
             </div>
-            <button className="btn" type="button" onClick={discardRestoredDraft} disabled={submitting}>
+            <button className="btn" type="button" onClick={discardRestoredDraft} disabled={submitting || interactionLocked}>
               Clear restored draft
             </button>
           </section>
@@ -457,8 +498,10 @@ export default function StudentExamSessionPage() {
 
         {showFinalWarning ? (
           <FinalWarningModal
-            violationCount={violationCount}
+            violationCount={effectiveViolationCount}
             locked={interactionLocked}
+            finalWarningThreshold={finalWarningThreshold}
+            autoActionThreshold={autoActionThreshold}
             onClose={() => setShowFinalWarning(false)}
           />
         ) : null}
@@ -488,7 +531,7 @@ export default function StudentExamSessionPage() {
             <section className="examIntegrityStrip">
               <div>
                 <strong>Guided session</strong>
-                <span>Timer, autosave, review flags, and final submission are active.</span>
+                <span>{interactionLocked ? "Manual editing is locked by the exam integrity policy." : "Timer, autosave, review flags, and final submission are active."}</span>
               </div>
               <div>
                 <strong>{sumPoints(questions)} pts</strong>
@@ -567,7 +610,7 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
         </div>
         <div className="questionHeaderActions">
           <span className={`statusPill ${answered ? "statusLive" : "statusDraft"}`}>{answered ? "Answered" : "Open"}</span>
-          <button className={`btn btnCompact ${flagged ? "btnWarn" : ""}`} type="button" onClick={onToggleFlag}>
+          <button className={`btn btnCompact ${flagged ? "btnWarn" : ""}`} type="button" onClick={onToggleFlag} disabled={disabled}>
             {flagged ? "Flagged" : "Flag"}
           </button>
           <span className="statusPill statusDraft">{question.points ?? 0} pts</span>
@@ -619,16 +662,24 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
   );
 }
 
-function IntegrityWarningBanner({ violationCount, effectiveViolationCount, locked, events, policy, fullscreenActive, networkOnline, onFullscreen }) {
+function IntegrityWarningBanner({ violationCount, effectiveViolationCount, locked, autoSubmitActive, autoActionCountdown, events, policy, fullscreenActive, networkOnline, onFullscreen }) {
   const latest = events[0];
   const policyAction = policy?.recommendedAction || policy?.RecommendedAction || "None";
   return (
     <section className={`integrityBanner ${locked ? "integrityBannerLocked" : violationCount >= 3 ? "integrityBannerWarn" : ""}`}>
       <div>
         <span className="summaryLabel">Exam integrity guard</span>
-        <strong>{locked ? "Interaction locked" : `${effectiveViolationCount} warning${effectiveViolationCount === 1 ? "" : "s"}`}</strong>
+        <strong>
+          {autoSubmitActive
+            ? `Auto-submit ${autoActionCountdown == null ? "pending" : `in ${autoActionCountdown}s`}`
+            : locked
+              ? "Interaction locked"
+              : `${effectiveViolationCount} warning${effectiveViolationCount === 1 ? "" : "s"}`}
+        </strong>
         <p>
-          {locked
+          {autoSubmitActive
+            ? "The integrity policy threshold was reached. Your current answers will be submitted automatically for staff review."
+            : locked
             ? "Too many integrity warnings were recorded. Contact staff before continuing."
             : latest?.message || "Stay in fullscreen, keep this tab active, and avoid copy/paste or right-click actions."}
         </p>
@@ -638,12 +689,12 @@ function IntegrityWarningBanner({ violationCount, effectiveViolationCount, locke
           <span className={policyAction === "None" ? "statusOk" : "statusWarn"}>{formatPolicyAction(policyAction)}</span>
         </div>
       </div>
-      <button className="btn" type="button" onClick={onFullscreen}>Fullscreen</button>
+      <button className="btn" type="button" onClick={onFullscreen} disabled={autoSubmitActive}>Fullscreen</button>
     </section>
   );
 }
 
-function FinalWarningModal({ violationCount, locked, onClose }) {
+function FinalWarningModal({ violationCount, locked, finalWarningThreshold, autoActionThreshold, onClose }) {
   return (
     <div className="modalBackdrop" role="dialog" aria-modal="true">
       <section className="modalCard integrityModal">
@@ -651,8 +702,8 @@ function FinalWarningModal({ violationCount, locked, onClose }) {
         <h3>{locked ? "Exam interaction is locked" : "Suspicious activity detected"}</h3>
         <p>
           {locked
-            ? "The session recorded repeated fullscreen/tab/clipboard violations. Your answers remain saved, but manual interaction is blocked for review."
-            : `You have ${violationCount} integrity warnings. Further violations may lock the session or trigger staff review.`}
+            ? "The session reached the integrity policy action threshold. Your answers remain saved and the system may submit the attempt automatically for review."
+            : `You have ${violationCount} integrity warnings. The final warning threshold is ${finalWarningThreshold}; at ${autoActionThreshold} warnings the exam is locked and submitted automatically.`}
         </p>
         <div className="heroActions">
           <button className="btn btnPrimary" type="button" onClick={onClose}>
@@ -688,12 +739,18 @@ function SubmitReviewPanel({ answeredCount, flaggedCount, questionsCount, submit
 }
 
 function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
+  const resultMessage = result.reason === "timer"
+    ? "Submitted automatically when the timer ended."
+    : result.reason === "integrity-policy"
+      ? "Submitted automatically after the integrity policy threshold was reached."
+      : "Your answers were submitted successfully.";
+
   return (
     <section className="surfaceCard">
       <div className="sectionHeader">
         <div>
           <h3>Exam submitted</h3>
-          <span className="small">{result.reason === "timer" ? "Submitted automatically when the timer ended." : "Your answers were submitted successfully."}</span>
+          <span className="small">{resultMessage}</span>
         </div>
         <span className="statusPill statusLive">Done</span>
       </div>

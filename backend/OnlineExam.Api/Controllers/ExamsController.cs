@@ -122,6 +122,9 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
 
+        if (dto.IsPublished)
+            return BadRequest(new { message = "Exams must be created as drafts and published through the publish workflow." });
+
         var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
         if (lockdownConfigurationError != null)
             return BadRequest(new { message = lockdownConfigurationError });
@@ -165,8 +168,8 @@ public class ExamsController : ControllerBase
             StartsAt = startsAt,
             EndsAt = endsAt,
             DurationMinutes = durationMinutes,
-            IsPublished = dto.IsPublished,
-            Status = dto.IsPublished ? "Published" : "Draft",
+            IsPublished = false,
+            Status = "Draft",
             RequiresLockdown = dto.RequiresLockdown,
             AllowedClient = NormalizeLockdownClient(dto.AllowedClient),
             LockdownMode = NormalizeLockdownMode(dto.LockdownMode),
@@ -202,7 +205,7 @@ public class ExamsController : ControllerBase
             return NotFound();
 
         if (exam.IsPublished || exam.Status == "Published")
-            return BadRequest(new { message = "Published exams cannot be deleted. Only draft exams can be deleted." });
+            return BadRequest(new { message = "Published exams cannot be edited. Only draft exams can be edited." });
 
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -213,6 +216,9 @@ public class ExamsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
+
+        if (dto.IsPublished)
+            return BadRequest(new { message = "Use the publish workflow to publish a draft exam after readiness checks pass." });
 
         var lockdownConfigurationError = ValidateLockdownConfiguration(dto.RequiresLockdown, dto.AllowedClient, dto.LockdownMode);
         if (lockdownConfigurationError != null)
@@ -250,8 +256,8 @@ public class ExamsController : ControllerBase
         exam.StartsAt = startsAt;
         exam.EndsAt = endsAt;
         exam.DurationMinutes = durationMinutes;
-        exam.IsPublished = dto.IsPublished;
-        exam.Status = dto.IsPublished ? "Published" : exam.Status;
+        exam.IsPublished = false;
+        exam.Status = "Draft";
         exam.CourseOfferingId = dto.CourseOfferingId;
         exam.RequiresLockdown = dto.RequiresLockdown;
         exam.AllowedClient = NormalizeLockdownClient(dto.AllowedClient);
@@ -1284,7 +1290,11 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var query = _context.ExamAttempts.Where(x => x.ExamId == id && x.Status == ExamAttemptSubmittedStatus && x.IsGraded);
+        var query = _context.ExamAttempts.Where(x =>
+            x.ExamId == id &&
+            x.Status == ExamAttemptSubmittedStatus &&
+            x.IsGraded &&
+            !x.IsPublished);
 
         if (dto?.PublishAll == false)
         {
@@ -1295,10 +1305,14 @@ public class ExamsController : ControllerBase
         }
 
         var attempts = await query.ToListAsync();
+        if (attempts.Count == 0)
+            return BadRequest(new { message = "No graded unpublished attempts are available to publish." });
+
+        var publishedAt = DateTime.UtcNow;
         foreach (var attempt in attempts)
         {
             attempt.IsPublished = true;
-            attempt.PublishedAt = DateTime.UtcNow;
+            attempt.PublishedAt = publishedAt;
             attempt.PublishedByUserId = userId.Value;
         }
 

@@ -1,5 +1,12 @@
 # Work Log (Albiona)
 
+## 2026-05-25
+- Completed Sprint 14 stabilization hardening around exam publishing and result release controls.
+- Closed a backend bypass where draft exams could be created or edited as already published without passing the publish workflow readiness checks.
+- Tightened result publication so only graded, still-unpublished submitted attempts can be released, and empty publish actions now fail with a clear validation message.
+- Corrected the published-exam update validation message so the draft-only editing rule is explicit in API responses.
+- Verified the hardening pass with a backend build.
+
 ## 2026-05-04
 - Completed Sprint 12 task: built random exam generation and replace-question logic.
 - Added backend endpoints to generate random exam questions from the assigned offering question bank and replace existing draft questions with compatible alternatives.

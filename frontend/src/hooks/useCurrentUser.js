@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { me } from "../lib/auth";
+import { getStoredUser, me } from "../lib/auth";
 
 export function useCurrentUser() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => getStoredUser());
+  const [loading, setLoading] = useState(() => !getStoredUser());
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      setLoading(true);
+      setLoading(!getStoredUser());
       setError("");
       const result = await me();
       setUser(result);

@@ -41,6 +41,10 @@ export default function StudentResultsPage() {
     const total = published.reduce((sum, result) => sum + Number(result.finalScore || 0), 0);
     return total / published.length;
   }, [published]);
+  const latestPublished = useMemo(
+    () => [...published].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))[0] || null,
+    [published],
+  );
 
   if (userLoading) return <div className="pageState">Loading results...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
@@ -66,9 +70,24 @@ export default function StudentResultsPage() {
             <strong>{published.length}</strong>
           </article>
           <article className="summaryCard">
+            <span className="summaryLabel">Pending</span>
+            <strong>{pending.length}</strong>
+          </article>
+          <article className="summaryCard">
             <span className="summaryLabel">Average</span>
             <strong>{averageScore == null ? "--" : formatScore(averageScore)}</strong>
           </article>
+        </section>
+
+        <section className="resultPolicyStrip">
+          <div>
+            <strong>Result visibility rule</strong>
+            <span>Scores stay hidden until staff complete review and publish the result.</span>
+          </div>
+          <div>
+            <strong>{latestPublished ? formatDateTime(latestPublished.publishedAt) : "No publication yet"}</strong>
+            <span>Latest published result</span>
+          </div>
         </section>
 
         <section className="resultsLayout">

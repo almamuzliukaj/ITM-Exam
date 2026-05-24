@@ -1658,6 +1658,33 @@
   align-items: start;
 }
 
+.resultPolicyStrip{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(22,58,99,.16);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+  box-shadow: var(--shadow-md);
+}
+
+.resultPolicyStrip strong,
+.resultPolicyStrip span{
+  display: block;
+}
+
+.resultPolicyStrip strong{
+  color: var(--heading);
+}
+
+.resultPolicyStrip span{
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .resultCardStack{
   display: flex;
   flex-direction: column;

@@ -6,26 +6,58 @@ import { logout } from "../lib/auth";
 
 const navigationByRole = {
   Admin: [
-    { to: "/dashboard", labelKey: "shell.nav.adminOverview" },
-    { to: "/admin/academic", labelKey: "shell.nav.adminAcademic" },
-    { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments" },
-    { to: "/admin/users", labelKey: "shell.nav.adminUsers" },
+    {
+      titleKey: "shell.sections.overview",
+      items: [{ to: "/dashboard", labelKey: "shell.nav.adminOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.academicOperations",
+      items: [
+        { to: "/admin/academic", labelKey: "shell.nav.adminAcademic", icon: "AC" },
+        { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments", icon: "EN" },
+        { to: "/admin/users", labelKey: "shell.nav.adminUsers", icon: "US" },
+      ],
+    },
   ],
   Professor: [
-    { to: "/dashboard", labelKey: "shell.nav.professorOverview" },
-    { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank" },
-    { to: "/exams", labelKey: "shell.nav.professorExams" },
-    { to: "/exams/new", labelKey: "shell.nav.professorCreateExam" },
+    {
+      titleKey: "shell.sections.overview",
+      items: [{ to: "/dashboard", labelKey: "shell.nav.professorOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.teaching",
+      items: [
+        { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
+        { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
+        { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
+      ],
+    },
   ],
   Assistant: [
-    { to: "/dashboard", labelKey: "shell.nav.assistantOverview" },
-    { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank" },
-    { to: "/exams", labelKey: "shell.nav.assistantExams" },
+    {
+      titleKey: "shell.sections.overview",
+      items: [{ to: "/dashboard", labelKey: "shell.nav.assistantOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.teachingSupport",
+      items: [
+        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
+        { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
+      ],
+    },
   ],
   Student: [
-    { to: "/dashboard", labelKey: "shell.nav.studentOverview" },
-    { to: "/exams", labelKey: "shell.nav.studentExams" },
-    { to: "/results", labelKey: "shell.nav.studentResults" },
+    {
+      titleKey: "shell.sections.overview",
+      items: [{ to: "/dashboard", labelKey: "shell.nav.studentOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.studentRecords",
+      items: [
+        { to: "/exams", labelKey: "shell.nav.studentExams", icon: "EX" },
+        { to: "/results", labelKey: "shell.nav.studentResults", icon: "RS" },
+      ],
+    },
   ],
 };
 
@@ -39,7 +71,7 @@ export default function AppShell({
 }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const items = navigationByRole[user?.role] || navigationByRole.Student;
+  const groups = navigationByRole[user?.role] || navigationByRole.Student;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   function handleLogout() {
@@ -52,7 +84,7 @@ export default function AppShell({
       {isMobileMenuOpen ? <button className="mobileNavBackdrop" type="button" aria-label="Close menu" onClick={() => setIsMobileMenuOpen(false)} /> : null}
       <aside className={`sidebar sidebar${user?.role || "Guest"}${isMobileMenuOpen ? " sidebarOpen" : ""}`}>
         <div className="sidebarTop">
-          <Link className="brand brandLarge" to="/dashboard">
+          <Link className="brand brandLarge" to="/dashboard" onClick={() => setIsMobileMenuOpen(false)}>
             <img className="brandLogo brandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
             <span className="brandCaption">
               <strong>{t("common.appName")}</strong>
@@ -60,27 +92,46 @@ export default function AppShell({
             </span>
           </Link>
 
+          <button
+            className="mobileCloseButton"
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            ×
+          </button>
+
           <div className="sidebarIdentity">
             <div className="avatarCircle">{getInitials(user?.email)}</div>
             <div>
               <div className="sidebarLabel">{t("common.signedIn")}</div>
               <div className="sidebarValue">{user?.email || t("common.unknownUser")}</div>
-              <div className="sidebarMeta">{user?.role || t("common.guest")}</div>
+              <div className="sidebarMeta">
+                <span className="roleDot" aria-hidden="true" />
+                {user?.role || t("common.guest")}
+              </div>
             </div>
           </div>
         </div>
 
         <nav className="sidebarNav">
-          <div className="sidebarSectionTitle">{t("common.workspace")}</div>
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `navItem${isActive ? " navItemActive" : ""}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              {t(item.labelKey)}
-            </NavLink>
+          {groups.map((group) => (
+            <div className="navGroup" key={group.titleKey}>
+              <div className="sidebarSectionTitle">{t(group.titleKey)}</div>
+              <div className="navGroupItems">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) => `navItem${isActive ? " navItemActive" : ""}`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span className="navIcon" aria-hidden="true">{item.icon}</span>
+                    <span className="navText">{t(item.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 

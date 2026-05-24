@@ -298,6 +298,13 @@ const resources = {
         }
       },
       shell: {
+        sections: {
+          overview: "Overview",
+          academicOperations: "Academic operations",
+          teaching: "Teaching",
+          teachingSupport: "Teaching support",
+          studentRecords: "Student records"
+        },
         nav: {
           adminOverview: "Overview",
           adminAcademic: "Academic",
@@ -779,6 +786,13 @@ const resources = {
         }
       },
       shell: {
+        sections: {
+          overview: "Përmbledhje",
+          academicOperations: "Operacione akademike",
+          teaching: "Mësimdhënie",
+          teachingSupport: "Mbështetje mësimore",
+          studentRecords: "Regjistrat e studentit"
+        },
         nav: {
           adminOverview: "Përmbledhje",
           adminAcademic: "Akademike",

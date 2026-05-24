@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getCurrentExamAttempt, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -24,11 +24,18 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [attemptId, setAttemptId] = useState("");
   const [integrityEvents, setIntegrityEvents] = useState([]);
+  const [integrityPolicy, setIntegrityPolicy] = useState(null);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const submittedRef = useRef(false);
+  const clientSessionIdRef = useRef(createClientSessionId());
+  const lastViolationRef = useRef({ key: "", at: 0 });
   const violationCount = integrityEvents.length;
-  const interactionLocked = violationCount >= 5;
+  const serverViolationCount = Number(integrityPolicy?.attemptViolationCount || 0);
+  const effectiveViolationCount = Math.max(violationCount, serverViolationCount);
+  const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || effectiveViolationCount >= 5;
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -44,12 +51,33 @@ export default function StudentExamSessionPage() {
       try {
         setLoading(true);
         setError("");
-        const [examData, questionData, attemptData] = await Promise.all([getExam(examId), listQuestions(examId), getCurrentExamAttempt(examId)]);
+        const [examData, questionData, attemptData, integritySummary] = await Promise.all([
+          getExam(examId),
+          listQuestions(examId),
+          getCurrentExamAttempt(examId),
+          getCurrentExamIntegritySummary(examId).catch(() => null),
+        ]);
         if (!active) return;
 
         setExam(examData);
         setQuestions(Array.isArray(questionData) ? questionData : []);
         setAttemptId(attemptData?.examAttemptId || "");
+        if (integritySummary?.policy) {
+          setIntegrityPolicy(integritySummary.policy);
+        }
+        if (Array.isArray(integritySummary?.events)) {
+          setIntegrityEvents(integritySummary.events
+            .slice()
+            .reverse()
+            .map((event, index) => ({
+              eventType: event.eventType,
+              message: getIntegrityEventMessage(event.eventType),
+              createdAt: event.occurredAt || event.recordedAt || new Date().toISOString(),
+              violationCount: event.attemptViolationCount || index + 1,
+              policyAction: event.policyAction,
+            }))
+            .slice(0, 12));
+        }
 
         const restored = readDraft(storageKey);
         const timing = buildSessionTiming(examData, restored);
@@ -148,15 +176,23 @@ export default function StudentExamSessionPage() {
     };
   }, [answers, loading, persistDraft, result, sessionTiming, storageKey]);
 
-  const recordViolation = useCallback((eventType, message) => {
+  const recordViolation = useCallback((eventType, message, metadata = {}) => {
     if (!examId || result || submittedRef.current) return;
+
+    const nowMs = Date.now();
+    const key = `${eventType}:${message}`;
+    if (lastViolationRef.current.key === key && nowMs - lastViolationRef.current.at < 1500) {
+      return;
+    }
+    lastViolationRef.current = { key, at: nowMs };
 
     setIntegrityEvents((current) => {
       const nextCount = current.length + 1;
+      const occurredAt = new Date().toISOString();
       const nextEvent = {
         eventType,
         message,
-        createdAt: new Date().toISOString(),
+        createdAt: occurredAt,
         violationCount: nextCount,
       };
 
@@ -165,11 +201,35 @@ export default function StudentExamSessionPage() {
       }
 
       recordExamIntegrityEvent(examId, {
-        attemptId: attemptId || null,
+        examAttemptId: attemptId || null,
         eventType,
-        violationCount: nextCount,
-        message,
-      }).catch(() => {});
+        occurredAt,
+        clientSessionId: clientSessionIdRef.current,
+        metadata: {
+          message,
+          localViolationCount: nextCount,
+          fullscreenActive: Boolean(document.fullscreenElement),
+          visibilityState: document.visibilityState,
+          online: typeof navigator === "undefined" ? true : navigator.onLine,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          },
+          ...metadata,
+        },
+      })
+        .then((response) => {
+          if (response?.policy) {
+            setIntegrityPolicy(response.policy);
+            if (response.policy.shouldShowFinalWarning) {
+              setShowFinalWarning(true);
+            }
+          }
+          if (response?.examAttemptId) {
+            setAttemptId(response.examAttemptId);
+          }
+        })
+        .catch(() => {});
 
       return [nextEvent, ...current].slice(0, 12);
     });
@@ -177,6 +237,8 @@ export default function StudentExamSessionPage() {
 
   useEffect(() => {
     if (loading || result) return;
+
+    setFullscreenActive(Boolean(document.fullscreenElement));
 
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") {
@@ -189,7 +251,9 @@ export default function StudentExamSessionPage() {
     }
 
     function onFullscreenChange() {
-      if (!document.fullscreenElement) {
+      const active = Boolean(document.fullscreenElement);
+      setFullscreenActive(active);
+      if (!active) {
         recordViolation("FullscreenExit", "Fullscreen mode was exited.");
       }
     }
@@ -197,11 +261,40 @@ export default function StudentExamSessionPage() {
     function onBlockedInteraction(event) {
       event.preventDefault();
       const eventType = event.type === "contextmenu"
-        ? "RightClickAttempt"
-        : event.type === "copy"
-          ? "CopyAttempt"
-          : "PasteAttempt";
+          ? "RightClickAttempt"
+          : event.type === "copy"
+            ? "CopyAttempt"
+            : "PasteAttempt";
       recordViolation(eventType, "Restricted browser interaction was attempted.");
+    }
+
+    function onKeyDown(event) {
+      const key = event.key?.toLowerCase();
+      const blockedCombo =
+        (event.ctrlKey || event.metaKey) && ["c", "v", "x", "p", "s", "u", "a"].includes(key);
+      const blockedSystemKey = ["f12", "printscreen"].includes(key);
+      if (!blockedCombo && !blockedSystemKey) return;
+
+      event.preventDefault();
+      recordViolation(
+        key === "p" || key === "printscreen" ? "PrintAttempt" : "ShortcutAttempt",
+        "Restricted keyboard shortcut was attempted.",
+        { key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey },
+      );
+    }
+
+    function onBeforePrint(event) {
+      event.preventDefault?.();
+      recordViolation("PrintAttempt", "Print action was attempted during the exam.");
+    }
+
+    function onOffline() {
+      setNetworkOnline(false);
+      recordViolation("NetworkOffline", "Network connection was lost during the exam.");
+    }
+
+    function onOnline() {
+      setNetworkOnline(true);
     }
 
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -210,6 +303,10 @@ export default function StudentExamSessionPage() {
     document.addEventListener("contextmenu", onBlockedInteraction);
     document.addEventListener("copy", onBlockedInteraction);
     document.addEventListener("paste", onBlockedInteraction);
+    document.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -218,6 +315,10 @@ export default function StudentExamSessionPage() {
       document.removeEventListener("contextmenu", onBlockedInteraction);
       document.removeEventListener("copy", onBlockedInteraction);
       document.removeEventListener("paste", onBlockedInteraction);
+      document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
     };
   }, [loading, recordViolation, result]);
 
@@ -259,11 +360,15 @@ export default function StudentExamSessionPage() {
   const answeredCount = questions.filter((question) => String(answers[question.id] || "").trim().length > 0).length;
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
-  const isFullscreen = Boolean(document.fullscreenElement);
-
   async function enterFullscreen() {
+    if (!document.fullscreenEnabled) {
+      recordViolation("FullscreenRequestFailed", "This browser does not allow fullscreen mode.");
+      return;
+    }
+
     try {
       await document.documentElement.requestFullscreen();
+      setFullscreenActive(true);
     } catch {
       recordViolation("FullscreenRequestFailed", "Fullscreen mode could not be entered.");
     }
@@ -291,7 +396,7 @@ export default function StudentExamSessionPage() {
           <Link className="btn" to="/exams">Back to exams</Link>
           {!result ? (
             <button className="btn" type="button" onClick={enterFullscreen}>
-              {isFullscreen ? "Fullscreen active" : "Enter fullscreen"}
+              {fullscreenActive ? "Fullscreen active" : "Enter fullscreen"}
             </button>
           ) : null}
           {!result ? (
@@ -307,8 +412,12 @@ export default function StudentExamSessionPage() {
         {!result ? (
           <IntegrityWarningBanner
             violationCount={violationCount}
+            effectiveViolationCount={effectiveViolationCount}
             locked={interactionLocked}
             events={integrityEvents}
+            policy={integrityPolicy}
+            fullscreenActive={fullscreenActive}
+            networkOnline={networkOnline}
             onFullscreen={enterFullscreen}
           />
         ) : null}
@@ -510,18 +619,24 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
   );
 }
 
-function IntegrityWarningBanner({ violationCount, locked, events, onFullscreen }) {
+function IntegrityWarningBanner({ violationCount, effectiveViolationCount, locked, events, policy, fullscreenActive, networkOnline, onFullscreen }) {
   const latest = events[0];
+  const policyAction = policy?.recommendedAction || policy?.RecommendedAction || "None";
   return (
     <section className={`integrityBanner ${locked ? "integrityBannerLocked" : violationCount >= 3 ? "integrityBannerWarn" : ""}`}>
       <div>
         <span className="summaryLabel">Exam integrity guard</span>
-        <strong>{locked ? "Interaction locked" : `${violationCount} violation${violationCount === 1 ? "" : "s"}`}</strong>
+        <strong>{locked ? "Interaction locked" : `${effectiveViolationCount} warning${effectiveViolationCount === 1 ? "" : "s"}`}</strong>
         <p>
           {locked
             ? "Too many integrity warnings were recorded. Contact staff before continuing."
             : latest?.message || "Stay in fullscreen, keep this tab active, and avoid copy/paste or right-click actions."}
         </p>
+        <div className="integrityStatusGrid" aria-label="Exam integrity status">
+          <span className={fullscreenActive ? "statusOk" : "statusWarn"}>{fullscreenActive ? "Fullscreen active" : "Fullscreen required"}</span>
+          <span className={networkOnline ? "statusOk" : "statusWarn"}>{networkOnline ? "Online" : "Offline"}</span>
+          <span className={policyAction === "None" ? "statusOk" : "statusWarn"}>{formatPolicyAction(policyAction)}</span>
+        </div>
       </div>
       <button className="btn" type="button" onClick={onFullscreen}>Fullscreen</button>
     </section>
@@ -708,4 +823,35 @@ function parseTechnicalQuestion(question) {
   }
 
   return result;
+}
+
+function createClientSessionId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getIntegrityEventMessage(eventType) {
+  const messages = {
+    TabHidden: "Exam tab was hidden during the session.",
+    WindowBlur: "Exam window lost focus.",
+    FullscreenExit: "Fullscreen mode was exited.",
+    CopyAttempt: "Copy action was attempted.",
+    PasteAttempt: "Paste action was attempted.",
+    RightClickAttempt: "Right-click was attempted.",
+    ShortcutAttempt: "Restricted keyboard shortcut was attempted.",
+    PrintAttempt: "Print action was attempted.",
+    FullscreenRequestFailed: "Fullscreen mode could not be entered.",
+    NetworkOffline: "Network connection was lost during the exam.",
+  };
+  return messages[eventType] || "Integrity warning was recorded.";
+}
+
+function formatPolicyAction(action) {
+  if (!action || action === "None") return "Policy clear";
+  if (action === "Warning") return "Policy warning";
+  if (action === "FinalWarning") return "Final warning";
+  if (action === "AutoSubmit") return "Auto action";
+  return action;
 }

@@ -1818,6 +1818,38 @@
   line-height: 1.5;
 }
 
+.integrityStatusGrid{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.integrityStatusGrid span{
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.integrityStatusGrid .statusOk{
+  border-color: #b8dfc5;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.integrityStatusGrid .statusWarn{
+  border-color: #efc28c;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .integrityBannerWarn,
 .integrityReviewWarn{
   border-color: #efc28c;

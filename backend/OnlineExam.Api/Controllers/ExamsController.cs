@@ -31,7 +31,12 @@ public class ExamsController : ControllerBase
         "WindowBlur",
         "FullscreenExit",
         "CopyAttempt",
-        "PasteAttempt"
+        "PasteAttempt",
+        "RightClickAttempt",
+        "ShortcutAttempt",
+        "PrintAttempt",
+        "FullscreenRequestFailed",
+        "NetworkOffline"
     };
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;

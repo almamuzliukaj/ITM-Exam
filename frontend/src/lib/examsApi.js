@@ -51,7 +51,12 @@ export async function submitExamAttempt(examId, payload) {
 }
 
 export async function recordExamIntegrityEvent(examId, payload) {
-  const response = await api.post(`/api/exams/${examId}/integrity-events`, payload);
+  const response = await api.post(`/api/exams/${examId}/attempt/integrity-events`, payload);
+  return response.data;
+}
+
+export async function getCurrentExamIntegritySummary(examId) {
+  const response = await api.get(`/api/exams/${examId}/attempt/integrity-summary`);
   return response.data;
 }
 

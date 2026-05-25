@@ -248,7 +248,7 @@
 
 .mainPanel{
   min-width: 0;
-  padding: 24px 30px 30px;
+  padding: 26px 32px 34px;
   font-size: 15px;
 }
 
@@ -257,8 +257,8 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 28px;
-  padding: 0 0 18px;
+  margin-bottom: 26px;
+  padding: 0 0 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -306,7 +306,8 @@
 }
 
 .pageTitle{
-  font-size: clamp(28px, 3.2vw, 38px);
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.08;
 }
 
 .pageSubtitle,
@@ -348,12 +349,14 @@
 }
 
 .heroPanel{
-  padding: 28px;
+  padding: 30px;
   border-radius: var(--radius-xl);
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 24px;
-  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+  gap: 28px;
+  background:
+    linear-gradient(90deg, rgba(22,58,99,.08), transparent 34%),
+    linear-gradient(180deg, #ffffff, #fbfcfe);
 }
 
 .heroCopy{
@@ -372,37 +375,63 @@
 .heroStats{
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .metricCard{
-  padding: 18px;
-  border-radius: 14px;
-  background: #f9fbfd;
+  min-height: 142px;
+  padding: 17px 18px;
+  border-radius: 12px;
+  background: #f8fafc;
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .metricValue{
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: 34px;
+  line-height: 1;
   color: var(--heading);
 }
 
 .metricLabel{
-  margin-top: 8px;
+  margin-top: 12px;
   font-weight: 700;
+  line-height: 1.25;
 }
 
 .metricMeta{
   margin-top: 6px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.academicHeroMeta{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.academicHeroMeta span{
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 7px 10px;
+  border: 1px solid rgba(22,58,99,.12);
+  border-radius: 999px;
+  background: rgba(231,238,247,.72);
+  color: #244462;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .studentTermSummary{
-  padding: 16px 18px;
+  padding: 16px 18px 17px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f9fbfd;
 }
 
@@ -422,7 +451,7 @@
 .studentItemList{
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .studentItemRow{
@@ -430,9 +459,9 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 14px;
-  padding: 14px;
+  padding: 14px 15px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fbfcfe;
 }
 
@@ -485,22 +514,32 @@
 }
 
 .sectionHeader{
-  padding: 22px 24px;
+  padding: 20px 22px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  background: #f7f9fc;
 }
 
 .sectionHeader h3{
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
+  line-height: 1.2;
   color: var(--heading);
 }
 
 .sectionBody{
-  padding: 24px;
+  padding: 22px;
+}
+
+.sectionMeta{
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .summaryStrip{
@@ -604,10 +643,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  min-height: 30px;
+  padding: 7px 11px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .statusLive{
@@ -897,7 +938,7 @@
 .pageState,
 .pageStateCard,
 .emptyState{
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .alert{
@@ -916,10 +957,31 @@
 
 .emptyState,
 .pageStateCard{
-  padding: 28px;
+  padding: 26px;
   border: 1px dashed var(--border-strong);
-  background: #f9fbfd;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.42)),
+    #f8fafc;
   color: var(--muted);
+}
+
+.emptyState{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 128px;
+  justify-content: center;
+}
+
+.emptyState strong{
+  color: var(--heading);
+  font-size: 17px;
+}
+
+.emptyState span,
+.emptyState p{
+  margin: 0;
+  line-height: 1.55;
 }
 
 .roleShellAdmin .sidebar{
@@ -936,10 +998,12 @@
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, .8fr);
   gap: 22px;
-  padding: 24px 26px;
+  padding: 28px 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+  background:
+    linear-gradient(90deg, rgba(22,58,99,.08), transparent 34%),
+    linear-gradient(180deg, #ffffff, #f8fbfe);
   box-shadow: var(--shadow-md);
 }
 
@@ -1022,21 +1086,26 @@
 .adminMetricGrid{
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .adminMetricCard{
+  min-height: 146px;
   padding: 18px 20px;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: #fff;
   box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .adminMetricCard strong{
   display: block;
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 34px;
+  line-height: 1;
   color: var(--heading);
   font-family: var(--font-display);
 }
@@ -1096,9 +1165,9 @@
 }
 
 .offeringGroup{
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fbfe;
 }
 
@@ -1129,7 +1198,7 @@
 .assignedOfferingCard{
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #ffffff;
   display: flex;
   flex-direction: column;

@@ -218,6 +218,14 @@ export default function AdminAcademicStructurePage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        <section className="smuNotice">
+          <div>
+            <span className="summaryLabel">SMU transition</span>
+            <strong>Academic records will be synced from SMU</strong>
+            <p>Terms, courses, offerings, and staff assignments are kept here as operational fallback until the SMU contract is connected.</p>
+          </div>
+          <Link className="btn" to="/admin/smu">Review SMU contract</Link>
+        </section>
 
         <section className="adminDashboardHero">
           <div className="adminDashboardHeroCopy">

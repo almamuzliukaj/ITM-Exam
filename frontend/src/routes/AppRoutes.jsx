@@ -15,6 +15,7 @@ import StudentExamSessionPage from "../pages/exams/StudentExamSessionPage";
 import StudentResultsPage from "../pages/exams/StudentResultsPage";
 import AdminUsersPage from "../pages/admin/AdminUsersPage";
 import AdminAcademicStructurePage from "../pages/admin/AdminAcademicStructurePage";
+import AdminSmuIntegrationPage from "../pages/admin/AdminSmuIntegrationPage";
 import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
 import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
 import AdminEnrollmentsPage from "../pages/admin/AdminEnrollmentsPage";
@@ -31,6 +32,7 @@ export default function AppRoutes() {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/academic" element={<AdminAcademicStructurePage />} />
           <Route path="/admin/enrollments" element={<AdminEnrollmentsPage />} />
+          <Route path="/admin/smu" element={<AdminSmuIntegrationPage />} />
         </Route>
 
         <Route element={<RoleGuard allow={["Professor", "Assistant", "Student"]} />}>

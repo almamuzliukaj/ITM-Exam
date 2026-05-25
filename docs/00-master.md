@@ -19,6 +19,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 13. [Project Status and Gap Analysis](13-project-status-gap-analysis.md)
 14. [Delivery Plan and Notion Sprint Board](14-delivery-plan.md)
 15. [Manual Test Guide](test-guide.md)
+16. [SMU Integration Plan](smu-integration-plan.md)
 
 ## Supporting Documents
 

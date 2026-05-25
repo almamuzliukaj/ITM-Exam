@@ -9,7 +9,10 @@ using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OnlineExam.Api.DTOs;
+using OnlineExam.Api.Filters;
 using OnlineExam.Api.Services;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,12 +26,33 @@ if (string.IsNullOrEmpty(jwtIssuer))
     throw new Exception("JWT Issuer is missing in appsettings.json");
 
 // Add services to the container.
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<ApiErrorResponseFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errorResponse = ApiErrorResponse.Create(
+            context.HttpContext,
+            StatusCodes.Status400BadRequest,
+            "Validation failed.",
+            context.ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.Value!.Errors.Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage) ? "Invalid value." : error.ErrorMessage).ToArray()),
+            "validation_error");
+
+        return new BadRequestObjectResult(errorResponse);
+    };
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
@@ -96,6 +120,34 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         options.RequireHttpsMetadata = false; // For development only
         options.SaveToken = true;
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+
+                var response = ApiErrorResponse.Create(
+                    context.HttpContext,
+                    StatusCodes.Status401Unauthorized,
+                    "Authentication is required to access this resource.");
+
+                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+
+                var response = ApiErrorResponse.Create(
+                    context.HttpContext,
+                    StatusCodes.Status403Forbidden,
+                    "You do not have permission to perform this action.");
+
+                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+            }
+        };
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -150,6 +202,26 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseStatusCodePages(async context =>
+{
+    var response = context.HttpContext.Response;
+    if (response.StatusCode < 400 || response.ContentLength.GetValueOrDefault() > 0 || response.HasStarted)
+        return;
+
+    response.ContentType = "application/json";
+    var errorResponse = ApiErrorResponse.Create(
+        context.HttpContext,
+        response.StatusCode,
+        response.StatusCode switch
+        {
+            StatusCodes.Status401Unauthorized => "Authentication is required to access this resource.",
+            StatusCodes.Status403Forbidden => "You do not have permission to perform this action.",
+            StatusCodes.Status404NotFound => "The requested resource was not found.",
+            _ => "The request failed."
+        });
+
+    await response.WriteAsync(JsonSerializer.Serialize(errorResponse));
+});
 app.MapControllers();
 app.Run();
 

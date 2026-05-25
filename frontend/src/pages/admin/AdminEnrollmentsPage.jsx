@@ -71,6 +71,7 @@ export default function AdminEnrollmentsPage() {
   const [loadingFocusedDetails, setLoadingFocusedDetails] = useState(false);
   const [processingKey, setProcessingKey] = useState("");
   const [operationResults, setOperationResults] = useState([]);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const visibleTerms = useMemo(
     () => terms.filter((term) => term.status !== "Closed" && term.status !== "Archived"),
@@ -504,6 +505,13 @@ export default function AdminEnrollmentsPage() {
     });
   }
 
+  async function runConfirmedAction() {
+    if (!confirmAction?.onConfirm) return;
+    const nextAction = confirmAction;
+    setConfirmAction(null);
+    await nextAction.onConfirm();
+  }
+
   if (userLoading) return <div className="pageState">Loading enrollment workspace...</div>;
   if (!user) return <div className="pageState">{userError || "Unable to load user profile."}</div>;
 
@@ -550,10 +558,14 @@ export default function AdminEnrollmentsPage() {
 
         <section className="surfaceCard">
           <div className="sectionHeader">
-            <h3>Cohort setup</h3>
+            <div>
+              <h3>Cohort setup</h3>
+              <span className="sectionMeta">Choose the academic term, study year, semester, and default enrollment status.</span>
+            </div>
+            <span className="statusPill statusDraft">Step 1</span>
           </div>
           <div className="sectionBody stackLg">
-            <div className="threeColGrid">
+            <div className="formGrid formGridThree">
               <div className="field">
                 <label className="label">Term</label>
                 <select
@@ -635,7 +647,11 @@ export default function AdminEnrollmentsPage() {
 
         <section className="surfaceCard">
           <div className="sectionHeader">
-            <h3>Student cohort selection</h3>
+            <div>
+              <h3>Student cohort selection</h3>
+              <span className="sectionMeta">Filter students, select the cohort, then run the required academic operation.</span>
+            </div>
+            <span className="statusPill statusLive">{selectedStudentIds.length} selected</span>
           </div>
           <div className="sectionBody stackLg">
             <div className="filtersRow">
@@ -707,7 +723,7 @@ export default function AdminEnrollmentsPage() {
               </div>
             )}
 
-            <div className="row" style={{ justifyContent: "flex-start", gap: 10, flexWrap: "wrap" }}>
+            <div className="formActionsBar formActionsBarStart">
               <button
                 className="btn btnPrimary"
                 type="button"
@@ -720,7 +736,14 @@ export default function AdminEnrollmentsPage() {
                 className="btn"
                 type="button"
                 disabled={processingKey !== "" || selectedStudentIds.length === 0}
-                onClick={handleActivateEnrollments}
+                onClick={() =>
+                  setConfirmAction({
+                    title: "Activate selected enrollments?",
+                    text: `This will move ${selectedStudentIds.length} selected student enrollment(s) to active where an enrollment exists.`,
+                    confirmLabel: "Activate enrollments",
+                    onConfirm: handleActivateEnrollments,
+                  })
+                }
               >
                 {processingKey === "activate" ? "Activating..." : "Activate selected enrollments"}
               </button>
@@ -728,7 +751,14 @@ export default function AdminEnrollmentsPage() {
                 className="btn"
                 type="button"
                 disabled={processingKey !== "" || selectedStudentIds.length === 0 || !filters.termId}
-                onClick={handleRegularizeEnrollments}
+                onClick={() =>
+                  setConfirmAction({
+                    title: "Generate course enrollments?",
+                    text: `This will generate current semester course enrollments for ${selectedStudentIds.length} selected student(s).`,
+                    confirmLabel: "Generate courses",
+                    onConfirm: handleRegularizeEnrollments,
+                  })
+                }
               >
                 {processingKey === "regularize" ? "Generating..." : "Generate current semester courses"}
               </button>
@@ -739,7 +769,10 @@ export default function AdminEnrollmentsPage() {
         <section className="dashboardGrid dashboardGridWide">
           <article className="surfaceCard">
             <div className="sectionHeader">
-              <h3>Focused student view</h3>
+              <div>
+                <h3>Focused student view</h3>
+                <span className="sectionMeta">Inspect semester and course eligibility for the selected student.</span>
+              </div>
             </div>
             <div className="sectionBody stackLg">
               {!focusedStudent ? (
@@ -825,14 +858,17 @@ export default function AdminEnrollmentsPage() {
 
           <article className="surfaceCard">
             <div className="sectionHeader">
-              <h3>Carry-over visibility</h3>
+              <div>
+                <h3>Carry-over visibility</h3>
+                <span className="sectionMeta">Create, unlock, close, or cancel carry-over records with clear status feedback.</span>
+              </div>
             </div>
             <div className="sectionBody stackLg">
               <div className="pageStateCard">
                 <strong>Controlled unlock flow:</strong> create a carry-over from a previous semester, then assign it to an active offering to create exam eligibility.
               </div>
 
-              <div className="questionBankFormGrid">
+              <div className="formGrid formGridTwo">
                 <div className="field">
                   <label className="label">Failed / carried course</label>
                   <select
@@ -973,7 +1009,14 @@ export default function AdminEnrollmentsPage() {
                                   <button
                                     className="btn"
                                     type="button"
-                                    onClick={() => handleCloseCarryOver(carryOver.id)}
+                                    onClick={() =>
+                                      setConfirmAction({
+                                        title: "Close carry-over record?",
+                                        text: "This marks the carry-over as closed and may finalize its offering connection.",
+                                        confirmLabel: "Close record",
+                                        onConfirm: () => handleCloseCarryOver(carryOver.id),
+                                      })
+                                    }
                                     disabled={processingKey !== ""}
                                   >
                                     {processingKey === `close-${carryOver.id}` ? "Closing..." : "Close"}
@@ -981,9 +1024,16 @@ export default function AdminEnrollmentsPage() {
                                 ) : null}
                                 {carryOver.status === "Open" ? (
                                   <button
-                                    className="btn"
+                                    className="btn btnDanger"
                                     type="button"
-                                    onClick={() => handleCancelCarryOver(carryOver.id)}
+                                    onClick={() =>
+                                      setConfirmAction({
+                                        title: "Cancel carry-over record?",
+                                        text: "This cancels the open carry-over record for the focused student.",
+                                        confirmLabel: "Cancel record",
+                                        onConfirm: () => handleCancelCarryOver(carryOver.id),
+                                      })
+                                    }
                                     disabled={processingKey !== ""}
                                   >
                                     {processingKey === `cancel-${carryOver.id}` ? "Cancelling..." : "Cancel"}
@@ -1004,7 +1054,10 @@ export default function AdminEnrollmentsPage() {
 
         <section className="surfaceCard">
           <div className="sectionHeader">
-            <h3>Batch operation results</h3>
+            <div>
+              <h3>Batch operation results</h3>
+              <span className="sectionMeta">Review the latest create, activate, or regularization operation.</span>
+            </div>
           </div>
           <div className="sectionBody">
             {operationResults.length === 0 ? (
@@ -1037,8 +1090,38 @@ export default function AdminEnrollmentsPage() {
             )}
           </div>
         </section>
+
+        {confirmAction ? (
+          <ConfirmDialog
+            title={confirmAction.title}
+            text={confirmAction.text}
+            confirmLabel={confirmAction.confirmLabel}
+            onCancel={() => setConfirmAction(null)}
+            onConfirm={runConfirmedAction}
+          />
+        ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function ConfirmDialog({ title, text, confirmLabel, onCancel, onConfirm }) {
+  return (
+    <div className="modalBackdrop" role="presentation">
+      <div className="modalCard confirmationDialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <span className="summaryLabel">Confirmation required</span>
+        <h3 id="confirm-dialog-title">{title}</h3>
+        <p>{text}</p>
+        <div className="formActionsBar">
+          <button className="btn" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btnPrimary" type="button" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

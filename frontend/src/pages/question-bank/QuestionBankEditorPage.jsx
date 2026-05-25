@@ -191,67 +191,80 @@ export default function QuestionBankEditorPage() {
       <section className="formSurface">
         <div className="surfaceCard">
           <div className="sectionHeader">
-            <h3>{t("questionBank.editor.sectionTitle")}</h3>
+            <div>
+              <h3>{t("questionBank.editor.sectionTitle")}</h3>
+              <span className="sectionMeta">Reusable question entries use the same authoring structure as exam questions.</span>
+            </div>
+            <span className="statusPill statusDraft">{isEdit ? "Editing" : "New entry"}</span>
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
 
-            <form className="stackLg" onSubmit={onSubmit}>
-              <div className="field">
-                <label className="label">{t("questionBank.offering")}</label>
-                <select
-                  className="input"
-                  value={form.offeringId}
-                  onChange={(e) => setForm((current) => ({ ...current, offeringId: e.target.value }))}
-                  disabled={saving || isEdit}
-                >
-                  <option value="">{t("questionBank.selectOffering")}</option>
-                  {offerings.map((offering) => (
-                    <option key={offering.id} value={offering.id}>
-                      {formatOffering(offering)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field">
-                <label className="label">{t("questionBank.editor.prompt")}</label>
-                <textarea
-                  className="input textarea"
-                  value={form.text}
-                  onChange={(e) => setForm((current) => ({ ...current, text: e.target.value }))}
-                  rows={6}
-                  disabled={saving}
-                  placeholder={t("questionBank.editor.promptPlaceholder")}
-                />
-              </div>
-
-              <div className="questionBankFormGrid">
-                <div className="field">
-                  <label className="label">{t("questionBank.type")}</label>
-                  <select
-                    className="input"
-                    value={form.type}
-                    onChange={(e) => onTypeChange(e.target.value)}
-                    disabled={saving}
-                  >
-                    <option value="MCQ">MCQ</option>
-                    <option value="Text">{t("common.text")}</option>
-                    <option value="CSharp">C#</option>
-                    <option value="SQL">SQL</option>
-                  </select>
+            <form className="formLayout" onSubmit={onSubmit}>
+              <div className="formSection">
+                <div className="formSectionHeader">
+                  <div>
+                    <h4>Question bank basics</h4>
+                    <p>Assign the entry to one offering and keep scoring aligned with exam usage.</p>
+                  </div>
                 </div>
 
-                <div className="field">
-                  <label className="label">{t("questionBank.editor.points")}</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="1"
-                    value={form.points}
-                    onChange={(e) => setForm((current) => ({ ...current, points: Number(e.target.value) }))}
-                    disabled={saving}
-                  />
+                <div className="formGrid formGridTwo">
+                  <div className="field fieldSpanFull">
+                    <label className="label">{t("questionBank.offering")}</label>
+                    <select
+                      className="input"
+                      value={form.offeringId}
+                      onChange={(e) => setForm((current) => ({ ...current, offeringId: e.target.value }))}
+                      disabled={saving || isEdit}
+                    >
+                      <option value="">{t("questionBank.selectOffering")}</option>
+                      {offerings.map((offering) => (
+                        <option key={offering.id} value={offering.id}>
+                          {formatOffering(offering)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="field fieldSpanFull">
+                    <label className="label">{t("questionBank.editor.prompt")}</label>
+                    <textarea
+                      className="input textarea"
+                      value={form.text}
+                      onChange={(e) => setForm((current) => ({ ...current, text: e.target.value }))}
+                      rows={6}
+                      disabled={saving}
+                      placeholder={t("questionBank.editor.promptPlaceholder")}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionBank.type")}</label>
+                    <select
+                      className="input"
+                      value={form.type}
+                      onChange={(e) => onTypeChange(e.target.value)}
+                      disabled={saving}
+                    >
+                      <option value="MCQ">MCQ</option>
+                      <option value="Text">{t("common.text")}</option>
+                      <option value="CSharp">C#</option>
+                      <option value="SQL">SQL</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionBank.editor.points")}</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      value={form.points}
+                      onChange={(e) => setForm((current) => ({ ...current, points: Number(e.target.value) }))}
+                      disabled={saving}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -320,7 +333,10 @@ export default function QuestionBankEditorPage() {
               {form.type === "MCQ" ? (
                 <div className="stackLg">
                   <div className="sectionHeader sectionHeaderInline">
-                    <h3>{t("questionBank.editor.options")}</h3>
+                    <div>
+                      <h3>{t("questionBank.editor.options")}</h3>
+                      <span className="sectionMeta">Add options first, then choose the correct answer from the dropdown.</span>
+                    </div>
                     <button className="btn" type="button" onClick={addOption} disabled={saving}>
                       {t("questionBank.editor.addOption")}
                     </button>
@@ -382,7 +398,7 @@ export default function QuestionBankEditorPage() {
                 </div>
               ) : null}
 
-              <div className="row" style={{ justifyContent: "flex-end" }}>
+              <div className="formActionsBar">
                 <button className="btn btnPrimary" type="submit" disabled={saving || !form.offeringId || !form.text.trim()}>
                   {saving ? t("questionBank.editor.saving") : t("questionBank.editor.save")}
                 </button>

@@ -1,6 +1,13 @@
 # Work Log (Albiona)
 
 ## 2026-05-25
+- Added backend reporting endpoints for staff and admin reporting workflows.
+- Implemented `GET /api/reports/overview`, `GET /api/reports/participation`, `GET /api/reports/publish-status`, and `GET /api/reports/integrity`.
+- Scoped report access so admin can report globally while professor and assistant views stay limited to assigned offerings.
+- Covered the requested reporting data points for participation, average scores, publication state, pending result release, and integrity violation counts.
+- Verified the reporting endpoints with a backend build.
+
+## 2026-05-25
 - Completed Sprint 28 backend exam workspace query refinement.
 - Expanded `GET /api/exams` with scoped query filters for assigned offerings, draft/published state, and grading queue visibility.
 - Added offering-level access validation so professor and assistant filters cannot target offerings outside their assigned scope.

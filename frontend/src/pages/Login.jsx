@@ -100,8 +100,9 @@ export default function Login() {
               {error ? <div className="alert">{error}</div> : null}
 
               <div className="field">
-                <label className="label">{t("login.emailLabel")}</label>
+                <label className="label" htmlFor="login-email">{t("login.emailLabel")}</label>
                 <input
+                  id="login-email"
                   className="input"
                   type="email"
                   value={email}
@@ -114,9 +115,10 @@ export default function Login() {
               </div>
 
               <div className="field">
-                <label className="label">{t("login.passwordLabel")}</label>
+                <label className="label" htmlFor="login-password">{t("login.passwordLabel")}</label>
                 <div className="inputWrap">
                   <input
+                    id="login-password"
                     className="input"
                     type={show ? "text" : "password"}
                     value={password}
@@ -129,6 +131,8 @@ export default function Login() {
                   <button
                     type="button"
                     className="btn inputRightBtn"
+                    aria-label={show ? t("login.hide") : t("login.show")}
+                    aria-controls="login-password"
                     onClick={() => setShow((value) => !value)}
                     disabled={loading}
                   >

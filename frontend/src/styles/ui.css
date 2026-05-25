@@ -4,6 +4,25 @@
   grid-template-columns: 304px minmax(0, 1fr);
 }
 
+.skipLink{
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 120;
+  transform: translateY(-140%);
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--heading);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+  font-weight: 800;
+}
+
+.skipLink:focus{
+  transform: translateY(0);
+}
+
 .mobileNavBackdrop,
 .mobileMenuButton,
 .mobileCloseButton{
@@ -277,6 +296,7 @@
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  min-width: 0;
 }
 
 .topbarActions{
@@ -324,6 +344,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 
 .stackLg{
@@ -933,6 +954,7 @@ select.input{
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 44px;
   border-radius: 10px;
   padding: 12px 16px;
   border: 1px solid var(--border-strong);
@@ -990,6 +1012,13 @@ select.input{
   gap: 10px;
 }
 
+input[type="checkbox"],
+input[type="radio"]{
+  min-width: 18px;
+  min-height: 18px;
+  accent-color: var(--primary);
+}
+
 .filtersRow{
   display: grid;
   grid-template-columns: 1.4fr .8fr .8fr;
@@ -998,6 +1027,7 @@ select.input{
 
 .tableWrap{
   overflow: auto;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #ffffff;
@@ -2549,14 +2579,33 @@ select.input{
     padding: 16px;
   }
 
+  .contentArea{
+    gap: 16px;
+  }
+
   .topbar,
   .adminHeroMeta,
+  .sectionHeader,
+  .studentItemRow,
+  .examIntegrityStrip,
+  .submitReviewPanel,
+  .draftRestoreBanner,
+  .integrityBanner,
   .resourceFooter,
   .resourceMetaRow,
   .filtersRow,
   .row{
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .sectionHeader{
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .sectionBody{
+    padding: 16px;
   }
 
   .appShell{
@@ -2597,10 +2646,13 @@ select.input{
   .dashboardHeaderActions{
     width: 100%;
     justify-content: stretch;
+    flex-direction: column;
   }
 
   .dashboardHeaderActions .btn,
-  .topbarActions .btn{
+  .topbarActions .btn,
+  .resourceActionGroup .btn,
+  .formActionsBar .btn{
     width: 100%;
   }
 
@@ -2636,6 +2688,37 @@ select.input{
     line-height: 1.6;
   }
 
+  .heroPanel,
+  .adminDashboardHero{
+    padding: 18px;
+    gap: 16px;
+  }
+
+  .heroStats,
+  .gradebookScoreStrip,
+  .attemptTimeline,
+  .reportSummaryGrid{
+    grid-template-columns: 1fr;
+  }
+
+  .attemptTimelineStep{
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .attemptTimelineStep:last-child{
+    border-bottom: 0;
+  }
+
+  .gradebookReviewHeader,
+  .integrityBanner{
+    flex-direction: column;
+  }
+
+  .gradebookBadgeRow{
+    justify-content: flex-start;
+  }
+
   .twoColGrid,
   .threeColGrid{
     grid-template-columns: 1fr;
@@ -2651,6 +2734,26 @@ select.input{
     grid-template-columns: 1fr;
   }
 
+  .questionIndex{
+    width: 42px;
+    height: 42px;
+  }
+
+  .resultScoreBlock{
+    align-items: flex-start;
+  }
+
+  .modalBackdrop{
+    align-items: end;
+    padding: 12px;
+  }
+
+  .modalCard{
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+  }
+
   .summaryCard strong,
   .metricValue,
   .adminMetricCard strong,
@@ -2659,7 +2762,7 @@ select.input{
   }
 
   .dataTable{
-    min-width: 680px;
+    min-width: 640px;
   }
 }
 

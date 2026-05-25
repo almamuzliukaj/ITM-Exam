@@ -48,7 +48,11 @@ public class ExamsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Exam>>> GetExams()
+    public async Task<ActionResult<IEnumerable<Exam>>> GetExams(
+        [FromQuery] Guid? courseOfferingId = null,
+        [FromQuery] string? publicationState = null,
+        [FromQuery] bool? assignedOnly = null,
+        [FromQuery] bool? needsGrading = null)
     {
         if (User.IsInRole("Admin"))
             return Forbid();
@@ -57,6 +61,10 @@ public class ExamsController : ControllerBase
             .Include(x => x.CourseOffering)
             .Where(x => !x.Description.StartsWith(QuestionBankMarker));
 
+        var normalizedPublicationState = NormalizePublicationState(publicationState);
+        if (publicationState is not null && normalizedPublicationState is null)
+            return BadRequest(new { message = "PublicationState must be Draft or Published." });
+
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
         {
             var userId = GetCurrentUserId();
@@ -64,13 +72,25 @@ public class ExamsController : ControllerBase
                 return Unauthorized();
 
             var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+            var assignedOfferingIds = await GetAssignedOfferingIdsAsync(userId.Value, assignmentRole);
             query = query.Where(x =>
                 x.CreatedByUserId == userId.Value ||
-                (x.CourseOfferingId != null && _context.CourseOfferingStaffAssignments.Any(a =>
-                    a.CourseOfferingId == x.CourseOfferingId &&
-                    a.UserId == userId.Value &&
-                    a.IsActive &&
-                    a.RoleInOffering == assignmentRole)));
+                (x.CourseOfferingId.HasValue && assignedOfferingIds.Contains(x.CourseOfferingId.Value)));
+
+            if (assignedOnly == true)
+            {
+                query = query.Where(x =>
+                    x.CourseOfferingId.HasValue &&
+                    assignedOfferingIds.Contains(x.CourseOfferingId.Value));
+            }
+
+            if (courseOfferingId.HasValue)
+            {
+                if (!assignedOfferingIds.Contains(courseOfferingId.Value))
+                    return Forbid();
+
+                query = query.Where(x => x.CourseOfferingId == courseOfferingId.Value);
+            }
         }
         else if (User.IsInRole("Student"))
         {
@@ -84,7 +104,20 @@ public class ExamsController : ControllerBase
                 x.Status == "Published" &&
                 x.CourseOfferingId.HasValue &&
                 offeringIds.Contains(x.CourseOfferingId.Value));
+
+            if (courseOfferingId.HasValue)
+                query = query.Where(x => x.CourseOfferingId == courseOfferingId.Value);
         }
+
+        if (normalizedPublicationState == "Draft")
+            query = query.Where(x => !x.IsPublished || x.Status == "Draft");
+        else if (normalizedPublicationState == "Published")
+            query = query.Where(x => x.IsPublished && x.Status == "Published");
+
+        if (needsGrading == true)
+            query = query.Where(x => _context.ExamAttempts.Any(a => a.ExamId == x.Id && a.Status == ExamAttemptSubmittedStatus && !a.IsGraded));
+        else if (needsGrading == false)
+            query = query.Where(x => !_context.ExamAttempts.Any(a => a.ExamId == x.Id && a.Status == ExamAttemptSubmittedStatus && !a.IsGraded));
 
         return await query.OrderByDescending(x => x.CreatedAt).ToListAsync();
     }
@@ -2008,6 +2041,40 @@ public class ExamsController : ControllerBase
     private static string BuildQuestionBankDescription(Guid offeringId)
     {
         return $"{QuestionBankMarker}{offeringId}";
+    }
+
+    private async Task<List<Guid>> GetAssignedOfferingIdsAsync(Guid userId, string assignmentRole)
+    {
+        var assignmentIds = await _context.CourseOfferingStaffAssignments
+            .Where(a =>
+                a.UserId == userId &&
+                a.IsActive &&
+                a.RoleInOffering == assignmentRole)
+            .Select(a => a.CourseOfferingId)
+            .ToListAsync();
+
+        var directIds = assignmentRole == "Professor"
+            ? await _context.CourseOfferings.Where(x => x.PrimaryProfessorId == userId).Select(x => x.Id).ToListAsync()
+            : await _context.CourseOfferings.Where(x => x.AssistantId == userId).Select(x => x.Id).ToListAsync();
+
+        return assignmentIds
+            .Concat(directIds)
+            .Distinct()
+            .ToList();
+    }
+
+    private static string? NormalizePublicationState(string? publicationState)
+    {
+        if (string.IsNullOrWhiteSpace(publicationState))
+            return null;
+
+        if (string.Equals(publicationState, "Draft", StringComparison.OrdinalIgnoreCase))
+            return "Draft";
+
+        if (string.Equals(publicationState, "Published", StringComparison.OrdinalIgnoreCase))
+            return "Published";
+
+        return null;
     }
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)

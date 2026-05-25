@@ -1,11 +1,12 @@
 .appShell{
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 286px minmax(0, 1fr);
+  grid-template-columns: 304px minmax(0, 1fr);
 }
 
 .mobileNavBackdrop,
-.mobileMenuButton{
+.mobileMenuButton,
+.mobileCloseButton{
   display: none;
 }
 
@@ -15,13 +16,16 @@
   height: 100vh;
   max-height: 100vh;
   min-height: 0;
-  padding: 20px 18px;
+  padding: 22px 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
-  background: linear-gradient(180deg, #17304f, #10253f);
+  gap: 18px;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), transparent 28%),
+    linear-gradient(180deg, #17304f, #10253f);
   color: rgba(255,255,255,.92);
+  border-right: 1px solid rgba(255,255,255,.08);
 }
 
 .brandLogo{
@@ -52,6 +56,10 @@
   gap: 14px;
 }
 
+.sidebarTop{
+  position: relative;
+}
+
 .brand{
   display: inline-flex;
   align-items: flex-start;
@@ -67,11 +75,11 @@
 
 .brandCaption strong{
   display: block;
-  font-size: 24px;
+  font-size: 23px;
   line-height: 1.05;
   font-family: var(--font-display);
   color: #f4f8fc;
-  letter-spacing: -.03em;
+  letter-spacing: 0;
 }
 
 .brandCaption small{
@@ -94,9 +102,9 @@
 .sidebarIdentity,
 .supportPanel{
   padding: 15px;
-  border-radius: 12px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,.065);
+  border: 1px solid rgba(255,255,255,.10);
 }
 
 .sidebarIdentity{
@@ -112,8 +120,8 @@
   height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  background: rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,.13);
   font-weight: 700;
   font-size: 13px;
 }
@@ -138,10 +146,35 @@
   margin-top: 2px;
   color: rgba(255,255,255,.66);
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roleDot{
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #80d6b0;
+  box-shadow: 0 0 0 3px rgba(128,214,176,.14);
 }
 
 .sidebarNav{
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  padding: 4px 0 2px;
+}
+
+.navGroup{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.navGroupItems{
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -154,19 +187,56 @@
 }
 
 .navItem{
-  padding: 11px 13px;
-  border-radius: 10px;
+  min-height: 46px;
+  padding: 9px 11px;
+  border-radius: 8px;
   font-size: 15px;
   color: rgba(255,255,255,.78);
   border: 1px solid transparent;
-  transition: background .18s ease, color .18s ease, border-color .18s ease;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
 }
 
 .navItem:hover,
 .navItemActive{
-  background: rgba(255,255,255,.08);
-  border-color: rgba(255,255,255,.1);
+  background: rgba(255,255,255,.095);
+  border-color: rgba(255,255,255,.13);
   color: white;
+}
+
+.navItem:hover{
+  transform: translateX(2px);
+}
+
+.navItemActive{
+  box-shadow: inset 3px 0 0 #9cc7ee;
+}
+
+.navIcon{
+  width: 34px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.72);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.navItemActive .navIcon{
+  background: rgba(255,255,255,.16);
+  color: #ffffff;
+}
+
+.navText{
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .supportPanel p{
@@ -178,7 +248,7 @@
 
 .mainPanel{
   min-width: 0;
-  padding: 24px 28px 28px;
+  padding: 26px 32px 34px;
   font-size: 15px;
 }
 
@@ -187,8 +257,8 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 28px;
-  padding-bottom: 18px;
+  margin-bottom: 26px;
+  padding: 0 0 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -236,7 +306,8 @@
 }
 
 .pageTitle{
-  font-size: clamp(28px, 3.2vw, 38px);
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.08;
 }
 
 .pageSubtitle,
@@ -278,12 +349,14 @@
 }
 
 .heroPanel{
-  padding: 28px;
+  padding: 30px;
   border-radius: var(--radius-xl);
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 24px;
-  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+  gap: 28px;
+  background:
+    linear-gradient(90deg, rgba(22,58,99,.08), transparent 34%),
+    linear-gradient(180deg, #ffffff, #fbfcfe);
 }
 
 .heroCopy{
@@ -302,37 +375,63 @@
 .heroStats{
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .metricCard{
-  padding: 18px;
-  border-radius: 14px;
-  background: #f9fbfd;
+  min-height: 142px;
+  padding: 17px 18px;
+  border-radius: 12px;
+  background: #f8fafc;
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .metricValue{
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: 34px;
+  line-height: 1;
   color: var(--heading);
 }
 
 .metricLabel{
-  margin-top: 8px;
+  margin-top: 12px;
   font-weight: 700;
+  line-height: 1.25;
 }
 
 .metricMeta{
   margin-top: 6px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.academicHeroMeta{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.academicHeroMeta span{
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 7px 10px;
+  border: 1px solid rgba(22,58,99,.12);
+  border-radius: 999px;
+  background: rgba(231,238,247,.72);
+  color: #244462;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .studentTermSummary{
-  padding: 16px 18px;
+  padding: 16px 18px 17px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f9fbfd;
 }
 
@@ -352,7 +451,7 @@
 .studentItemList{
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .studentItemRow{
@@ -360,9 +459,9 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 14px;
-  padding: 14px;
+  padding: 14px 15px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fbfcfe;
 }
 
@@ -415,22 +514,32 @@
 }
 
 .sectionHeader{
-  padding: 22px 24px;
+  padding: 20px 22px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  background: #f7f9fc;
 }
 
 .sectionHeader h3{
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
+  line-height: 1.2;
   color: var(--heading);
 }
 
 .sectionBody{
-  padding: 24px;
+  padding: 22px;
+}
+
+.sectionMeta{
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .summaryStrip{
@@ -534,10 +643,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  min-height: 30px;
+  padding: 7px 11px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .statusLive{
@@ -827,7 +938,7 @@
 .pageState,
 .pageStateCard,
 .emptyState{
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .alert{
@@ -846,14 +957,37 @@
 
 .emptyState,
 .pageStateCard{
-  padding: 28px;
+  padding: 26px;
   border: 1px dashed var(--border-strong);
-  background: #f9fbfd;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.42)),
+    #f8fafc;
   color: var(--muted);
 }
 
+.emptyState{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 128px;
+  justify-content: center;
+}
+
+.emptyState strong{
+  color: var(--heading);
+  font-size: 17px;
+}
+
+.emptyState span,
+.emptyState p{
+  margin: 0;
+  line-height: 1.55;
+}
+
 .roleShellAdmin .sidebar{
-  background: linear-gradient(180deg, #13253d, #0d1d31);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), transparent 28%),
+    linear-gradient(180deg, #13253d, #0d1d31);
 }
 
 .roleShellAdmin .topbar{
@@ -864,10 +998,12 @@
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, .8fr);
   gap: 22px;
-  padding: 24px 26px;
+  padding: 28px 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+  background:
+    linear-gradient(90deg, rgba(22,58,99,.08), transparent 34%),
+    linear-gradient(180deg, #ffffff, #f8fbfe);
   box-shadow: var(--shadow-md);
 }
 
@@ -950,21 +1086,26 @@
 .adminMetricGrid{
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .adminMetricCard{
+  min-height: 146px;
   padding: 18px 20px;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: #fff;
   box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .adminMetricCard strong{
   display: block;
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 34px;
+  line-height: 1;
   color: var(--heading);
   font-family: var(--font-display);
 }
@@ -1024,9 +1165,9 @@
 }
 
 .offeringGroup{
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fbfe;
 }
 
@@ -1057,7 +1198,7 @@
 .assignedOfferingCard{
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
@@ -2008,6 +2149,23 @@
     cursor: pointer;
   }
 
+  .mobileCloseButton{
+    display: grid;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px;
+    background: rgba(255,255,255,.08);
+    color: white;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
   .mobileMenuButton span{
     width: 16px;
     height: 2px;
@@ -2047,6 +2205,7 @@
     transition: transform .22s ease;
     z-index: 30;
     box-shadow: 0 20px 60px rgba(0, 0, 0, .18);
+    padding-top: 18px;
   }
 
   .sidebar.sidebarOpen{
@@ -2085,8 +2244,7 @@
   }
 
   .brand{
-    flex-direction: column;
-    align-items: flex-start;
+    padding-right: 44px;
   }
 
   .brandCaption{

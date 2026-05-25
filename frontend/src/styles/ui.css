@@ -780,7 +780,82 @@
 }
 
 .formSurface{
-  max-width: 860px;
+  max-width: 980px;
+}
+
+.formLayout{
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.formSection{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.formSectionHeader{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.formSectionHeader h4{
+  margin: 0;
+  color: var(--heading);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.formSectionHeader p{
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.formGrid{
+  display: grid;
+  gap: 16px;
+}
+
+.formGridTwo{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.formGridThree{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fieldSpanFull{
+  grid-column: 1 / -1;
+}
+
+.fieldHint{
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.formActionsBar{
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.formActionsBarStart{
+  justify-content: flex-start;
 }
 
 .field{
@@ -813,6 +888,25 @@
 .input:focus{
   border-color: rgba(22,58,99,.45);
   box-shadow: 0 0 0 4px rgba(22,58,99,.10);
+}
+
+.input:disabled{
+  cursor: not-allowed;
+  background: #eef2f6;
+  color: #6b7788;
+}
+
+select.input{
+  appearance: none;
+  padding-right: 44px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #48627f 50%),
+    linear-gradient(135deg, #48627f 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 52%,
+    calc(100% - 14px) 52%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 .textarea{
@@ -2015,7 +2109,7 @@
 .modalCard{
   width: min(520px, 100%);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 14px;
   background: white;
   box-shadow: 0 24px 60px rgba(18, 39, 66, .26);
   padding: 24px;
@@ -2030,6 +2124,10 @@
 .modalCard p{
   color: var(--muted);
   line-height: 1.6;
+}
+
+.confirmationDialog .formActionsBar{
+  margin-top: 18px;
 }
 
 .lockdownConfig{
@@ -2113,6 +2211,8 @@
   .adminSectionGrid,
   .questionBankGrid,
   .questionBankFormGrid,
+  .formGridTwo,
+  .formGridThree,
   .loginContent,
   .loginFeatureGrid{
     grid-template-columns: 1fr;

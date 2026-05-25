@@ -106,65 +106,81 @@ export default function ExamCreatePage() {
       <section className="formSurface">
         <div className="surfaceCard">
           <div className="sectionHeader">
-            <h3>{t("examCreate.configuration")}</h3>
+            <div>
+              <h3>{t("examCreate.configuration")}</h3>
+              <span className="sectionMeta">Set the course, timing, and delivery policy before adding questions.</span>
+            </div>
+            <span className="statusPill statusDraft">Draft setup</span>
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
             {offeringsLoading ? <div className="pageStateCard">{t("examCreate.loadingOfferings")}</div> : null}
             {!offeringsLoading && offerings.length === 0 ? (
               <div className="emptyState">
-                <p>{t("examCreate.noOfferingsTitle")}</p>
-                <p>{t("examCreate.noOfferingsText")}</p>
+                <strong>{t("examCreate.noOfferingsTitle")}</strong>
+                <span>{t("examCreate.noOfferingsText")}</span>
               </div>
             ) : null}
-            <form className="stackLg" onSubmit={saveExam}>
-              <div className="field">
-                <label className="label">{t("examCreate.offeringLabel")}</label>
-                <select
-                  className="input"
-                  value={form.courseOfferingId}
-                  onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
-                  disabled={saving || offeringsLoading || offerings.length === 0}
-                  required
-                >
-                  {offerings.map((offering) => (
-                    <option key={offering.id} value={offering.id}>
-                      {formatOfferingOption(offering)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form className="formLayout" onSubmit={saveExam}>
+              <div className="formSection">
+                <div className="formSectionHeader">
+                  <div>
+                    <h4>Assessment basics</h4>
+                    <p>Keep the exam identity clear for staff and students.</p>
+                  </div>
+                </div>
 
-              <div className="field">
-                <div className="label">{t("examCreate.titleLabel")}</div>
-                <input
-                  className="input"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="Algorithms Midterm"
-                  required
-                />
-              </div>
+                <div className="formGrid formGridTwo">
+                  <div className="field fieldSpanFull">
+                    <label className="label">{t("examCreate.offeringLabel")}</label>
+                    <select
+                      className="input"
+                      value={form.courseOfferingId}
+                      onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
+                      disabled={saving || offeringsLoading || offerings.length === 0}
+                      required
+                    >
+                      {offerings.map((offering) => (
+                        <option key={offering.id} value={offering.id}>
+                          {formatOfferingOption(offering)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="fieldHint">This connects the draft to the correct term, course, and section.</span>
+                  </div>
 
-              <div className="field">
-                <label className="label">{t("examCreate.durationLabel")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  value={form.durationMinutes}
-                  onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })}
-                />
-              </div>
+                  <div className="field">
+                    <div className="label">{t("examCreate.titleLabel")}</div>
+                    <input
+                      className="input"
+                      value={form.title}
+                      onChange={(e) => setForm({ ...form, title: e.target.value })}
+                      placeholder="Algorithms Midterm"
+                      required
+                    />
+                  </div>
 
-              <div className="field">
-                <div className="label">{t("examCreate.descriptionLabel")}</div>
-                <textarea
-                  className="input textarea"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder={t("examCreate.descriptionPlaceholder")}
-                />
+                  <div className="field">
+                    <label className="label">{t("examCreate.durationLabel")}</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      value={form.durationMinutes}
+                      onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="field fieldSpanFull">
+                    <div className="label">{t("examCreate.descriptionLabel")}</div>
+                    <textarea
+                      className="input textarea"
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      placeholder={t("examCreate.descriptionPlaceholder")}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="publishNotice">
@@ -220,9 +236,9 @@ export default function ExamCreatePage() {
                 </ul>
               </div>
 
-              <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
+              <div className="formActionsBar">
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
-                <button className="btn" type="submit" disabled={!canSubmit}>
+                <button className="btn btnPrimary" type="submit" disabled={!canSubmit}>
                   {saving ? t("examCreate.creating") : "Save draft"}
                 </button>
               </div>

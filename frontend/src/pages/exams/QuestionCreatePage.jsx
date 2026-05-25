@@ -155,38 +155,65 @@ export default function QuestionCreatePage() {
       <section className="formSurface">
         <div className="surfaceCard">
           <div className="sectionHeader">
-            <h3>{t("questionCreate.content")}</h3>
+            <div>
+              <h3>{t("questionCreate.content")}</h3>
+              <span className="sectionMeta">Author the prompt, scoring, and answer structure in one consistent flow.</span>
+            </div>
+            <span className="statusPill statusDraft">{form.type}</span>
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
-            <form className="stackLg" onSubmit={onSubmit}>
-              <div className="field">
-                <label className="label">
-                  {isTechnicalQuestion ? "Question prompt" : t("questionCreate.prompt")}
-                </label>
-                <textarea
-                  className="input textarea"
-                  value={form.text}
-                  onChange={(e) => setForm((current) => ({ ...current, text: e.target.value }))}
-                  disabled={saving || loadingExam}
-                  placeholder={t("questionCreate.promptPlaceholder")}
-                  rows={6}
-                />
-              </div>
+            <form className="formLayout" onSubmit={onSubmit}>
+              <div className="formSection">
+                <div className="formSectionHeader">
+                  <div>
+                    <h4>Question basics</h4>
+                    <p>Choose the type first, then complete only the fields that matter for that format.</p>
+                  </div>
+                </div>
 
-              <div className="field">
-                <label className="label">{t("questionCreate.type")}</label>
-                <select
-                  className="input"
-                  value={form.type}
-                  onChange={(e) => onTypeChange(e.target.value)}
-                  disabled={saving || loadingExam}
-                >
-                  <option value="MCQ">MCQ</option>
-                  <option value="Text">{t("common.text")}</option>
-                  <option value="CSharp">C#</option>
-                  <option value="SQL">SQL</option>
-                </select>
+                <div className="formGrid formGridTwo">
+                  <div className="field fieldSpanFull">
+                    <label className="label">
+                      {isTechnicalQuestion ? "Question prompt" : t("questionCreate.prompt")}
+                    </label>
+                    <textarea
+                      className="input textarea"
+                      value={form.text}
+                      onChange={(e) => setForm((current) => ({ ...current, text: e.target.value }))}
+                      disabled={saving || loadingExam}
+                      placeholder={t("questionCreate.promptPlaceholder")}
+                      rows={6}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionCreate.type")}</label>
+                    <select
+                      className="input"
+                      value={form.type}
+                      onChange={(e) => onTypeChange(e.target.value)}
+                      disabled={saving || loadingExam}
+                    >
+                      <option value="MCQ">MCQ</option>
+                      <option value="Text">{t("common.text")}</option>
+                      <option value="CSharp">C#</option>
+                      <option value="SQL">SQL</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionCreate.points")}</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      value={form.points}
+                      onChange={(e) => setForm((current) => ({ ...current, points: Number(e.target.value) }))}
+                      disabled={saving || loadingExam}
+                    />
+                  </div>
+                </div>
               </div>
 
               {form.type === "MCQ" ? (
@@ -309,19 +336,7 @@ export default function QuestionCreatePage() {
                 </div>
               ) : null}
 
-              <div className="field">
-                <label className="label">{t("questionCreate.points")}</label>
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  value={form.points}
-                  onChange={(e) => setForm((current) => ({ ...current, points: Number(e.target.value) }))}
-                  disabled={saving || loadingExam}
-                />
-              </div>
-
-              <div className="row" style={{ justifyContent: "flex-end" }}>
+              <div className="formActionsBar">
                 <button className="btn btnPrimary" type="submit" disabled={saving || loadingExam || !canEdit || !form.text.trim()}>
                   {saving ? t("questionCreate.saving") : t("questionCreate.save")}
                 </button>

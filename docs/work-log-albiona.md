@@ -1,6 +1,13 @@
 # Work Log (Albiona)
 
 ## 2026-05-25
+- Completed Sprint 28 backend exam workspace query refinement.
+- Expanded `GET /api/exams` with scoped query filters for assigned offerings, draft/published state, and grading queue visibility.
+- Added offering-level access validation so professor and assistant filters cannot target offerings outside their assigned scope.
+- Preserved the default exam listing behavior for the current frontend while enabling richer workspace queries for the next UI refinement pass.
+- Verified the workspace query changes with a backend build.
+
+## 2026-05-25
 - Completed Sprint 27 backend validation-message standardization work.
 - Added a shared API error response envelope with consistent `status`, `code`, `message`, `traceId`, and optional `details` fields.
 - Standardized controller error outputs globally through a result filter so `BadRequest`, `Conflict`, `NotFound`, `Unauthorized`, and `Forbid` responses now follow the same shape.

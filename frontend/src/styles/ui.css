@@ -2022,6 +2022,7 @@ select.input{
 
 .integrityBanner,
 .lockdownConfig,
+.lockdownStudentPanel,
 .integrityReview{
   border: 1px solid #d8e0ea;
   border-radius: 14px;
@@ -2047,6 +2048,7 @@ select.input{
 
 .integrityBanner p,
 .lockdownConfig p,
+.lockdownStudentPanel p,
 .integrityReview p{
   margin: 6px 0 0;
   color: var(--muted);
@@ -2134,6 +2136,28 @@ select.input{
   display: grid;
   gap: 16px;
   padding: 18px;
+}
+
+.lockdownStudentPanel{
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.lockdownStudentPanel > div:first-child strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--heading);
+}
+
+.lockdownReady{
+  border-color: #b8dfc5;
+  background: #f0fdf4;
+}
+
+.lockdownBlocked{
+  border-color: #e8a2a2;
+  background: #fff1f2;
 }
 
 .toggleRow{

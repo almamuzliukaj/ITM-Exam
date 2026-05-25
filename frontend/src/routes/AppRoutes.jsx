@@ -18,6 +18,7 @@ import AdminAcademicStructurePage from "../pages/admin/AdminAcademicStructurePag
 import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
 import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
 import AdminEnrollmentsPage from "../pages/admin/AdminEnrollmentsPage";
+import ReportsPage from "../pages/reports/ReportsPage";
 
 export default function AppRoutes() {
   return (
@@ -31,6 +32,10 @@ export default function AppRoutes() {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/academic" element={<AdminAcademicStructurePage />} />
           <Route path="/admin/enrollments" element={<AdminEnrollmentsPage />} />
+        </Route>
+
+        <Route element={<RoleGuard allow={["Admin", "Professor", "Assistant"]} />}>
+          <Route path="/reports" element={<ReportsPage />} />
         </Route>
 
         <Route element={<RoleGuard allow={["Professor", "Assistant", "Student"]} />}>

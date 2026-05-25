@@ -13,7 +13,23 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers["X-Exam-Client"] = detectExamClient();
   return config;
 });
+
+export function detectExamClient() {
+  if (typeof navigator === "undefined") return "StandardBrowser";
+
+  const userAgent = navigator.userAgent || "";
+  if (/safeexambrowser|seb/i.test(userAgent)) {
+    return "SafeExamBrowser";
+  }
+
+  if (/kiosk/i.test(userAgent)) {
+    return "KioskClient";
+  }
+
+  return "StandardBrowser";
+}
 
 export default api;

@@ -109,6 +109,9 @@ export default function ExamsListPage() {
                   <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
                     {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
                   </span>
+                  {exam.requiresLockdown ? (
+                    <span className="statusPill statusWarn">Lockdown</span>
+                  ) : null}
                   <span className="small">{exam.durationMinutes || 60} min</span>
                 </div>
                 <h3>{exam.title}</h3>
@@ -130,7 +133,7 @@ export default function ExamsListPage() {
                       </button>
                     ) : null}
                     <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                      {isStudent ? "Start" : t("examsList.open")}
+                      {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
                     </Link>
                   </div>
                 </div>

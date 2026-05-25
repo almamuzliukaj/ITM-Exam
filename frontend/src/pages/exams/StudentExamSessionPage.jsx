@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamLockdownReadiness, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -28,6 +28,7 @@ export default function StudentExamSessionPage() {
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [lockdownReadiness, setLockdownReadiness] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const submittedRef = useRef(false);
@@ -42,6 +43,7 @@ export default function StudentExamSessionPage() {
   const shouldShowFinalWarning = Boolean(integrityPolicy?.shouldShowFinalWarning) || effectiveViolationCount >= finalWarningThreshold;
   const shouldAutoSubmit = Boolean(integrityPolicy?.shouldAutoSubmit) || effectiveViolationCount >= autoActionThreshold;
   const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
+  const lockdownBlocked = Boolean(lockdownReadiness?.requiresLockdown && !lockdownReadiness?.canStartAttempt);
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -57,15 +59,28 @@ export default function StudentExamSessionPage() {
       try {
         setLoading(true);
         setError("");
-        const [examData, questionData, attemptData, integritySummary] = await Promise.all([
-          getExam(examId),
+        const examData = await getExam(examId);
+        const readiness = await getExamLockdownReadiness(examId).catch(() => null);
+        if (!active) return;
+
+        setExam(examData);
+        setLockdownReadiness(readiness);
+
+        if (readiness?.requiresLockdown && !readiness.canStartAttempt) {
+          setQuestions([]);
+          setAttemptId("");
+          setSessionTiming(null);
+          setTimeRemaining(0);
+          return;
+        }
+
+        const [questionData, attemptData, integritySummary] = await Promise.all([
           listQuestions(examId),
           getCurrentExamAttempt(examId),
           getCurrentExamIntegritySummary(examId).catch(() => null),
         ]);
         if (!active) return;
 
-        setExam(examData);
         setQuestions(Array.isArray(questionData) ? questionData : []);
         setAttemptId(attemptData?.examAttemptId || "");
         if (integritySummary?.policy) {
@@ -433,12 +448,12 @@ export default function StudentExamSessionPage() {
       actions={
         <>
           <Link className="btn" to="/exams">Back to exams</Link>
-          {!result ? (
+          {!result && !lockdownBlocked ? (
             <button className="btn" type="button" onClick={enterFullscreen}>
               {fullscreenActive ? "Fullscreen active" : "Enter fullscreen"}
             </button>
           ) : null}
-          {!result ? (
+          {!result && !lockdownBlocked ? (
             <button className="btn btnPrimary examSubmitBtn" type="button" onClick={() => setShowSubmitReview(true)} disabled={submitting || loading || questions.length === 0 || interactionLocked}>
               {submitting ? "Submitting..." : "Submit exam"}
             </button>
@@ -448,7 +463,11 @@ export default function StudentExamSessionPage() {
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
-        {!result ? (
+        {!result && lockdownReadiness ? (
+          <LockdownReadinessPanel readiness={lockdownReadiness} />
+        ) : null}
+
+        {!result && !lockdownBlocked ? (
           <IntegrityWarningBanner
             violationCount={violationCount}
             effectiveViolationCount={effectiveViolationCount}
@@ -508,6 +527,10 @@ export default function StudentExamSessionPage() {
 
         {loading ? (
           <div className="pageStateCard">Loading questions...</div>
+        ) : !result && lockdownBlocked ? (
+          <div className="pageStateCard">
+            Open this exam in the required lockdown client, then reload the page to start the attempt.
+          </div>
         ) : !result ? (
           <>
             <section className="examSessionBar">
@@ -591,6 +614,35 @@ export default function StudentExamSessionPage() {
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function LockdownReadinessPanel({ readiness }) {
+  const requiredClient = formatLockdownClient(readiness.allowedClient);
+  const currentClient = formatLockdownClient(readiness.currentClient);
+
+  return (
+    <section className={`lockdownStudentPanel ${readiness.canStartAttempt ? "lockdownReady" : "lockdownBlocked"}`}>
+      <div>
+        <span className="summaryLabel">Lockdown readiness</span>
+        <strong>{readiness.canStartAttempt ? "Ready to start" : "Protected client required"}</strong>
+        <p>{readiness.message || "Exam client readiness was checked before starting this attempt."}</p>
+      </div>
+      <div className="lockdownReadinessGrid">
+        <article>
+          <span className="summaryLabel">Required client</span>
+          <strong>{requiredClient}</strong>
+        </article>
+        <article>
+          <span className="summaryLabel">Detected client</span>
+          <strong>{currentClient}</strong>
+        </article>
+        <article>
+          <span className="summaryLabel">Mode</span>
+          <strong>{readiness.lockdownMode || "Advisory"}</strong>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -911,4 +963,10 @@ function formatPolicyAction(action) {
   if (action === "FinalWarning") return "Final warning";
   if (action === "AutoSubmit") return "Auto action";
   return action;
+}
+
+function formatLockdownClient(value) {
+  if (value === "SafeExamBrowser") return "Safe Exam Browser";
+  if (value === "KioskClient") return "Kiosk client";
+  return "Standard browser";
 }

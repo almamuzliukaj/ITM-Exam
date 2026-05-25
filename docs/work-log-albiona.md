@@ -7,8 +7,6 @@
 - Standardized framework-level auth and route failures by returning the same JSON error format for JWT challenge/forbidden responses, invalid model state, and empty status-code responses.
 - Preserved the `message` field expected by the current frontend so existing pages keep working while API error handling becomes more consistent.
 - Verified the standardization pass with a backend build.
-
-## 2026-05-25
 - Completed Sprint 26 backend dashboard aggregate work for the next delivery cycle.
 - Expanded `GET /api/dashboard/summary` so role dashboards expose real aggregate counts for active exams, pending results, eligibility, integrity violations, and carry-over load.
 - Kept existing dashboard metrics stable for the current frontend while adding the new aggregate fields needed for dashboard professionalization.

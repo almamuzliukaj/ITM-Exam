@@ -9,6 +9,7 @@ using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OnlineExam.Api.DTOs;
+using OnlineExam.Api.Exceptions;
 using OnlineExam.Api.Filters;
 using OnlineExam.Api.Services;
 using System.Text.Json;
@@ -198,6 +199,46 @@ if (app.Environment.IsDevelopment())
 
 // KJO ËSHTË VIJA QË ZGJIDH PROBLEMIN E FETCH (CORS)!
 // Duhet të jetë PARA Authentication dhe Authorization:
+app.UseExceptionHandler(handler =>
+{
+    handler.Run(async context =>
+    {
+        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        if (exception == null || context.Response.HasStarted)
+            return;
+
+        var (statusCode, message, code, details) = exception switch
+        {
+            ExternalServiceException externalServiceException => (
+                externalServiceException.StatusCode,
+                externalServiceException.Message,
+                externalServiceException.ErrorCode,
+                externalServiceException.Details),
+            TaskCanceledException when !context.RequestAborted.IsCancellationRequested => (
+                StatusCodes.Status504GatewayTimeout,
+                "The request timed out while waiting for a dependent service.",
+                "request_timeout",
+                null),
+            OperationCanceledException when !context.RequestAborted.IsCancellationRequested => (
+                StatusCodes.Status504GatewayTimeout,
+                "The request timed out while waiting for a dependent service.",
+                "request_timeout",
+                null),
+            _ => (
+                StatusCodes.Status500InternalServerError,
+                "An unexpected server error occurred.",
+                "server_error",
+                null)
+        };
+
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/json";
+
+        var errorResponse = ApiErrorResponse.Create(context, statusCode, message, details, code);
+        await context.Response.WriteAsync(JsonSerializer.Serialize(errorResponse));
+    });
+});
+
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();

@@ -28,10 +28,10 @@ namespace OnlineExam.Api.Controllers
             var user = _db.Users.FirstOrDefault(u => u.Email == dto.Email);
 
             if (user == null || !user.IsActive)
-                return Unauthorized("Invalid credentials");
+                return Unauthorized(new { message = "Invalid credentials." });
 
             if (!PasswordMatches(user.PasswordHash, dto.Password))
-                return Unauthorized("Invalid credentials");
+                return Unauthorized(new { message = "Invalid credentials." });
 
             // Preserve compatibility with seeded plaintext demo users by upgrading them after first successful login.
             if (!IsBcryptHash(user.PasswordHash))
@@ -44,7 +44,7 @@ namespace OnlineExam.Api.Controllers
             var jwtIssuer = _config["Jwt:Issuer"];
 
             if (string.IsNullOrEmpty(jwtKey) || string.IsNullOrEmpty(jwtIssuer))
-                return StatusCode(500, "JWT config missing");
+                return StatusCode(500, new { message = "JWT configuration is missing." });
 
             var key = Encoding.UTF8.GetBytes(jwtKey);
 

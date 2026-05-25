@@ -16,6 +16,7 @@ const navigationByRole = {
         { to: "/admin/academic", labelKey: "shell.nav.adminAcademic", icon: "AC" },
         { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments", icon: "EN" },
         { to: "/admin/users", labelKey: "shell.nav.adminUsers", icon: "US" },
+        { to: "/reports", labelKey: "shell.nav.adminReports", icon: "RP" },
       ],
     },
   ],
@@ -30,6 +31,7 @@ const navigationByRole = {
         { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
         { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
+        { to: "/reports", labelKey: "shell.nav.professorReports", icon: "RP" },
       ],
     },
   ],
@@ -43,6 +45,7 @@ const navigationByRole = {
       items: [
         { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
+        { to: "/reports", labelKey: "shell.nav.assistantReports", icon: "RP" },
       ],
     },
   ],

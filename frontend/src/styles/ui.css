@@ -2014,6 +2014,58 @@ select.input{
   top: 20px;
 }
 
+.reportControlPanel{
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+}
+
+.reportScopeNote{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.reportScopeNote strong{
+  display: block;
+  margin-top: 8px;
+  color: var(--heading);
+  font-size: 18px;
+}
+
+.reportScopeNote p{
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.reportSummaryGrid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.reportTabs{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reportTableWrap{
+  border-radius: 10px;
+}
+
+.reportTable{
+  min-width: 980px;
+}
+
+.reportTable td{
+  color: var(--text);
+}
+
 .gradebookScoreGrid,
 .gradebookNotesField,
 .gradebookActions,
@@ -2417,6 +2469,8 @@ select.input{
   .resultsLayout,
   .resultCard,
   .resultMetaList,
+  .reportSummaryGrid,
+  .reportTabs,
   .gradebookToolbar,
   .attemptTimeline,
   .gradebookScoreStrip,
@@ -2606,5 +2660,72 @@ select.input{
 
   .dataTable{
     min-width: 680px;
+  }
+}
+
+@media print{
+  body{
+    background: #ffffff;
+  }
+
+  .sidebar,
+  .topbarTools,
+  .mobileMenuButton,
+  .supportPanel,
+  .sidebarFoot{
+    display: none !important;
+  }
+
+  .appShell{
+    display: block;
+  }
+
+  .mainPanel{
+    padding: 0;
+  }
+
+  .topbar{
+    margin: 0 0 18px;
+    padding: 0 0 12px;
+  }
+
+  .contentArea,
+  .stackXl{
+    gap: 14px;
+  }
+
+  .surfaceCard,
+  .summaryCard,
+  .tableWrap{
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .reportControlPanel{
+    display: none;
+  }
+
+  .reportSummaryGrid{
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .reportTabs{
+    display: none;
+  }
+
+  .reportTable{
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .dataTable th,
+  .dataTable td{
+    padding: 8px 10px;
+  }
+
+  .statusPill{
+    border: 1px solid #9aa8ba;
+    background: #ffffff !important;
+    color: #111827 !important;
   }
 }

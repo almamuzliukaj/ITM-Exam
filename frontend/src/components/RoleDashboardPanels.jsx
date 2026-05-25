@@ -113,6 +113,7 @@ function AdminDashboard({ config }) {
           <div className="eyebrow">{config.badge}</div>
           <h2 className="heroTitle">{config.heroTitle}</h2>
           <p className="heroText">{config.heroText}</p>
+          <AcademicHeroMeta items={["Academic year control", "Role governance", "Assessment readiness"]} />
         </div>
         <div className="adminHeroActions">
           {config.quickActions.map((action) => (
@@ -209,6 +210,7 @@ function StudentEligibilityPanel({ config }) {
             <h2 className="heroTitle">{config.heroTitle}</h2>
             <p className="heroText">{config.heroText}</p>
           </div>
+          <AcademicHeroMeta items={["Current term", "Eligible courses", "Published exams"]} />
           <div className="studentTermSummary">
             <span className="summaryLabel">Current academic visibility</span>
             <strong>{currentTerm ? `${currentTerm.name} (${currentTerm.code})` : "No current term configured"}</strong>
@@ -252,7 +254,11 @@ function StudentCoursesCard({ courses }) {
   return (
     <article className="surfaceCard">
       <div className="sectionHeader">
-        <h3>Current semester courses</h3>
+        <div>
+          <h3>Current semester courses</h3>
+          <span className="sectionMeta">Eligibility is based on active semester enrollment.</span>
+        </div>
+        <span className="statusPill statusDraft">{courses.length} visible</span>
       </div>
       <div className="sectionBody">
         {courses.length ? (
@@ -268,7 +274,7 @@ function StudentCoursesCard({ courses }) {
             ))}
           </div>
         ) : (
-          <div className="emptyState">No eligible current-semester courses are visible yet.</div>
+          <EmptyState title="No current courses visible" text="Eligible current-semester courses will appear here after enrollment data is active." />
         )}
       </div>
     </article>
@@ -279,7 +285,11 @@ function StudentExamsCard({ exams }) {
   return (
     <article className="surfaceCard">
       <div className="sectionHeader">
-        <h3>Visible exams</h3>
+        <div>
+          <h3>Visible exams</h3>
+          <span className="sectionMeta">Only published exams connected to eligible offerings are shown.</span>
+        </div>
+        <span className="statusPill statusLive">{exams.length} ready</span>
       </div>
       <div className="sectionBody">
         {exams.length ? (
@@ -297,7 +307,7 @@ function StudentExamsCard({ exams }) {
             ))}
           </div>
         ) : (
-          <div className="emptyState">No published exams are visible for your eligible courses.</div>
+          <EmptyState title="No published exams" text="When a professor publishes an eligible exam, it will appear in this workspace." />
         )}
       </div>
     </article>
@@ -308,7 +318,11 @@ function StudentCarryOversCard({ carryOvers }) {
   return (
     <article className="surfaceCard">
       <div className="sectionHeader">
-        <h3>Carry-over courses</h3>
+        <div>
+          <h3>Carry-over courses</h3>
+          <span className="sectionMeta">Separate visibility for open or assigned carry-over work.</span>
+        </div>
+        <span className="statusPill statusDraft">{carryOvers.length} open</span>
       </div>
       <div className="sectionBody">
         {carryOvers.length ? (
@@ -324,7 +338,7 @@ function StudentCarryOversCard({ carryOvers }) {
             ))}
           </div>
         ) : (
-          <div className="emptyState">No open carry-over courses are currently assigned.</div>
+          <EmptyState title="No carry-over items" text="Open carry-over courses will be listed separately from current-semester exams." />
         )}
       </div>
     </article>
@@ -335,7 +349,10 @@ function VisibilityRulesCard() {
   return (
     <article className="surfaceCard">
       <div className="sectionHeader">
-        <h3>Visibility rules</h3>
+        <div>
+          <h3>Visibility rules</h3>
+          <span className="sectionMeta">Academic rules that control what students can access.</span>
+        </div>
       </div>
       <div className="sectionBody">
         <div className="bulletStack">
@@ -371,6 +388,7 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
           <div className="eyebrow">{config.badge}</div>
           <h2 className="heroTitle">{config.heroTitle}</h2>
           <p className="heroText">{config.heroText}</p>
+          <AcademicHeroMeta items={roleKey === "assistant" ? ["Support offerings", "Review tasks", "Session readiness"] : ["Assigned offerings", "Question bank", "Grading queue"]} />
           <div className="heroActions">
             {config.quickActions.map((action) => (
               <Link key={action.to} className="btn btnPrimary" to={action.to}>
@@ -404,10 +422,7 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
           {offeringsLoading ? (
             <div className="pageStateCard">{t(`${offeringTextKey}.loading`)}</div>
           ) : groups.length === 0 ? (
-            <div className="emptyState">
-              <p>{t(`${offeringTextKey}.emptyTitle`)}</p>
-              <p>{t(`${offeringTextKey}.emptyText`)}</p>
-            </div>
+            <EmptyState title={t(`${offeringTextKey}.emptyTitle`)} text={t(`${offeringTextKey}.emptyText`)} />
           ) : (
             <div className="offeringGroupStack">
               {groups.map((group) => (
@@ -493,6 +508,7 @@ function DefaultDashboard({ config, error }) {
           <div className="eyebrow">{config.badge}</div>
           <h2 className="heroTitle">{config.heroTitle}</h2>
           <p className="heroText">{config.heroText}</p>
+          <AcademicHeroMeta items={["Role workspace", "Operational data", "Secure assessment"]} />
           <div className="heroActions">
             {config.quickActions.map((action) => (
               <Link key={action.to} className="btn btnPrimary" to={action.to}>
@@ -531,6 +547,25 @@ function DefaultDashboard({ config, error }) {
           </article>
         ))}
       </section>
+    </div>
+  );
+}
+
+function AcademicHeroMeta({ items }) {
+  return (
+    <div className="academicHeroMeta" aria-label="Dashboard focus areas">
+      {items.map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ title, text }) {
+  return (
+    <div className="emptyState">
+      <strong>{title}</strong>
+      <span>{text}</span>
     </div>
   );
 }

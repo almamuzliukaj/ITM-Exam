@@ -1,25 +1,25 @@
 :root{
-  --bg: #eef2f6;
-  --bg-soft: #f7f9fc;
+  --bg: #edf1f5;
+  --bg-soft: #f6f8fb;
   --surface: #ffffff;
   --surface-strong: #ffffff;
-  --border: #d8e0ea;
-  --border-strong: #b9c6d5;
+  --border: #d4dde8;
+  --border-strong: #aebdce;
 
-  --text: #213042;
+  --text: #223247;
   --muted: #5d6b7c;
-  --heading: #162231;
+  --heading: #142235;
 
   --primary: #163a63;
-  --primary-soft: #e5edf6;
-  --accent: #7d8ea3;
+  --primary-soft: #e7eef7;
+  --accent: #7b8da4;
   --danger: #b42318;
   --success: #17633d;
 
-  --shadow-xl: 0 18px 48px rgba(16, 34, 56, .08);
-  --shadow-md: 0 10px 24px rgba(16, 34, 56, .06);
-  --radius-xl: 18px;
-  --radius-lg: 14px;
+  --shadow-xl: 0 18px 48px rgba(16, 34, 56, .09);
+  --shadow-md: 0 10px 24px rgba(16, 34, 56, .065);
+  --radius-xl: 14px;
+  --radius-lg: 12px;
   --radius-md: 10px;
 
   --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", sans-serif;

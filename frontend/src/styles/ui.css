@@ -661,6 +661,16 @@
   color: #425467;
 }
 
+.statusReady{
+  background: #e8f0fb;
+  color: #234f82;
+}
+
+.statusWarn{
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .bulletStack,
 .questionList{
   display: flex;
@@ -2011,6 +2021,184 @@ select.input{
   margin-top: 12px;
 }
 
+.gradebookToolbar{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.filterTab{
+  min-height: 62px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--heading);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  font-weight: 700;
+}
+
+.filterTab strong{
+  min-width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: var(--heading);
+}
+
+.filterTabActive{
+  border-color: rgba(22,58,99,.3);
+  background: #f0f6fd;
+  box-shadow: 0 0 0 3px rgba(22,58,99,.08);
+}
+
+.gradebookReviewList{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gradebookReviewCard{
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.gradebookReviewHeader{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.gradebookStudentBlock h4{
+  margin: 6px 0 0;
+  color: var(--heading);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.gradebookStudentBlock p{
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.gradebookBadgeRow{
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.attemptTimeline{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.attemptTimelineStep{
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px;
+  border-right: 1px solid var(--border);
+}
+
+.attemptTimelineStep:last-child{
+  border-right: 0;
+}
+
+.attemptTimelineDot{
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: #c4ceda;
+  box-shadow: 0 0 0 4px rgba(196,206,218,.18);
+}
+
+.attemptTimelineStepDone .attemptTimelineDot{
+  background: #17633d;
+  box-shadow: 0 0 0 4px rgba(23,99,61,.12);
+}
+
+.attemptTimelineStepWarn .attemptTimelineDot{
+  background: #b45309;
+  box-shadow: 0 0 0 4px rgba(180,83,9,.14);
+}
+
+.attemptTimelineStep strong,
+.attemptTimelineStep span{
+  display: block;
+}
+
+.attemptTimelineStep strong{
+  color: var(--heading);
+  font-size: 13px;
+}
+
+.attemptTimelineStep span{
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.gradebookScoreStrip{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.gradebookScoreTile{
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.gradebookScoreTile span,
+.gradebookScoreTile strong{
+  display: block;
+}
+
+.gradebookScoreTile span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.gradebookScoreTile strong{
+  margin-top: 6px;
+  color: var(--heading);
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.gradebookScoreTileStrong{
+  border-color: rgba(22,58,99,.22);
+  background: #f0f6fd;
+}
+
 .gradebookActions{
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -2229,6 +2417,9 @@ select.input{
   .resultsLayout,
   .resultCard,
   .resultMetaList,
+  .gradebookToolbar,
+  .attemptTimeline,
+  .gradebookScoreStrip,
   .lockdownReadinessGrid,
   .adminDashboardHero,
   .adminMetricGrid,

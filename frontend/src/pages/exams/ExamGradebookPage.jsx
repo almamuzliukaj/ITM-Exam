@@ -24,6 +24,7 @@ export default function ExamGradebookPage() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [reviewFilter, setReviewFilter] = useState("all");
   const canReview = canManageExams(user?.role);
 
   useEffect(() => {
@@ -59,6 +60,11 @@ export default function ExamGradebookPage() {
   const integrityCount = useMemo(
     () => attempts.reduce((total, attempt) => total + Number(attempt.integrityViolationCount || 0), 0),
     [attempts],
+  );
+  const publishedCount = useMemo(() => attempts.filter((attempt) => attempt.isPublished).length, [attempts]);
+  const visibleAttempts = useMemo(
+    () => attempts.filter((attempt) => matchesReviewFilter(attempt, reviewFilter)),
+    [attempts, reviewFilter],
   );
 
   if (userLoading) {
@@ -174,22 +180,52 @@ export default function ExamGradebookPage() {
 
         <section className="surfaceCard">
           <div className="sectionHeader">
-            <h3>Human review workflow</h3>
-            <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || gradedCount === 0 || !canReview}>
-              {publishing ? "Publishing..." : "Publish graded results"}
-            </button>
+            <div>
+              <h3>Human review workflow</h3>
+              <span className="sectionMeta">Review submitted attempts, inspect integrity events, and publish only approved grades.</span>
+            </div>
+            <div className="resourceActionGroup">
+              <span className="statusPill statusDraft">{publishedCount} published</span>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || gradedCount === 0 || !canReview}>
+                {publishing ? "Publishing..." : "Publish graded results"}
+              </button>
+            </div>
           </div>
-          <div className="sectionBody">
+          <div className="sectionBody stackLg">
+            <div className="gradebookToolbar">
+              {[
+                { key: "all", label: "All attempts", count: attempts.length },
+                { key: "needsReview", label: "Needs review", count: pendingCount },
+                { key: "violations", label: "Violations", count: attempts.filter((attempt) => Number(attempt.integrityViolationCount || 0) > 0).length },
+                { key: "ready", label: "Ready to publish", count: attempts.filter((attempt) => attempt.isGraded && !attempt.isPublished).length },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  className={`filterTab${reviewFilter === item.key ? " filterTabActive" : ""}`}
+                  type="button"
+                  onClick={() => setReviewFilter(item.key)}
+                >
+                  <span>{item.label}</span>
+                  <strong>{item.count}</strong>
+                </button>
+              ))}
+            </div>
+
             {loading ? (
               <div className="pageStateCard">Loading submitted attempts...</div>
             ) : attempts.length === 0 ? (
               <div className="emptyState">
-                <p>No attempts have been submitted yet.</p>
-                <p>AI-assisted review becomes available after students submit text answers.</p>
+                <strong>No attempts submitted</strong>
+                <span>AI-assisted review becomes available after students submit text answers.</span>
+              </div>
+            ) : visibleAttempts.length === 0 ? (
+              <div className="emptyState">
+                <strong>No attempts in this view</strong>
+                <span>Switch filters to see other gradebook queues for this exam.</span>
               </div>
             ) : (
-              <div className="questionList">
-                {attempts.map((attempt) => (
+              <div className="gradebookReviewList">
+                {visibleAttempts.map((attempt) => (
                   <AttemptReviewCard
                     key={attempt.attemptId}
                     attempt={attempt}
@@ -215,74 +251,128 @@ export default function ExamGradebookPage() {
 }
 
 function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabled, onDraftChange, onAiReview, onSaveGrade }) {
+  const violationCount = Number(attempt.integrityViolationCount || 0);
+  const scoreDelta = Number(draft.finalScore || attempt.finalScore || 0) - Number(attempt.autoScore || 0);
+
   return (
-    <article className="questionCard">
-      <div className="questionIndex">{attempt.isGraded ? "OK" : "AI"}</div>
-      <div className="questionBody">
-        <div className="resourceMetaRow">
-          <strong>{attempt.studentName || attempt.studentEmail || "Student"}</strong>
-          <span className={`statusPill ${attempt.isPublished ? "statusLive" : attempt.isGraded ? "statusDraft" : ""}`}>
-            {attempt.isPublished ? "Published" : attempt.isGraded ? "Graded" : "Needs review"}
-          </span>
+    <article className="gradebookReviewCard">
+      <div className="gradebookReviewHeader">
+        <div className="gradebookStudentBlock">
+          <span className="summaryLabel">Student attempt</span>
+          <h4>{attempt.studentName || "Student"}</h4>
+          <p>{attempt.studentEmail || "No email recorded"}</p>
         </div>
-        <div className="questionMeta">
-          <span>Auto: {formatScore(attempt.autoScore)}</span>
-          <span>Manual: {formatScore(attempt.manualScore)}</span>
-          <span>Final: {formatScore(attempt.finalScore)}</span>
-        </div>
-
-        <IntegrityReviewPanel attempt={attempt} />
-
-        <div className="questionBankFormGrid gradebookScoreGrid">
-          <div className="field">
-            <label className="label">Manual score</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.25"
-              value={draft.manualScore ?? ""}
-              onChange={(e) => onDraftChange({ ...draft, manualScore: e.target.value })}
-              disabled={disabled || saving}
-            />
-          </div>
-          <div className="field">
-            <label className="label">Final score</label>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="0.25"
-              value={draft.finalScore ?? ""}
-              onChange={(e) => onDraftChange({ ...draft, finalScore: e.target.value })}
-              disabled={disabled || saving}
-            />
-          </div>
-        </div>
-
-        <div className="field gradebookNotesField">
-          <label className="label">Human review notes</label>
-          <textarea
-            className="input textareaCompact"
-            value={draft.notes ?? ""}
-            onChange={(e) => onDraftChange({ ...draft, notes: e.target.value })}
-            disabled={disabled || saving}
-            placeholder="Record why the final score was accepted or adjusted."
-          />
-        </div>
-
-        {aiReview ? <AiReviewPanel review={aiReview} /> : null}
-
-        <div className="resourceActionGroup gradebookActions">
-          <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
-            {reviewing ? "Reviewing..." : "AI text review"}
-          </button>
-          <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
-            {saving ? "Saving..." : "Save human grade"}
-          </button>
+        <div className="gradebookBadgeRow">
+          <ResultBadge attempt={attempt} />
+          <ViolationBadge count={violationCount} policy={attempt.integrityPolicyAction} />
         </div>
       </div>
+
+      <AttemptTimeline attempt={attempt} />
+
+      <div className="gradebookScoreStrip">
+        <ScoreTile label="Auto score" value={attempt.autoScore} />
+        <ScoreTile label="Manual score" value={draft.manualScore ?? attempt.manualScore} />
+        <ScoreTile label="Final score" value={draft.finalScore ?? attempt.finalScore} strong />
+        <ScoreTile label="Adjustment" value={scoreDelta} signed />
+      </div>
+
+      <IntegrityReviewPanel attempt={attempt} />
+
+      <div className="formGrid formGridTwo gradebookScoreGrid">
+        <div className="field">
+          <label className="label">Manual score</label>
+          <input
+            className="input"
+            type="number"
+            min="0"
+            step="0.25"
+            value={draft.manualScore ?? ""}
+            onChange={(e) => onDraftChange({ ...draft, manualScore: e.target.value })}
+            disabled={disabled || saving}
+          />
+        </div>
+        <div className="field">
+          <label className="label">Final score</label>
+          <input
+            className="input"
+            type="number"
+            min="0"
+            step="0.25"
+            value={draft.finalScore ?? ""}
+            onChange={(e) => onDraftChange({ ...draft, finalScore: e.target.value })}
+            disabled={disabled || saving}
+          />
+        </div>
+      </div>
+
+      <div className="field gradebookNotesField">
+        <label className="label">Human review notes</label>
+        <textarea
+          className="input textareaCompact"
+          value={draft.notes ?? ""}
+          onChange={(e) => onDraftChange({ ...draft, notes: e.target.value })}
+          disabled={disabled || saving}
+          placeholder="Record why the final score was accepted or adjusted."
+        />
+      </div>
+
+      {aiReview ? <AiReviewPanel review={aiReview} /> : null}
+
+      <div className="resourceActionGroup gradebookActions">
+        <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
+          {reviewing ? "Reviewing..." : "AI text review"}
+        </button>
+        <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
+          {saving ? "Saving..." : "Save human grade"}
+        </button>
+      </div>
     </article>
+  );
+}
+
+function ResultBadge({ attempt }) {
+  if (attempt.isPublished) return <span className="statusPill statusLive">Published</span>;
+  if (attempt.isGraded) return <span className="statusPill statusReady">Ready to publish</span>;
+  return <span className="statusPill statusWarn">Needs review</span>;
+}
+
+function ViolationBadge({ count, policy }) {
+  const hasViolations = count > 0;
+  const label = hasViolations ? `${count} violation${count === 1 ? "" : "s"}` : "No violations";
+  const policyLabel = policy && policy !== "None" ? ` / ${formatIntegrityEvent(policy)}` : "";
+  return <span className={`statusPill ${hasViolations ? "statusWarn" : "statusLive"}`}>{label}{policyLabel}</span>;
+}
+
+function ScoreTile({ label, value, strong = false, signed = false }) {
+  return (
+    <div className={`gradebookScoreTile${strong ? " gradebookScoreTileStrong" : ""}`}>
+      <span>{label}</span>
+      <strong>{signed ? formatSignedScore(value) : formatScore(value)}</strong>
+    </div>
+  );
+}
+
+function AttemptTimeline({ attempt }) {
+  const steps = [
+    { label: "Started", value: attempt.startedAt },
+    { label: "Submitted", value: attempt.submittedAt },
+    { label: "Last violation", value: attempt.integrityLastViolationAt, warn: Number(attempt.integrityViolationCount || 0) > 0 },
+    { label: "Graded", value: attempt.gradedAt, done: attempt.isGraded },
+  ];
+
+  return (
+    <div className="attemptTimeline" aria-label="Attempt timeline">
+      {steps.map((step) => (
+        <div key={step.label} className={`attemptTimelineStep${step.value || step.done ? " attemptTimelineStepDone" : ""}${step.warn ? " attemptTimelineStepWarn" : ""}`}>
+          <span className="attemptTimelineDot" />
+          <div>
+            <strong>{step.label}</strong>
+            <span>{formatDateTime(step.value) || "Pending"}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -295,6 +385,14 @@ function IntegrityReviewPanel({ attempt }) {
       <div>
         <span className="summaryLabel">Integrity review</span>
         <strong>{violationCount > 0 ? `${violationCount} violation${violationCount === 1 ? "" : "s"}` : "No violations"}</strong>
+        <div className="integrityStatusGrid">
+          <span className={violationCount > 0 ? "statusWarn" : "statusOk"}>
+            {attempt.integrityPolicyAction && attempt.integrityPolicyAction !== "None" ? formatIntegrityEvent(attempt.integrityPolicyAction) : "No policy action"}
+          </span>
+          <span className={attempt.integrityAutoActionTriggeredAt ? "statusWarn" : "statusOk"}>
+            {attempt.integrityAutoActionTriggeredAt ? `Auto action ${formatDateTime(attempt.integrityAutoActionTriggeredAt)}` : "No auto action"}
+          </span>
+        </div>
       </div>
       {events.length > 0 ? (
         <ol>
@@ -353,6 +451,31 @@ function parseNumberOrNull(value) {
 function formatScore(value) {
   const parsed = Number(value || 0);
   return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(2);
+}
+
+function formatSignedScore(value) {
+  const parsed = Number(value || 0);
+  const formatted = formatScore(Math.abs(parsed));
+  if (parsed > 0) return `+${formatted}`;
+  if (parsed < 0) return `-${formatted}`;
+  return formatted;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function matchesReviewFilter(attempt, filter) {
+  if (filter === "needsReview") return !attempt.isGraded;
+  if (filter === "violations") return Number(attempt.integrityViolationCount || 0) > 0;
+  if (filter === "ready") return attempt.isGraded && !attempt.isPublished;
+  return true;
 }
 
 function readApiMessage(err) {

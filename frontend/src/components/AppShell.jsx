@@ -16,7 +16,11 @@ const navigationByRole = {
         { to: "/admin/academic", labelKey: "shell.nav.adminAcademic", icon: "AC" },
         { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments", icon: "EN" },
         { to: "/admin/users", labelKey: "shell.nav.adminUsers", icon: "US" },
+ feature/agnesa-smu-admin-readiness
         { to: "/admin/smu", labelKey: "shell.nav.adminSmu", icon: "SM" },
+
+        { to: "/reports", labelKey: "shell.nav.adminReports", icon: "RP" },
+main
       ],
     },
   ],
@@ -31,6 +35,7 @@ const navigationByRole = {
         { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
         { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
+        { to: "/reports", labelKey: "shell.nav.professorReports", icon: "RP" },
       ],
     },
   ],
@@ -44,6 +49,7 @@ const navigationByRole = {
       items: [
         { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
+        { to: "/reports", labelKey: "shell.nav.assistantReports", icon: "RP" },
       ],
     },
   ],
@@ -82,8 +88,9 @@ export default function AppShell({
 
   return (
     <div className={`appShell roleShell roleShell${user?.role || "Guest"}`}>
+      <a className="skipLink" href="#main-content">Skip to main content</a>
       {isMobileMenuOpen ? <button className="mobileNavBackdrop" type="button" aria-label="Close menu" onClick={() => setIsMobileMenuOpen(false)} /> : null}
-      <aside className={`sidebar sidebar${user?.role || "Guest"}${isMobileMenuOpen ? " sidebarOpen" : ""}`}>
+      <aside className={`sidebar sidebar${user?.role || "Guest"}${isMobileMenuOpen ? " sidebarOpen" : ""}`} aria-label="Primary navigation">
         <div className="sidebarTop">
           <Link className="brand brandLarge" to="/dashboard" onClick={() => setIsMobileMenuOpen(false)}>
             <img className="brandLogo brandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
@@ -115,7 +122,7 @@ export default function AppShell({
           </div>
         </div>
 
-        <nav className="sidebarNav">
+        <nav className="sidebarNav" aria-label={`${user?.role || "User"} workspace navigation`}>
           {groups.map((group) => (
             <div className="navGroup" key={group.titleKey}>
               <div className="sidebarSectionTitle">{t(group.titleKey)}</div>
@@ -141,7 +148,7 @@ export default function AppShell({
             <div className="sidebarSectionTitle">{t("common.operationalNote")}</div>
             <p>{t("common.operationalNoteText")}</p>
           </div>
-          <button className="btn btnGhost" onClick={handleLogout}>
+          <button className="btn btnGhost" type="button" onClick={handleLogout}>
             {t("common.logout")}
           </button>
         </div>
@@ -174,7 +181,7 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className="contentArea">{children}</main>
+        <main id="main-content" className="contentArea" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );

@@ -43,13 +43,14 @@ export default function LanguageSwitcher({ compact = false }) {
           aria-label={t("common.language")}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
+          aria-controls="language-switcher-menu"
           onClick={() => setIsOpen((currentValue) => !currentValue)}
         >
           <span className="languageSwitcherValue">{current.label}</span>
           <span className={`languageSwitcherChevron${isOpen ? " languageSwitcherChevronOpen" : ""}`} aria-hidden="true" />
         </button>
         {isOpen ? (
-          <div className="languageSwitcherMenu" role="listbox" aria-label={t("common.language")}>
+          <div id="language-switcher-menu" className="languageSwitcherMenu" role="listbox" aria-label={t("common.language")}>
             {options.map((option) => (
               <button
                 key={option.value}

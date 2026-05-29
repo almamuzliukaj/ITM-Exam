@@ -1,6 +1,13 @@
 # Work Log (Albiona)
 
 ## 2026-05-25
+- Completed the backend stability pass for API error handling and upstream timeout behavior.
+- Added centralized exception handling so unexpected server failures and dependency timeouts return consistent JSON API errors instead of breaking with raw framework output.
+- Hardened the SMU client so upstream timeouts, network failures, and invalid payloads are surfaced as controlled API errors with stable status codes.
+- Aligned login failures and missing JWT configuration responses with the same structured error contract used by the rest of the API.
+- Verified the stability pass with a backend build.
+
+## 2026-05-25
 - Added backend reporting endpoints for staff and admin reporting workflows.
 - Implemented `GET /api/reports/overview`, `GET /api/reports/participation`, `GET /api/reports/publish-status`, and `GET /api/reports/integrity`.
 - Scoped report access so admin can report globally while professor and assistant views stay limited to assigned offerings.

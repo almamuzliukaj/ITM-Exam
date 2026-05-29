@@ -310,15 +310,21 @@ const resources = {
           adminAcademic: "Academic",
           adminEnrollments: "Enrollments",
           adminUsers: "Users",
+ feature/agnesa-smu-admin-readiness
           adminSmu: "SMU sync",
+
+          adminReports: "Reports",
+ main
           adminExams: "Exams",
           professorOverview: "Overview",
           professorQuestionBank: "Question bank",
           professorExams: "My exams",
           professorCreateExam: "Create exam",
+          professorReports: "Reports",
           assistantOverview: "Overview",
           assistantQuestionBank: "Question bank",
           assistantExams: "Assigned exams",
+          assistantReports: "Reports",
           studentOverview: "Overview",
           studentExams: "Available exams",
           studentResults: "My results"
@@ -799,15 +805,21 @@ const resources = {
           adminAcademic: "Akademike",
           adminEnrollments: "Regjistrimet",
           adminUsers: "Përdoruesit",
+ feature/agnesa-smu-admin-readiness
           adminSmu: "SMU sync",
+
+          adminReports: "Raportet",
+ main
           adminExams: "Provimet",
           professorOverview: "Përmbledhje",
           professorQuestionBank: "Banka e pyetjeve",
           professorExams: "Provimet e mia",
           professorCreateExam: "Krijo provim",
+          professorReports: "Raportet",
           assistantOverview: "Përmbledhje",
           assistantQuestionBank: "Banka e pyetjeve",
           assistantExams: "Provimet e caktuara",
+          assistantReports: "Raportet",
           studentOverview: "Përmbledhje",
           studentExams: "Provimet e lejuara",
           studentResults: "Rezultatet e mia"

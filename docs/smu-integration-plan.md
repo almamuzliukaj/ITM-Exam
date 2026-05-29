@@ -45,9 +45,25 @@ Admin screens should move toward read-only or sync-review mode:
 - Enrollments: display synced eligibility; keep carry-over controls only where Online Exam adds exam-specific unlock behavior.
 - SMU page: show contract, preview mapped data, and run sync when configured.
 
+## Sprint 23 Frontend Sync Usage
+
+The frontend now treats SMU as the active source of truth when the SMU contract is configured:
+
+- User management locks student, professor, and assistant creation/import/edit actions and keeps the directory as a synced review view.
+- Academic structure locks term, course, and offering creation/actions and labels records as SMU-managed.
+- Enrollment control locks manual cohort creation, activation, and regularization while leaving Online Exam carry-over unlock controls available.
+- Dropdowns and directory views continue to read Online Exam API data, which becomes the synced local copy after the backend SMU sync runs.
+
 ## Sprint 22 Definition of Done
 
 - Admin can open an SMU readiness page.
 - Admin can see source-of-truth ownership.
 - Admin can review expected SMU endpoints.
 - Existing admin pages clearly state that manual operations are fallback until SMU sync is active.
+
+## Sprint 23 Definition of Done
+
+- Admin pages visibly switch between fallback mode and SMU-managed mode.
+- Manual creation is locked for records owned by SMU once the integration is configured.
+- Synced users, courses, terms, offerings, and enrollments remain visible for review and downstream dropdown selection.
+- Exam-specific carry-over controls remain available because they belong to Online Exam.

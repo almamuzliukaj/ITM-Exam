@@ -632,6 +632,16 @@
   padding: 16px 18px;
 }
 
+.smuNoticeActive{
+  border-color: rgba(17,122,81,.28);
+  background: #f3fbf7;
+}
+
+.smuNoticeFallback{
+  border-color: #d8c9b9;
+  background: #fffaf4;
+}
+
 .smuNotice strong,
 .smuActionPanel strong,
 .smuOwnershipItem strong{
@@ -660,6 +670,24 @@
   border-radius: 12px;
   background: #fbfcfe;
   padding: 14px;
+}
+
+.formFieldset{
+  display: contents;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.formFieldset:disabled{
+  opacity: .68;
+}
+
+.blockHint{
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
 }
 
 .publishNotice{

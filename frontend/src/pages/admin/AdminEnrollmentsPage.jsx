@@ -536,6 +536,14 @@ export default function AdminEnrollmentsPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        <section className="smuNotice">
+          <div>
+            <span className="summaryLabel">SMU transition</span>
+            <strong>Enrollment eligibility will be synced from SMU</strong>
+            <p>Semester and course enrollments are shown here for review and fallback operations until the SMU sync becomes the source of truth.</p>
+          </div>
+          <Link className="btn" to="/admin/smu">Review SMU contract</Link>
+        </section>
 
         <section className="summaryStrip">
           <article className="summaryCard">

@@ -310,7 +310,11 @@ const resources = {
           adminAcademic: "Academic",
           adminEnrollments: "Enrollments",
           adminUsers: "Users",
+ feature/agnesa-smu-admin-readiness
+          adminSmu: "SMU sync",
+
           adminReports: "Reports",
+ main
           adminExams: "Exams",
           professorOverview: "Overview",
           professorQuestionBank: "Question bank",
@@ -801,7 +805,11 @@ const resources = {
           adminAcademic: "Akademike",
           adminEnrollments: "Regjistrimet",
           adminUsers: "Përdoruesit",
+ feature/agnesa-smu-admin-readiness
+          adminSmu: "SMU sync",
+
           adminReports: "Raportet",
+ main
           adminExams: "Provimet",
           professorOverview: "Përmbledhje",
           professorQuestionBank: "Banka e pyetjeve",

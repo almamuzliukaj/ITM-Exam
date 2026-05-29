@@ -210,6 +210,14 @@ export default function AdminUsersPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        <section className="smuNotice">
+          <div>
+            <span className="summaryLabel">SMU transition</span>
+            <strong>Students and staff should come from SMU</strong>
+            <p>User creation and CSV import remain available as fallback tools until the external student-management source is connected.</p>
+          </div>
+          <Link className="btn" to="/admin/smu">Review SMU contract</Link>
+        </section>
 
         <section className="adminDashboardHero">
           <div className="adminDashboardHeroCopy">

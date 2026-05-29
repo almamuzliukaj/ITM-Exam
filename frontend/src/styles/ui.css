@@ -641,6 +641,48 @@
   flex-wrap: wrap;
 }
 
+.smuNotice,
+.smuActionPanel{
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  border: 1px solid #c7d7ec;
+  border-radius: 14px;
+  background: #f6faff;
+  padding: 16px 18px;
+}
+
+.smuNotice strong,
+.smuActionPanel strong,
+.smuOwnershipItem strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--heading);
+}
+
+.smuNotice p,
+.smuActionPanel p,
+.smuOwnershipItem p{
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.smuOwnershipGrid,
+.smuSyncGrid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.smuOwnershipItem{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfe;
+  padding: 14px;
+}
+
 .publishNotice{
   display: flex;
   flex-direction: column;
@@ -2594,10 +2636,17 @@ input[type="radio"]{
   .resourceFooter,
   .resourceMetaRow,
   .filtersRow,
+  .smuNotice,
+  .smuActionPanel,
   .row{
     flex-direction: column;
     align-items: stretch;
   }
+
+ feature/agnesa-smu-admin-readiness
+  .smuOwnershipGrid,
+  .smuSyncGrid{
+    grid-template-columns: 1fr;
 
   .sectionHeader{
     gap: 12px;
@@ -2606,6 +2655,7 @@ input[type="radio"]{
 
   .sectionBody{
     padding: 16px;
+main
   }
 
   .appShell{

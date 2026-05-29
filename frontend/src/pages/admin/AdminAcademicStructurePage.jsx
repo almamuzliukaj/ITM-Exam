@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
+import SmuSourceBanner from "../../components/SmuSourceBanner";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useSmuIntegrationStatus } from "../../hooks/useSmuIntegrationStatus";
 import { listUsers } from "../../lib/usersApi";
 import {
   closeOffering,
@@ -53,6 +55,7 @@ const initialOfferingForm = {
 
 export default function AdminAcademicStructurePage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
+  const smuStatus = useSmuIntegrationStatus();
   const [terms, setTerms] = useState([]);
   const [courses, setCourses] = useState([]);
   const [offerings, setOfferings] = useState([]);
@@ -70,6 +73,7 @@ export default function AdminAcademicStructurePage() {
     () => terms.filter((term) => term.status !== "Closed" && term.status !== "Archived"),
     [terms],
   );
+  const smuManaged = smuStatus.isConfigured;
 
   const loadAcademicData = useCallback(async () => {
     try {
@@ -101,6 +105,10 @@ export default function AdminAcademicStructurePage() {
 
   async function handleTermSubmit(e) {
     e.preventDefault();
+    if (smuManaged) {
+      setPageError("SMU is the source of truth for terms. Run SMU sync instead of creating terms manually.");
+      return;
+    }
     try {
       setSubmittingKey("term");
       setPageError("");
@@ -123,6 +131,10 @@ export default function AdminAcademicStructurePage() {
 
   async function handleCourseSubmit(e) {
     e.preventDefault();
+    if (smuManaged) {
+      setPageError("SMU is the source of truth for courses. Run SMU sync instead of creating courses manually.");
+      return;
+    }
     try {
       setSubmittingKey("course");
       setPageError("");
@@ -144,6 +156,10 @@ export default function AdminAcademicStructurePage() {
 
   async function handleOfferingSubmit(e) {
     e.preventDefault();
+    if (smuManaged) {
+      setPageError("SMU is the source of truth for course offerings. Run SMU sync instead of creating offerings manually.");
+      return;
+    }
     try {
       setSubmittingKey("offering");
       setPageError("");
@@ -165,6 +181,10 @@ export default function AdminAcademicStructurePage() {
   }
 
   async function handleTermAction(termId, action) {
+    if (smuManaged) {
+      setPageError("Term lifecycle is managed by SMU while integration is active.");
+      return;
+    }
     try {
       setPageError("");
       if (action === "publish") await publishTerm(termId);
@@ -177,6 +197,10 @@ export default function AdminAcademicStructurePage() {
   }
 
   async function handleCourseDeactivate(courseId) {
+    if (smuManaged) {
+      setPageError("Course status is managed by SMU while integration is active.");
+      return;
+    }
     try {
       setPageError("");
       await deactivateCourse(courseId);
@@ -188,6 +212,10 @@ export default function AdminAcademicStructurePage() {
   }
 
   async function handleOfferingAction(offeringId, action) {
+    if (smuManaged) {
+      setPageError("Offering lifecycle is managed by SMU while integration is active.");
+      return;
+    }
     try {
       setPageError("");
       if (action === "publish") await publishOffering(offeringId);
@@ -218,14 +246,13 @@ export default function AdminAcademicStructurePage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
-        <section className="smuNotice">
-          <div>
-            <span className="summaryLabel">SMU transition</span>
-            <strong>Academic records will be synced from SMU</strong>
-            <p>Terms, courses, offerings, and staff assignments are kept here as operational fallback until the SMU contract is connected.</p>
-          </div>
-          <Link className="btn" to="/admin/smu">Review SMU contract</Link>
-        </section>
+        <SmuSourceBanner
+          title="Academic records come from SMU"
+          description="Terms, courses, offerings, and staff assignments are displayed here from the synced Online Exam tables. Manual creation stays available only while SMU is not configured."
+          isConfigured={smuStatus.isConfigured}
+          loading={smuStatus.loading}
+          error={smuStatus.error}
+        />
 
         <section className="adminDashboardHero">
           <div className="adminDashboardHeroCopy">
@@ -272,9 +299,16 @@ export default function AdminAcademicStructurePage() {
 
         <section className="dashboardGrid dashboardGridWide">
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>Create term</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>Create term</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU owns term setup." : "Manual fallback for local setup."}</span>
+              </div>
+            </div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleTermSubmit}>
+                {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update academic terms.</div> : null}
+                <fieldset className="formFieldset" disabled={smuManaged}>
                 <div className="twoColGrid">
                   <div className="field">
                     <label className="label">Code</label>
@@ -312,14 +346,22 @@ export default function AdminAcademicStructurePage() {
                 <button className="btn btnPrimary" type="submit" disabled={submittingKey === "term"}>
                   {submittingKey === "term" ? "Creating..." : "Create term"}
                 </button>
+                </fieldset>
               </form>
             </div>
           </article>
 
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>Create course</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>Create course</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU owns the course catalog." : "Manual fallback for local setup."}</span>
+              </div>
+            </div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCourseSubmit}>
+                {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update course catalog records.</div> : null}
+                <fieldset className="formFieldset" disabled={smuManaged}>
                 <div className="twoColGrid">
                   <div className="field">
                     <label className="label">Code</label>
@@ -355,15 +397,23 @@ export default function AdminAcademicStructurePage() {
                 <button className="btn btnPrimary" type="submit" disabled={submittingKey === "course"}>
                   {submittingKey === "course" ? "Creating..." : "Create course"}
                 </button>
+                </fieldset>
               </form>
             </div>
           </article>
         </section>
 
         <section className="surfaceCard adminFormCard">
-          <div className="sectionHeader"><h3>Create course offering</h3></div>
+          <div className="sectionHeader">
+            <div>
+              <h3>Create course offering</h3>
+              <span className="sectionMeta">{smuManaged ? "Locked because SMU owns offering availability." : "Manual fallback for local offering setup."}</span>
+            </div>
+          </div>
           <div className="sectionBody">
             <form className="stackLg" onSubmit={handleOfferingSubmit}>
+              {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update course offerings. Dropdowns below use synced courses, terms, professors, and assistants.</div> : null}
+              <fieldset className="formFieldset" disabled={smuManaged}>
               <div className="threeColGrid">
                 <div className="field">
                   <label className="label">Course</label>
@@ -433,6 +483,7 @@ export default function AdminAcademicStructurePage() {
               <button className="btn btnPrimary" type="submit" disabled={submittingKey === "offering"}>
                 {submittingKey === "offering" ? "Creating..." : "Create offering"}
               </button>
+              </fieldset>
             </form>
           </div>
         </section>
@@ -443,23 +494,25 @@ export default function AdminAcademicStructurePage() {
           <>
             <DirectoryTable
               title="Term directory"
-              columns={["Code", "Name", "Academic year", "Status", "Current", "Actions"]}
+              columns={["Code", "Name", "Academic year", "Status", "Current", "Source", "Actions"]}
               rows={terms.map((term) => [
                 term.code,
                 term.name,
                 term.academicYearLabel,
                 <span key={`status-${term.id}`} className={`statusPill ${term.status === "Closed" ? "statusDraft" : "statusLive"}`}>{term.status}</span>,
                 term.isCurrent ? "Yes" : "No",
+                <span key={`source-${term.id}`} className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? "SMU sync" : "Local"}</span>,
                 <div key={`actions-${term.id}`} className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
-                  {term.status === "Draft" ? <button className="btn" type="button" onClick={() => handleTermAction(term.id, "publish")}>Publish</button> : null}
-                  {term.status !== "Closed" && term.status !== "Archived" ? <button className="btn" type="button" onClick={() => handleTermAction(term.id, "close")}>Close</button> : null}
+                  {smuManaged ? <span className="small">Managed by SMU</span> : null}
+                  {!smuManaged && term.status === "Draft" ? <button className="btn" type="button" onClick={() => handleTermAction(term.id, "publish")}>Publish</button> : null}
+                  {!smuManaged && term.status !== "Closed" && term.status !== "Archived" ? <button className="btn" type="button" onClick={() => handleTermAction(term.id, "close")}>Close</button> : null}
                 </div>,
               ])}
             />
 
             <DirectoryTable
               title="Course catalog"
-              columns={["Code", "Name", "Year", "Semester", "Credits", "Status", "Actions"]}
+              columns={["Code", "Name", "Year", "Semester", "Credits", "Status", "Source", "Actions"]}
               rows={courses.map((course) => [
                 course.code,
                 course.name,
@@ -467,13 +520,14 @@ export default function AdminAcademicStructurePage() {
                 course.defaultSemesterNo,
                 course.credits,
                 <span key={`status-${course.id}`} className={`statusPill ${course.isActive ? "statusLive" : "statusDraft"}`}>{course.isActive ? "Active" : "Inactive"}</span>,
-                course.isActive ? <button key={`deactivate-${course.id}`} className="btn" type="button" onClick={() => handleCourseDeactivate(course.id)}>Deactivate</button> : <span key={`inactive-${course.id}`} className="small">No action</span>,
+                <span key={`source-${course.id}`} className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? "SMU sync" : "Local"}</span>,
+                smuManaged ? <span key={`managed-${course.id}`} className="small">Managed by SMU</span> : course.isActive ? <button key={`deactivate-${course.id}`} className="btn" type="button" onClick={() => handleCourseDeactivate(course.id)}>Deactivate</button> : <span key={`inactive-${course.id}`} className="small">No action</span>,
               ])}
             />
 
             <DirectoryTable
               title="Course offerings"
-              columns={["Course", "Term", "Year / Semester", "Section", "Status", "Professor", "Assistant", "Actions"]}
+              columns={["Course", "Term", "Year / Semester", "Section", "Status", "Professor", "Assistant", "Source", "Actions"]}
               rows={offerings.map((offering) => [
                 `${offering.course?.code || ""} - ${offering.course?.name || ""}`,
                 offering.term?.code || "-",
@@ -482,9 +536,11 @@ export default function AdminAcademicStructurePage() {
                 <span key={`status-${offering.id}`} className={`statusPill ${offering.status === "Draft" ? "statusDraft" : "statusLive"}`}>{offering.status}</span>,
                 resolveStaffName(offering.primaryProfessorId, professors),
                 offering.assistantId ? resolveStaffName(offering.assistantId, assistants) : "-",
+                <span key={`source-${offering.id}`} className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? "SMU sync" : "Local"}</span>,
                 <div key={`actions-${offering.id}`} className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
-                  {offering.status === "Draft" ? <button className="btn" type="button" onClick={() => handleOfferingAction(offering.id, "publish")}>Publish</button> : null}
-                  {offering.status !== "Closed" && offering.status !== "Archived" ? <button className="btn" type="button" onClick={() => handleOfferingAction(offering.id, "close")}>Close</button> : null}
+                  {smuManaged ? <span className="small">Managed by SMU</span> : null}
+                  {!smuManaged && offering.status === "Draft" ? <button className="btn" type="button" onClick={() => handleOfferingAction(offering.id, "publish")}>Publish</button> : null}
+                  {!smuManaged && offering.status !== "Closed" && offering.status !== "Archived" ? <button className="btn" type="button" onClick={() => handleOfferingAction(offering.id, "close")}>Close</button> : null}
                 </div>,
               ])}
             />

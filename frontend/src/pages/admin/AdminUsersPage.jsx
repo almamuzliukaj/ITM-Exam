@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
+import SmuSourceBanner from "../../components/SmuSourceBanner";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useSmuIntegrationStatus } from "../../hooks/useSmuIntegrationStatus";
 import {
   createUser,
   importUsers,
@@ -29,6 +31,7 @@ const initialCreateForm = {
 export default function AdminUsersPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
+  const smuStatus = useSmuIntegrationStatus();
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({ search: "", role: "", status: "all" });
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -62,6 +65,7 @@ export default function AdminUsersPage() {
 
     return { active, inactive, staff };
   }, [users]);
+  const smuManaged = smuStatus.isConfigured;
 
   const loadUsers = useCallback(async () => {
     try {
@@ -82,6 +86,10 @@ export default function AdminUsersPage() {
 
   async function handleCreateUser(e) {
     e.preventDefault();
+    if (smuManaged) {
+      setPageError("SMU is the source of truth for students and staff. Run SMU sync instead of creating accounts manually.");
+      return;
+    }
     try {
       setCreating(true);
       setPageError("");
@@ -105,6 +113,10 @@ export default function AdminUsersPage() {
   }
 
   async function handleImportUsers() {
+    if (smuManaged) {
+      setPageError("CSV import is locked while SMU is the active source of truth.");
+      return;
+    }
     try {
       const { rows, errors } = parseCsvRows(importText, t);
       setImportPreview(rows.map((row) => ({ ...row, error: errors[row.__line] || "" })));
@@ -139,6 +151,10 @@ export default function AdminUsersPage() {
   }
 
   function beginEdit(account) {
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Student and staff profile fields are managed by SMU while integration is active.");
+      return;
+    }
     setEditingId(account.id);
     setEditForm({
       fullName: account.fullName,
@@ -160,6 +176,10 @@ export default function AdminUsersPage() {
   }
 
   async function toggleStatus(account) {
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Student and staff activation status is managed by SMU while integration is active.");
+      return;
+    }
     try {
       setPageError("");
       await updateUserStatus(account.id, !account.isActive);
@@ -175,6 +195,11 @@ export default function AdminUsersPage() {
   }
 
   async function handleResetPassword(userId) {
+    const account = users.find((entry) => entry.id === userId);
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Password reset for SMU-managed students and staff should be handled from the source system.");
+      return;
+    }
     const newPassword = passwordDrafts[userId];
     if (!newPassword) {
       setPageError(t("adminUsers.resetMissing"));
@@ -210,14 +235,13 @@ export default function AdminUsersPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
-        <section className="smuNotice">
-          <div>
-            <span className="summaryLabel">SMU transition</span>
-            <strong>Students and staff should come from SMU</strong>
-            <p>User creation and CSV import remain available as fallback tools until the external student-management source is connected.</p>
-          </div>
-          <Link className="btn" to="/admin/smu">Review SMU contract</Link>
-        </section>
+        <SmuSourceBanner
+          title="Students and staff come from SMU"
+          description="Synced student, professor, and assistant records are displayed here for review. Manual account creation and CSV import are fallback tools only when SMU is not configured."
+          isConfigured={smuStatus.isConfigured}
+          loading={smuStatus.loading}
+          error={smuStatus.error}
+        />
 
         <section className="adminDashboardHero">
           <div className="adminDashboardHeroCopy">
@@ -247,9 +271,16 @@ export default function AdminUsersPage() {
 
         <section className="dashboardGrid dashboardGridWide">
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>{t("adminUsers.createUser")}</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>{t("adminUsers.createUser")}</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU owns students and staff." : "Manual fallback for local accounts."}</span>
+              </div>
+            </div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCreateUser}>
+                {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update students, professors, and assistants.</div> : null}
+                <fieldset className="formFieldset" disabled={smuManaged}>
                 <div className="field">
                   <label className="label">{t("adminUsers.fullName")}</label>
                   <input className="input" value={createForm.fullName} onChange={(e) => setCreateForm((c) => ({ ...c, fullName: e.target.value }))} required />
@@ -273,13 +304,21 @@ export default function AdminUsersPage() {
                   <span>{t("adminUsers.activeAccount")}</span>
                 </label>
                 <button className="btn btnPrimary" type="submit" disabled={creating}>{creating ? t("adminUsers.creating") : t("adminUsers.createButton")}</button>
+                </fieldset>
               </form>
             </div>
           </article>
 
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>{t("adminUsers.bulkImport")}</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>{t("adminUsers.bulkImport")}</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU sync replaces CSV import." : "Manual fallback for seed/import work."}</span>
+              </div>
+            </div>
             <div className="sectionBody stackLg">
+              {smuManaged ? <div className="pageStateCard">CSV import is disabled while SMU is active. Use the SMU sync page to preview and import records.</div> : null}
+              <fieldset className="formFieldset" disabled={smuManaged}>
               <div className="field">
                 <label className="label">{t("adminUsers.defaultPassword")}</label>
                 <input className="input" value={defaultPassword} onChange={(e) => setDefaultPassword(e.target.value)} placeholder={t("adminUsers.defaultPasswordPlaceholder")} />
@@ -298,6 +337,7 @@ export default function AdminUsersPage() {
                   {importing ? t("adminUsers.importing") : t("adminUsers.importUsers")}
                 </button>
               </div>
+              </fieldset>
             </div>
           </article>
         </section>
@@ -437,6 +477,7 @@ export default function AdminUsersPage() {
                       <th>{t("adminUsers.email")}</th>
                       <th>{t("adminUsers.role")}</th>
                       <th>{t("adminUsers.status")}</th>
+                      <th>Source</th>
                       <th>{t("adminUsers.created")}</th>
                       <th>{t("adminUsers.actions")}</th>
                     </tr>
@@ -444,6 +485,7 @@ export default function AdminUsersPage() {
                   <tbody>
                     {users.map((account) => {
                       const isEditing = editingId === account.id;
+                      const smuLockedAccount = isSmuManagedAccount(account, smuManaged);
                       return (
                         <tr key={account.id}>
                           <td>{isEditing ? <input className="input" value={editForm.fullName} onChange={(e) => setEditForm((c) => ({ ...c, fullName: e.target.value }))} /> : account.fullName}</td>
@@ -454,9 +496,13 @@ export default function AdminUsersPage() {
                             </select>
                           ) : t(`adminUsers.roles.${account.role}`) || account.role}</td>
                           <td><span className={`statusPill ${account.isActive ? "statusLive" : "statusDraft"}`}>{account.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</span></td>
+                          <td><span className={`statusPill ${smuLockedAccount ? "statusLive" : "statusDraft"}`}>{smuLockedAccount ? "SMU sync" : "Local"}</span></td>
                           <td>{new Date(account.createdAt).toLocaleDateString()}</td>
                           <td>
                             <div className="actionsCol">
+                              {smuLockedAccount ? (
+                                <span className="small">Managed by SMU</span>
+                              ) : null}
                               {isEditing ? (
                                 <>
                                   <label className="checkboxRow">
@@ -470,16 +516,16 @@ export default function AdminUsersPage() {
                                 </>
                               ) : (
                                 <>
-                                  <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
+                                  {!smuLockedAccount ? <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
                                     <button className="btn" type="button" onClick={() => beginEdit(account)}>{t("adminUsers.edit")}</button>
                                     <button className="btn" type="button" onClick={() => toggleStatus(account)}>
                                       {account.isActive ? t("adminUsers.deactivate") : t("adminUsers.activate")}
                                     </button>
-                                  </div>
-                                  <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
+                                  </div> : null}
+                                  {!smuLockedAccount ? <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
                                     <input className="input" placeholder={t("adminUsers.newPassword")} value={passwordDrafts[account.id] || ""} onChange={(e) => setPasswordDrafts((c) => ({ ...c, [account.id]: e.target.value }))} />
                                     <button className="btn" type="button" onClick={() => handleResetPassword(account.id)}>{t("adminUsers.reset")}</button>
-                                  </div>
+                                  </div> : null}
                                 </>
                               )}
                             </div>
@@ -550,4 +596,8 @@ function isStrongPassword(password) {
 
 function readError(error, fallback) {
   return error?.response?.data?.message || fallback;
+}
+
+function isSmuManagedAccount(account, smuManaged) {
+  return Boolean(smuManaged && account && ["Student", "Professor", "Assistant"].includes(account.role));
 }

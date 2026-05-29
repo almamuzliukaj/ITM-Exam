@@ -1,5 +1,11 @@
 # Work Log (Agnesa14)
 
+## 2026-05-29
+- Completed Sprint 23 frontend task for SMU synced data usage.
+- Added source-aware admin behavior for users, academic structure, and enrollment screens.
+- Locked manual creation, import, edit, and cohort actions for SMU-owned records when integration is configured.
+- Kept synced records visible for review and dropdown selection while preserving Online Exam carry-over controls.
+
 ## 2026-05-09
 - Completed Sprint 13 baseline task: added AI-assisted text-answer evaluation with required human review.
 - Added backend endpoint for text-answer evaluation suggestions and connected it to the staff gradebook workflow.

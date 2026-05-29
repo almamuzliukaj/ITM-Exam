@@ -18,6 +18,7 @@ The repository currently includes:
 - Grading and result publication flow.
 - Student result visibility page with pending and published states.
 - Baseline exam-integrity event tracking and lockdown readiness configuration.
+- SMU integration contract, readiness page, and source-aware admin review mode for synced academic data.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -27,17 +28,18 @@ The repository currently includes:
 - Sprint 13 has implemented AI-assisted review and result publication foundations.
 - Sprint 14 has implemented carry-over progression foundation, security stabilization, and final delivery planning.
 - Sprint 15 through Sprint 17 have implemented the student exam session UI, autosave safety, and student result visibility for Agnesa's track.
+- Sprint 22 through Sprint 23 have implemented SMU readiness and frontend source-of-truth handling for Agnesa's admin screens.
 
 ## 13.3 Remaining Risks
 
 - Sprint statuses in Notion may not always match implementation status after recent commits.
 - Text/code/SQL grading still needs additional polish and edge-case review.
 - Integrity features currently capture and display baseline events; stronger policy enforcement and Safe Exam Browser integration remain future work.
-- SMU integration still needs a formal contract and implementation plan with the external academic-management project.
+- SMU integration still depends on final external API availability and team agreement on production sync scheduling.
 
 ## 13.4 Recommended Next Steps
 
 1. Keep each sprint on its own branch and pull request.
 2. Use the manual test guide before opening or merging demo-critical pull requests.
 3. Continue Sprint 19 with frontend integrity guard improvements.
-4. Define the SMU integration contract before removing admin-owned academic data screens.
+4. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

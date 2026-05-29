@@ -1525,6 +1525,62 @@ input[type="radio"]{
   background: #f7fbff;
 }
 
+.studentJourneyPanel{
+  border: 1px solid #d5dfeb;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.studentJourneyPanel .sectionHeader{
+  background: #f7f9fc;
+}
+
+.studentJourneyGrid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.studentJourneyGrid article{
+  display: grid;
+  gap: 6px;
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.studentJourneyGrid article span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.studentJourneyGrid article strong{
+  color: var(--heading);
+}
+
+.studentJourneyGrid article small{
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.journeyCheckPassed{
+  border-color: rgba(17,122,81,.24) !important;
+  background: #f4fbf7 !important;
+}
+
+.journeyCheckWarn{
+  border-color: rgba(180,83,9,.26) !important;
+  background: #fffaf4 !important;
+}
+
 .draftRestoreBanner{
   display: flex;
   align-items: center;
@@ -2671,10 +2727,10 @@ input[type="radio"]{
     align-items: stretch;
   }
 
- feature/agnesa-smu-admin-readiness
   .smuOwnershipGrid,
   .smuSyncGrid{
     grid-template-columns: 1fr;
+  }
 
   .sectionHeader{
     gap: 12px;
@@ -2683,7 +2739,6 @@ input[type="radio"]{
 
   .sectionBody{
     padding: 16px;
-main
   }
 
   .appShell{

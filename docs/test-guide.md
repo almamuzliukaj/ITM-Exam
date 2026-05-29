@@ -35,15 +35,62 @@ Expected local URLs:
 
 ## 3. Student Exam Flow
 
+Use this flow for Agnesa's Sprint 24 student journey validation.
+
+### 3.1 Preconditions
+
+Before testing as a student, confirm:
+
+- The student has active semester/course eligibility for the exam offering.
+- The exam is published.
+- The exam has at least one question.
+- If lockdown is required, the configured client rule matches the browser/client being used.
+
+### 3.2 Attempt and Autosave
+
 1. Log in as `student@onlineexam.com`.
 2. Open the student exams area.
 3. Start an allowed published exam.
-4. Answer MCQ, text, code, and SQL questions when they are present.
-5. Refresh the page and confirm draft answers are restored.
-6. Submit the attempt.
-7. Confirm the exam cannot be submitted a second time.
-8. Open the results page and confirm unpublished results stay hidden.
-9. After a professor publishes results, confirm the score and feedback are visible.
+4. Confirm the attempt page shows the `Student journey validation` panel.
+5. Confirm these checkpoints are ready or understandable:
+   - Attempt access
+   - Questions
+   - Timer
+   - Draft safety
+   - Integrity
+6. Answer MCQ, text, code, and SQL questions when they are present.
+7. Confirm the autosave card changes from waiting/saving to saved.
+8. Refresh the page.
+9. Confirm the restored draft banner appears and answers are still present.
+10. Flag and unflag at least one question.
+11. Confirm the question navigator updates answered/flagged states.
+
+### 3.3 Submit Safety
+
+1. Click `Submit exam`.
+2. Confirm the final review panel shows answered, unanswered, flagged, and time remaining.
+3. Cancel once and confirm the student can continue editing.
+4. Click `Submit exam` again and confirm submit.
+5. Confirm the submission result card appears.
+6. Confirm the local draft is cleared after successful submission.
+7. Try opening/submitting the same exam again and confirm duplicate submit is rejected or the existing attempt state is shown.
+
+### 3.4 Result Visibility
+
+1. Open `/results` from the submitted state or navigation.
+2. Confirm the `Result validation checkpoint` panel is visible.
+3. Confirm unpublished/pending attempts do not show scores.
+4. Log in as professor and publish the graded result.
+5. Log back in as student.
+6. Open `/results`.
+7. Confirm the published score, auto score, notes, and published date are visible.
+
+Expected result:
+
+- Student can open, answer, refresh, restore, submit, and later view the published result.
+- Pending results remain hidden until staff publication.
+- Duplicate submit is prevented.
+- The UI gives enough visible state for a demo tester to know what passed.
 
 ## 4. Professor and Assistant Flow
 

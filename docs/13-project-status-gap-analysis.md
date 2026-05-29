@@ -19,6 +19,7 @@ The repository currently includes:
 - Student result visibility page with pending and published states.
 - Baseline exam-integrity event tracking and lockdown readiness configuration.
 - SMU integration contract, readiness page, and source-aware admin review mode for synced academic data.
+- Student journey validation checkpoints for attempt readiness, autosave, submit safety, and result visibility.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -29,6 +30,7 @@ The repository currently includes:
 - Sprint 14 has implemented carry-over progression foundation, security stabilization, and final delivery planning.
 - Sprint 15 through Sprint 17 have implemented the student exam session UI, autosave safety, and student result visibility for Agnesa's track.
 - Sprint 22 through Sprint 23 have implemented SMU readiness and frontend source-of-truth handling for Agnesa's admin screens.
+- Sprint 24 has added a repeatable student journey validation guide and visible frontend checkpoints for demo testing.
 
 ## 13.3 Remaining Risks
 

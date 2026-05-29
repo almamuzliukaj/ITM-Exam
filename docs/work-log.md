@@ -1,5 +1,10 @@
 # Work Log (Agnesa14)
 
+## 2026-05-29 - Sprint 24
+- Completed Agnesa's student journey validation pass.
+- Added visible validation checkpoints to the student exam session and result pages.
+- Expanded the manual test guide with repeatable student attempt, autosave, submit, duplicate-submit, and result visibility checks.
+
 ## 2026-05-29
 - Completed Sprint 23 frontend task for SMU synced data usage.
 - Added source-aware admin behavior for users, academic structure, and enrollment screens.

@@ -30,8 +30,9 @@
 - NFR-14: The codebase should keep controllers, DTOs, models, and UI pages organized by responsibility.
 - NFR-15: Sprint work should be documented in the repository and linked to the Notion board structure.
 - NFR-16: Git commits should be small enough to review and tied to clear feature work.
+- NFR-17: Sprint branches, commit messages, and pull requests should use professional naming and include clear handoff notes.
 
 ## 4.6 Portability
 
-- NFR-17: The system should run locally with the documented backend, frontend, and database setup.
-- NFR-18: Environment-specific settings should remain outside source-controlled secrets.
+- NFR-18: The system should run locally with the documented backend, frontend, and database setup.
+- NFR-19: Environment-specific settings should remain outside source-controlled secrets.

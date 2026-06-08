@@ -1,5 +1,10 @@
 # Work Log (Agnesa14)
 
+## 2026-06-08 - Sprint 26
+- Added professional branch, commit, PR, and handoff workflow documentation.
+- Added a pull request handoff section to the manual test guide.
+- Linked the change workflow from the documentation master index.
+
 ## 2026-06-08 - Sprint 25
 - Added a university demo readiness panel to role dashboards.
 - Documented role-by-role presentation checks in `docs/demo-readiness-checklist.md`.

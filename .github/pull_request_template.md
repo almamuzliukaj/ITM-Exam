@@ -21,6 +21,7 @@
 - [ ] Known limitations documented
 - [ ] Branch dependency order is clear
 - [ ] Demo operations runbook checked when this changes startup, testing, or presentation flow
+- [ ] UI consistency checklist checked when this changes frontend screens
 
 ## Reviewer Focus
 

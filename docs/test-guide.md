@@ -173,3 +173,13 @@ Before presenting the project live:
 3. Confirm `git status` is clean on the branch being demonstrated.
 4. Confirm common failures have a known fix before the demo starts.
 5. Do not switch branches, pull, or rebase during the presentation.
+
+## 12. University UI Consistency
+
+Before opening a frontend demo pull request:
+
+1. Review `docs/university-ui-consistency-review.md`.
+2. Confirm dropdowns have labels, placeholders, readable spacing, and disabled states.
+3. Confirm tables stay inside their wrappers on mobile.
+4. Confirm empty states explain the missing data and next valid action.
+5. Confirm the screen language is professional enough for a university workflow.

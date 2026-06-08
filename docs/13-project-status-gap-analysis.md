@@ -24,6 +24,7 @@ The repository currently includes:
 - Professional branch, commit, pull request, and sprint handoff workflow documentation.
 - Release QA evidence checklist for screenshots, role walkthroughs, build evidence, and known limitations.
 - Demo operations runbook for local startup, troubleshooting, port checks, and presentation control.
+- University UI consistency review for dropdowns, tables, empty states, academic tone, and responsive behavior.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -39,6 +40,7 @@ The repository currently includes:
 - Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
 - Sprint 27 has added release QA evidence documentation for final demo and review readiness.
 - Sprint 28 has added a demo operations runbook for startup reliability and common local failure recovery.
+- Sprint 29 has added university UI consistency standards and shared styling improvements for professional presentation.
 
 ## 13.3 Remaining Risks
 
@@ -54,4 +56,5 @@ The repository currently includes:
 3. Use the professional change workflow before pushing sprint branches.
 4. Attach release QA evidence before final demo or delivery review.
 5. Run the demo operations checklist before presenting the application live.
-6. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.
+6. Apply the university UI consistency checklist to each remaining demo-critical page.
+7. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

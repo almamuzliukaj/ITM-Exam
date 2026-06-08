@@ -21,6 +21,7 @@ The repository currently includes:
 - SMU integration contract, readiness page, and source-aware admin review mode for synced academic data.
 - Student journey validation checkpoints for attempt readiness, autosave, submit safety, and result visibility.
 - Role dashboard demo-readiness checkpoints for university presentation flow.
+- Professional branch, commit, pull request, and sprint handoff workflow documentation.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -33,6 +34,7 @@ The repository currently includes:
 - Sprint 22 through Sprint 23 have implemented SMU readiness and frontend source-of-truth handling for Agnesa's admin screens.
 - Sprint 24 has added a repeatable student journey validation guide and visible frontend checkpoints for demo testing.
 - Sprint 25 has added role-based university demo readiness checkpoints and a presentation checklist.
+- Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
 
 ## 13.3 Remaining Risks
 
@@ -45,5 +47,5 @@ The repository currently includes:
 
 1. Keep each sprint on its own branch and pull request.
 2. Use the manual test guide before opening or merging demo-critical pull requests.
-3. Continue Sprint 19 with frontend integrity guard improvements.
+3. Use the professional change workflow before pushing sprint branches.
 4. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

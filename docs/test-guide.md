@@ -145,3 +145,12 @@ Before a final presentation:
 3. Confirm any `Review` checkpoint has a clear reason and can be explained.
 4. Use `docs/demo-readiness-checklist.md` as the role-by-role walkthrough.
 5. Confirm the student flow still passes Section 3 after any setup changes.
+
+## 9. Pull Request Handoff
+
+Before opening a pull request:
+
+1. Confirm the branch name describes the sprint outcome.
+2. Confirm the commit message is written professionally.
+3. Confirm the PR description lists summary, testing, notes, and dependencies.
+4. Use `docs/professional-change-workflow.md` as the source of truth for Git handoff.

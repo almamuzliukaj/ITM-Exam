@@ -21,6 +21,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 15. [Manual Test Guide](test-guide.md)
 16. [SMU Integration Plan](smu-integration-plan.md)
 17. [University Demo Readiness Checklist](demo-readiness-checklist.md)
+18. [Professional Change Workflow](professional-change-workflow.md)
 
 ## Supporting Documents
 

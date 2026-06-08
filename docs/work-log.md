@@ -1,5 +1,11 @@
 # Work Log (Agnesa14)
 
+## 2026-06-08 - Sprint 30
+- Improved the student exam attempt screen with a focused workspace summary panel.
+- Added progress, autosave, safety, policy, unanswered, and flagged question indicators.
+- Added a question navigator progress bar, status legend, and secondary review-submit action.
+- Documented the student exam focus layout and manual validation checklist.
+
 ## 2026-06-08 - Sprint 29
 - Added a university UI consistency review for professional frontend quality checks.
 - Added frontend standards for dropdowns, tables, empty states, academic tone, and responsive behavior.

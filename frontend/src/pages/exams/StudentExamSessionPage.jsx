@@ -414,6 +414,7 @@ export default function StudentExamSessionPage() {
   const answeredCount = questions.filter((question) => String(answers[question.id] || "").trim().length > 0).length;
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
+  const progressPercent = questions.length ? Math.round((answeredCount / questions.length) * 100) : 0;
   async function enterFullscreen() {
     if (!document.fullscreenEnabled) {
       recordViolation("FullscreenRequestFailed", "This browser does not allow fullscreen mode.");
@@ -551,6 +552,22 @@ export default function StudentExamSessionPage() {
               </div>
             </section>
 
+            <StudentExamFocusPanel
+              exam={exam}
+              user={user}
+              attemptId={attemptId}
+              progressPercent={progressPercent}
+              answeredCount={answeredCount}
+              questionsCount={questions.length}
+              unansweredCount={unansweredCount}
+              flaggedCount={flaggedCount}
+              saveState={saveState}
+              savedAt={savedAt || loadedDraftAt}
+              networkOnline={networkOnline}
+              fullscreenActive={fullscreenActive}
+              interactionLocked={interactionLocked}
+            />
+
             <section className="examIntegrityStrip">
               <div>
                 <strong>Guided session</strong>
@@ -595,7 +612,10 @@ export default function StudentExamSessionPage() {
                     />
                   ))
                 ) : (
-                  <div className="emptyState">This exam has no questions yet.</div>
+                  <div className="emptyState">
+                    <strong>No questions are attached.</strong>
+                    <span>This exam cannot be completed until staff attach at least one question.</span>
+                  </div>
                 )}
               </div>
 
@@ -603,10 +623,18 @@ export default function StudentExamSessionPage() {
                 <div className="sectionHeader">
                   <div>
                     <h3>Questions</h3>
-                    <span className="small">{answeredCount} answered</span>
+                    <span className="small">{answeredCount} answered, {flaggedCount} flagged</span>
                   </div>
                 </div>
                 <div className="sectionBody">
+                  <div className="examNavigatorProgress" aria-label={`Exam progress ${progressPercent}%`}>
+                    <span style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <div className="examNavigatorLegend" aria-label="Question status legend">
+                    <span><i className="legendOpen" /> Open</span>
+                    <span><i className="legendAnswered" /> Answered</span>
+                    <span><i className="legendFlagged" /> Flagged</span>
+                  </div>
                   <div className="examQuestionNav">
                     {questions.map((question, index) => (
                       <a
@@ -619,6 +647,14 @@ export default function StudentExamSessionPage() {
                       </a>
                     ))}
                   </div>
+                  <button
+                    className="btn btnPrimary btnBlock examNavigatorSubmit"
+                    type="button"
+                    onClick={() => setShowSubmitReview(true)}
+                    disabled={submitting || questions.length === 0 || interactionLocked}
+                  >
+                    Review and submit
+                  </button>
                 </div>
               </aside>
             </section>
@@ -626,6 +662,69 @@ export default function StudentExamSessionPage() {
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function StudentExamFocusPanel({
+  exam,
+  user,
+  attemptId,
+  progressPercent,
+  answeredCount,
+  questionsCount,
+  unansweredCount,
+  flaggedCount,
+  saveState,
+  savedAt,
+  networkOnline,
+  fullscreenActive,
+  interactionLocked,
+}) {
+  const studentName = user?.fullName || user?.name || user?.email || "Student";
+  const attemptLabel = attemptId ? String(attemptId).slice(0, 8) : "Pending";
+  const saveLabel = savedAt ? formatSavedAt(savedAt) : "Waiting for first save";
+
+  return (
+    <section className="studentExamFocusPanel" aria-label="Exam focus summary">
+      <div className="studentExamFocusHeader">
+        <div>
+          <span className="summaryLabel">Focused exam workspace</span>
+          <h3>{exam?.title || "Student exam"}</h3>
+          <p>{studentName} · Attempt {attemptLabel}</p>
+        </div>
+        <div className="studentExamFocusScore">
+          <strong>{progressPercent}%</strong>
+          <span>{answeredCount}/{questionsCount} answered</span>
+        </div>
+      </div>
+
+      <div className="studentExamProgressTrack" aria-hidden="true">
+        <span style={{ width: `${progressPercent}%` }} />
+      </div>
+
+      <div className="studentExamFocusGrid">
+        <article>
+          <span className="summaryLabel">Remaining work</span>
+          <strong>{unansweredCount} unanswered</strong>
+          <small>{flaggedCount} question(s) flagged for review</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Autosave</span>
+          <strong>{formatSaveState(saveState)}</strong>
+          <small>{saveLabel}</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Exam safety</span>
+          <strong>{networkOnline ? "Online" : "Connection lost"}</strong>
+          <small>{fullscreenActive ? "Fullscreen is active" : "Fullscreen is not active"}</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Policy state</span>
+          <strong>{interactionLocked ? "Locked" : "Active"}</strong>
+          <small>{interactionLocked ? "Submit review is controlled by policy" : "You can continue answering"}</small>
+        </article>
+      </div>
+    </section>
   );
 }
 

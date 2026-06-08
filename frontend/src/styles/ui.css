@@ -1591,6 +1591,107 @@ input[type="radio"]{
   line-height: 1.45;
 }
 
+.studentExamFocusPanel{
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(22,58,99,.18);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.94), rgba(248,251,254,.98)),
+    #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.studentExamFocusHeader{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.studentExamFocusHeader h3{
+  margin: 4px 0 0;
+  color: var(--heading);
+  font-size: 22px;
+}
+
+.studentExamFocusHeader p{
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.studentExamFocusScore{
+  min-width: 130px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f6f9fd;
+  text-align: right;
+}
+
+.studentExamFocusScore strong{
+  display: block;
+  color: var(--heading);
+  font-family: var(--font-display);
+  font-size: 30px;
+}
+
+.studentExamFocusScore span{
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.studentExamProgressTrack,
+.examNavigatorProgress{
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e3eaf2;
+}
+
+.studentExamProgressTrack span,
+.examNavigatorProgress span{
+  display: block;
+  height: 100%;
+  min-width: 8px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #17633d, #2f7d57);
+}
+
+.studentExamFocusGrid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.studentExamFocusGrid article{
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.studentExamFocusGrid strong,
+.studentExamFocusGrid small{
+  display: block;
+}
+
+.studentExamFocusGrid strong{
+  margin-top: 8px;
+  color: var(--heading);
+}
+
+.studentExamFocusGrid small{
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .examIntegrityStrip,
 .submitReviewPanel{
   display: flex;
@@ -1831,6 +1932,43 @@ input[type="radio"]{
   gap: 10px;
 }
 
+.examNavigatorProgress{
+  margin-bottom: 12px;
+}
+
+.examNavigatorLegend{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.examNavigatorLegend span{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.examNavigatorLegend i{
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.examNavigatorLegend .legendAnswered{
+  border-color: rgba(23,99,61,.28);
+  background: #e5f3ea;
+}
+
+.examNavigatorLegend .legendFlagged{
+  border-color: rgba(180,83,9,.32);
+  background: #fff7ed;
+}
+
 .examQuestionNav a{
   min-height: 42px;
   display: grid;
@@ -1856,6 +1994,10 @@ input[type="radio"]{
 
 .examQuestionNav a.answered.flagged{
   background: linear-gradient(135deg, #e5f3ea 0 50%, #fff7ed 50% 100%);
+}
+
+.examNavigatorSubmit{
+  margin-top: 16px;
 }
 
 .questionHeaderActions{
@@ -2720,6 +2862,7 @@ input[type="radio"]{
   .dashboardGridWide,
   .summaryStrip,
   .examSessionBar,
+  .studentExamFocusGrid,
   .examSessionLayout,
   .resultsLayout,
   .resultCard,
@@ -2811,6 +2954,7 @@ input[type="radio"]{
 
   .topbar,
   .adminHeroMeta,
+  .studentExamFocusHeader,
   .sectionHeader,
   .studentItemRow,
   .examIntegrityStrip,
@@ -2876,7 +3020,8 @@ input[type="radio"]{
 
   .topbarTools,
   .topbarActions,
-  .dashboardHeaderActions{
+  .dashboardHeaderActions,
+  .studentExamFocusScore{
     width: 100%;
     justify-content: stretch;
     flex-direction: column;
@@ -2919,6 +3064,14 @@ input[type="radio"]{
   .heroText{
     font-size: 14px;
     line-height: 1.6;
+  }
+
+  .studentExamFocusPanel{
+    padding: 16px;
+  }
+
+  .studentExamFocusScore{
+    text-align: left;
   }
 
   .heroPanel,

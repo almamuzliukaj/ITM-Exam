@@ -183,3 +183,14 @@ Before opening a frontend demo pull request:
 3. Confirm tables stay inside their wrappers on mobile.
 4. Confirm empty states explain the missing data and next valid action.
 5. Confirm the screen language is professional enough for a university workflow.
+
+## 13. Student Exam Focus Layout
+
+When testing the student attempt screen:
+
+1. Review `docs/student-exam-focus-layout.md`.
+2. Confirm the focused workspace panel shows progress, attempt state, autosave, safety, and policy status.
+3. Answer and flag questions, then confirm progress and flagged counts update.
+4. Confirm the navigator legend matches open, answered, and flagged states.
+5. Confirm `Review and submit` opens the same submit review flow as the top submit action.
+6. Confirm mobile layout remains readable without overlapping controls.

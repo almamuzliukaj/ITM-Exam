@@ -25,6 +25,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 19. [Release QA Evidence](release-qa-evidence.md)
 20. [Demo Operations Runbook](demo-operations-runbook.md)
 21. [University UI Consistency Review](university-ui-consistency-review.md)
+22. [Student Exam Focus Layout](student-exam-focus-layout.md)
 
 ## Supporting Documents
 

@@ -22,6 +22,7 @@ The repository currently includes:
 - Student journey validation checkpoints for attempt readiness, autosave, submit safety, and result visibility.
 - Role dashboard demo-readiness checkpoints for university presentation flow.
 - Professional branch, commit, pull request, and sprint handoff workflow documentation.
+- Release QA evidence checklist for screenshots, role walkthroughs, build evidence, and known limitations.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -35,6 +36,7 @@ The repository currently includes:
 - Sprint 24 has added a repeatable student journey validation guide and visible frontend checkpoints for demo testing.
 - Sprint 25 has added role-based university demo readiness checkpoints and a presentation checklist.
 - Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
+- Sprint 27 has added release QA evidence documentation for final demo and review readiness.
 
 ## 13.3 Remaining Risks
 
@@ -48,4 +50,5 @@ The repository currently includes:
 1. Keep each sprint on its own branch and pull request.
 2. Use the manual test guide before opening or merging demo-critical pull requests.
 3. Use the professional change workflow before pushing sprint branches.
-4. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.
+4. Attach release QA evidence before final demo or delivery review.
+5. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

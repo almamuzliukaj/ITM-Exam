@@ -1,5 +1,10 @@
 # Work Log (Agnesa14)
 
+## 2026-06-08 - Sprint 28
+- Added a demo operations runbook for startup, port checks, troubleshooting, and demo-day control.
+- Documented fixes for PostgreSQL connection failures, locked backend executables, Vite dependency issues, rejected Git pushes, and generated build artifacts.
+- Linked the runbook from the master documentation and manual test guide.
+
 ## 2026-06-08 - Sprint 27
 - Added release QA evidence documentation for final demo and release review.
 - Added required screenshot, command evidence, role walkthrough, and known release notes.

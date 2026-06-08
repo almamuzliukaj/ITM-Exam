@@ -23,6 +23,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 17. [University Demo Readiness Checklist](demo-readiness-checklist.md)
 18. [Professional Change Workflow](professional-change-workflow.md)
 19. [Release QA Evidence](release-qa-evidence.md)
+20. [Demo Operations Runbook](demo-operations-runbook.md)
 
 ## Supporting Documents
 

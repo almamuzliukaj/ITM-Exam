@@ -23,6 +23,7 @@ The repository currently includes:
 - Role dashboard demo-readiness checkpoints for university presentation flow.
 - Professional branch, commit, pull request, and sprint handoff workflow documentation.
 - Release QA evidence checklist for screenshots, role walkthroughs, build evidence, and known limitations.
+- Demo operations runbook for local startup, troubleshooting, port checks, and presentation control.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -37,6 +38,7 @@ The repository currently includes:
 - Sprint 25 has added role-based university demo readiness checkpoints and a presentation checklist.
 - Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
 - Sprint 27 has added release QA evidence documentation for final demo and review readiness.
+- Sprint 28 has added a demo operations runbook for startup reliability and common local failure recovery.
 
 ## 13.3 Remaining Risks
 
@@ -51,4 +53,5 @@ The repository currently includes:
 2. Use the manual test guide before opening or merging demo-critical pull requests.
 3. Use the professional change workflow before pushing sprint branches.
 4. Attach release QA evidence before final demo or delivery review.
-5. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.
+5. Run the demo operations checklist before presenting the application live.
+6. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

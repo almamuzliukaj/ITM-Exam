@@ -134,6 +134,8 @@ function AdminDashboard({ config }) {
         ))}
       </section>
 
+      <DemoReadinessPanel roleKey="admin" />
+
       <section className="adminSectionGrid">
         {config.sections.map((section) => (
           <article key={section.title} className="surfaceCard adminSectionCard">
@@ -239,6 +241,8 @@ function StudentEligibilityPanel({ config }) {
           ))}
         </div>
       </section>
+
+      <DemoReadinessPanel roleKey="student" />
 
       <section className="dashboardGrid">
         <StudentCoursesCard courses={courses} />
@@ -473,6 +477,8 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
         </div>
       </section>
 
+      <DemoReadinessPanel roleKey={roleKey} />
+
       {roleKey === "assistant" ? (
         <section className="dashboardGrid">
           {config.sections.map((section) => (
@@ -528,6 +534,8 @@ function DefaultDashboard({ config, error }) {
         </div>
       </section>
 
+      <DemoReadinessPanel roleKey="default" />
+
       <section className="dashboardGrid">
         {config.sections.map((section) => (
           <article key={section.title} className="surfaceCard">
@@ -551,6 +559,34 @@ function DefaultDashboard({ config, error }) {
   );
 }
 
+function DemoReadinessPanel({ roleKey }) {
+  const items = getDemoReadinessItems(roleKey);
+  const readyCount = items.filter((item) => item.ready).length;
+
+  return (
+    <section className="surfaceCard demoReadinessPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>University demo readiness</h3>
+          <span className="sectionMeta">Operational checkpoints for a clean faculty presentation.</span>
+        </div>
+        <span className="statusPill statusLive">{readyCount}/{items.length}</span>
+      </div>
+      <div className="sectionBody">
+        <div className="demoReadinessGrid">
+          {items.map((item) => (
+            <article key={item.label} className={item.ready ? "demoReadyItem" : "demoWatchItem"}>
+              <span>{item.ready ? "Ready" : "Review"}</span>
+              <strong>{item.label}</strong>
+              <p>{item.detail}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AcademicHeroMeta({ items }) {
   return (
     <div className="academicHeroMeta" aria-label="Dashboard focus areas">
@@ -568,6 +604,38 @@ function EmptyState({ title, text }) {
       <span>{text}</span>
     </div>
   );
+}
+
+function getDemoReadinessItems(roleKey) {
+  const shared = {
+    admin: [
+      { label: "Academic source", detail: "SMU sync and fallback admin screens are clearly separated.", ready: true },
+      { label: "Enrollment visibility", detail: "Current semester, eligibility, and carry-over controls are visible.", ready: true },
+      { label: "Demo data", detail: "Confirm at least one eligible student and one published exam before presentation.", ready: false },
+    ],
+    professor: [
+      { label: "Assigned offerings", detail: "Professor sees only assigned course offerings.", ready: true },
+      { label: "Exam readiness", detail: "Draft, question attachment, publish readiness, and lockdown setup are available.", ready: true },
+      { label: "Result publication", detail: "Gradebook can save scores and publish student-visible results.", ready: true },
+    ],
+    assistant: [
+      { label: "Scoped access", detail: "Assistant sees support offerings without admin-only controls.", ready: true },
+      { label: "Question support", detail: "Question bank and assigned exam support remain tied to offerings.", ready: true },
+      { label: "Review handoff", detail: "Professor still owns final grading and publication decisions.", ready: true },
+    ],
+    student: [
+      { label: "Eligibility", detail: "Student sees only current eligible courses and published exams.", ready: true },
+      { label: "Attempt safety", detail: "Timer, autosave, integrity guard, and submit review are visible.", ready: true },
+      { label: "Results", detail: "Pending scores stay hidden and published results are separated.", ready: true },
+    ],
+    default: [
+      { label: "Role routing", detail: "Dashboard adapts to the signed-in role.", ready: true },
+      { label: "Navigation", detail: "Primary actions are visible from the role workspace.", ready: true },
+      { label: "Access control", detail: "Protected pages should be checked with each demo account.", ready: false },
+    ],
+  };
+
+  return shared[roleKey] || shared.default;
 }
 
 function formatDateTime(value) {

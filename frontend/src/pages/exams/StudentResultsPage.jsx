@@ -90,6 +90,33 @@ export default function StudentResultsPage() {
           </div>
         </section>
 
+        <section className="studentJourneyPanel">
+          <div className="sectionHeader">
+            <div>
+              <h3>Result validation checkpoint</h3>
+              <span className="sectionMeta">Use this during final testing to confirm pending and published states are separated.</span>
+            </div>
+            <span className="statusPill statusLive">{published.length}/{results.length || 0} published</span>
+          </div>
+          <div className="studentJourneyGrid">
+            <article className={results.length > 0 ? "journeyCheckPassed" : "journeyCheckWarn"}>
+              <span>{results.length > 0 ? "Ready" : "Check"}</span>
+              <strong>Submitted attempts</strong>
+              <small>{results.length > 0 ? `${results.length} attempt(s) returned` : "Submit an exam first"}</small>
+            </article>
+            <article className={pending.length >= 0 ? "journeyCheckPassed" : "journeyCheckWarn"}>
+              <span>Ready</span>
+              <strong>Pending privacy</strong>
+              <small>{pending.length} attempt(s) waiting for publication</small>
+            </article>
+            <article className={published.length > 0 ? "journeyCheckPassed" : "journeyCheckWarn"}>
+              <span>{published.length > 0 ? "Ready" : "Check"}</span>
+              <strong>Published visibility</strong>
+              <small>{published.length > 0 ? "Score and notes are visible" : "Publish a graded result to verify"}</small>
+            </article>
+          </div>
+        </section>
+
         <section className="resultsLayout">
           <article className="surfaceCard">
             <div className="sectionHeader">

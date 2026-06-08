@@ -562,6 +562,18 @@ export default function StudentExamSessionPage() {
               </div>
             </section>
 
+            <StudentJourneyValidationPanel
+              questionsCount={questions.length}
+              answeredCount={answeredCount}
+              sessionTiming={sessionTiming}
+              savedAt={savedAt || loadedDraftAt}
+              saveState={saveState}
+              lockdownBlocked={lockdownBlocked}
+              integrityPolicy={integrityPolicy}
+              fullscreenActive={fullscreenActive}
+              networkOnline={networkOnline}
+            />
+
             <section className="examSessionLayout">
               <div className="examQuestionStack">
                 {questions.length ? (
@@ -826,7 +838,69 @@ function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
         </div>
         <div className="heroActions examDoneActions">
           <button className="btn btnPrimary" type="button" onClick={onDone}>Return to exams</button>
+          <Link className="btn" to="/results">View results queue</Link>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function StudentJourneyValidationPanel({
+  questionsCount,
+  answeredCount,
+  sessionTiming,
+  savedAt,
+  saveState,
+  lockdownBlocked,
+  integrityPolicy,
+  fullscreenActive,
+  networkOnline,
+}) {
+  const items = [
+    {
+      label: "Attempt access",
+      detail: lockdownBlocked ? "Blocked by lockdown readiness" : "Student can access this attempt",
+      passed: !lockdownBlocked,
+    },
+    {
+      label: "Questions",
+      detail: questionsCount > 0 ? `${questionsCount} loaded` : "No questions loaded",
+      passed: questionsCount > 0,
+    },
+    {
+      label: "Timer",
+      detail: sessionTiming?.expiresAt ? `Ends ${formatSavedAt(sessionTiming.expiresAt)}` : "No session timer",
+      passed: Boolean(sessionTiming?.expiresAt),
+    },
+    {
+      label: "Draft safety",
+      detail: savedAt ? `${formatSaveState(saveState)} at ${formatSavedAt(savedAt)}` : "Waiting for first answer",
+      passed: Boolean(savedAt) || answeredCount === 0,
+    },
+    {
+      label: "Integrity",
+      detail: `${fullscreenActive ? "Fullscreen active" : "Fullscreen available"}; ${networkOnline ? "online" : "offline"}`,
+      passed: Boolean(integrityPolicy) || fullscreenActive || networkOnline,
+    },
+  ];
+
+  return (
+    <section className="studentJourneyPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Student journey validation</h3>
+          <span className="sectionMeta">Use this panel during final testing to confirm the exam session is ready end to end.</span>
+        </div>
+        <span className="statusPill statusLive">{items.filter((item) => item.passed).length}/{items.length}</span>
+      </div>
+      <div className="studentJourneyGrid">
+        {items.map((item) => (
+          <article key={item.label} className={item.passed ? "journeyCheckPassed" : "journeyCheckWarn"}>
+            <span>{item.passed ? "Ready" : "Check"}</span>
+            <strong>{item.label}</strong>
+            <small>{item.detail}</small>
+          </article>
+        ))}
       </div>
     </section>
   );

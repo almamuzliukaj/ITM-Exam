@@ -20,6 +20,7 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 14. [Delivery Plan and Notion Sprint Board](14-delivery-plan.md)
 15. [Manual Test Guide](test-guide.md)
 16. [SMU Integration Plan](smu-integration-plan.md)
+17. [University Demo Readiness Checklist](demo-readiness-checklist.md)
 
 ## Supporting Documents
 

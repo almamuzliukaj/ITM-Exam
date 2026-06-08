@@ -53,3 +53,6 @@ Student pages must show only eligible published academic content.
 - Draft exam actions should not be shown after publication unless explicitly supported.
 - UI labels should use consistent English terminology.
 - Demo-critical dashboards should show role-specific readiness checkpoints before final presentation.
+- Controlled choices should use labeled dropdowns with professional placeholders and disabled states.
+- Staff and admin tables should remain scannable on desktop and contained inside horizontal wrappers on mobile.
+- UI consistency should be reviewed against `docs/university-ui-consistency-review.md` before demo-critical frontend pull requests.

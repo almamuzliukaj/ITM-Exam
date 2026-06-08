@@ -983,7 +983,13 @@
   background: #ffffff;
   color: var(--text);
   outline: none;
-  transition: border-color .18s ease, box-shadow .18s ease;
+  min-height: 48px;
+  line-height: 1.35;
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+
+.input:hover:not(:disabled){
+  border-color: #8fa2b8;
 }
 
 .input:focus{
@@ -1001,13 +1007,33 @@ select.input{
   appearance: none;
   padding-right: 44px;
   background-image:
+    linear-gradient(180deg, #ffffff, #f7fafc),
     linear-gradient(45deg, transparent 50%, #48627f 50%),
     linear-gradient(135deg, #48627f 50%, transparent 50%);
   background-position:
+    0 0,
     calc(100% - 20px) 52%,
     calc(100% - 14px) 52%;
-  background-size: 6px 6px, 6px 6px;
+  background-size:
+    100% 100%,
+    6px 6px,
+    6px 6px;
   background-repeat: no-repeat;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+select.input:disabled{
+  background-image:
+    linear-gradient(180deg, #eef2f6, #e7edf4),
+    linear-gradient(45deg, transparent 50%, #7c8a9a 50%),
+    linear-gradient(135deg, #7c8a9a 50%, transparent 50%);
+  cursor: not-allowed;
+}
+
+select.input option{
+  color: var(--text);
+  background: #ffffff;
 }
 
 .textarea{
@@ -1101,6 +1127,7 @@ input[type="radio"]{
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #ffffff;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dataTable{
@@ -1123,6 +1150,11 @@ input[type="radio"]{
   letter-spacing: .1em;
   color: var(--muted);
   background: #f4f7fb;
+  white-space: nowrap;
+}
+
+.dataTable tbody tr:hover{
+  background: #f8fbfe;
 }
 
 .actionsCol{
@@ -1175,6 +1207,7 @@ input[type="radio"]{
   gap: 8px;
   min-height: 128px;
   justify-content: center;
+  overflow-wrap: anywhere;
 }
 
 .emptyState strong{

@@ -59,3 +59,4 @@ Before presenting, confirm the local or shared demo database has:
 - No demo-critical screen is blank without an explanation.
 - Main workflows have loading, empty, error, and success states.
 - The student path from eligibility to results can be explained without hidden steps.
+- Screenshots and build evidence are recorded in `docs/release-qa-evidence.md` before final delivery.

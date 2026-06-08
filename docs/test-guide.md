@@ -154,3 +154,12 @@ Before opening a pull request:
 2. Confirm the commit message is written professionally.
 3. Confirm the PR description lists summary, testing, notes, and dependencies.
 4. Use `docs/professional-change-workflow.md` as the source of truth for Git handoff.
+
+## 10. Release QA Evidence
+
+Before final demo or release:
+
+1. Complete the role walkthroughs in `docs/release-qa-evidence.md`.
+2. Capture the required screenshots listed there.
+3. Record frontend/backend build results in the PR notes.
+4. Confirm any known limitation is written clearly instead of being hidden.

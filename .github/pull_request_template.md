@@ -15,6 +15,12 @@
 - Dependencies:
 - Known limitations:
 
+## Release Evidence
+
+- [ ] Required screenshots captured when this is demo-critical
+- [ ] Known limitations documented
+- [ ] Branch dependency order is clear
+
 ## Reviewer Focus
 
 - 

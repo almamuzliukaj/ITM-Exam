@@ -135,3 +135,13 @@ npm run build
 ```
 
 Generated folders such as `bin/`, `obj/`, `dist/`, and `temp_build*/` must not be committed.
+
+## 8. University Demo Readiness
+
+Before a final presentation:
+
+1. Open the dashboard as Admin, Professor, Assistant, and Student.
+2. Confirm each dashboard shows `University demo readiness`.
+3. Confirm any `Review` checkpoint has a clear reason and can be explained.
+4. Use `docs/demo-readiness-checklist.md` as the role-by-role walkthrough.
+5. Confirm the student flow still passes Section 3 after any setup changes.

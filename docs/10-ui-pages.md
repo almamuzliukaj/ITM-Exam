@@ -52,3 +52,4 @@ Student pages must show only eligible published academic content.
 - Buttons should reflect real workflow state, such as draft versus published.
 - Draft exam actions should not be shown after publication unless explicitly supported.
 - UI labels should use consistent English terminology.
+- Demo-critical dashboards should show role-specific readiness checkpoints before final presentation.

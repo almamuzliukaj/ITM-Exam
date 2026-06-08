@@ -1332,6 +1332,72 @@ input[type="radio"]{
   background: linear-gradient(180deg, #ffffff, #fbfcfe);
 }
 
+.demoReadinessPanel{
+  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+}
+
+.demoReadinessPanel .sectionHeader{
+  background: #f7f9fc;
+}
+
+.demoReadinessGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.demoReadinessGrid article{
+  min-height: 128px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.demoReadinessGrid article span{
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.demoReadinessGrid article strong{
+  display: block;
+  margin-top: 10px;
+  color: var(--heading);
+}
+
+.demoReadinessGrid article p{
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.demoReadyItem{
+  border-color: rgba(17,122,81,.24) !important;
+  background: #f4fbf7 !important;
+}
+
+.demoReadyItem span{
+  background: #dcfce7;
+  color: #166534;
+}
+
+.demoWatchItem{
+  border-color: rgba(180,83,9,.26) !important;
+  background: #fffaf4 !important;
+}
+
+.demoWatchItem span{
+  background: #ffedd5;
+  color: #9a3412;
+}
+
 .dashboardHeaderActions{
   display: flex;
   gap: 12px;
@@ -2634,6 +2700,7 @@ input[type="radio"]{
   .adminDashboardHero,
   .adminMetricGrid,
   .adminSectionGrid,
+  .demoReadinessGrid,
   .questionBankGrid,
   .questionBankFormGrid,
   .formGridTwo,

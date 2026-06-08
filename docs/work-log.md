@@ -1,5 +1,10 @@
 # Work Log (Agnesa14)
 
+## 2026-06-08 - Sprint 25
+- Added a university demo readiness panel to role dashboards.
+- Documented role-by-role presentation checks in `docs/demo-readiness-checklist.md`.
+- Connected the demo readiness checklist from the master docs and manual test guide.
+
 ## 2026-05-29 - Sprint 24
 - Completed Agnesa's student journey validation pass.
 - Added visible validation checkpoints to the student exam session and result pages.

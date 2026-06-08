@@ -163,3 +163,13 @@ Before final demo or release:
 2. Capture the required screenshots listed there.
 3. Record frontend/backend build results in the PR notes.
 4. Confirm any known limitation is written clearly instead of being hidden.
+
+## 11. Demo Operations Smoke Check
+
+Before presenting the project live:
+
+1. Follow `docs/demo-operations-runbook.md` from startup through port checks.
+2. Confirm PostgreSQL, backend, and frontend are running from clean terminals.
+3. Confirm `git status` is clean on the branch being demonstrated.
+4. Confirm common failures have a known fix before the demo starts.
+5. Do not switch branches, pull, or rebase during the presentation.

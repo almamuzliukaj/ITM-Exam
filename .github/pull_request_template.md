@@ -20,6 +20,7 @@
 - [ ] Required screenshots captured when this is demo-critical
 - [ ] Known limitations documented
 - [ ] Branch dependency order is clear
+- [ ] Demo operations runbook checked when this changes startup, testing, or presentation flow
 
 ## Reviewer Focus
 

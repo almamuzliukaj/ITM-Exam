@@ -102,9 +102,12 @@ export default function RoleDashboardPanels({ role = "Student" }) {
 }
 
 function AdminDashboard({ config }) {
+  const nextActions = config.quickActions.slice(0, 3);
+  const priorityItems = config.sections.flatMap((section) => section.items).slice(0, 5);
+
   return (
     <div className="stackXl">
-      <section className="adminDashboardHero">
+      <section className="adminDashboardHero adminDashboardHeroCompact">
         <div className="adminDashboardHeroCopy">
           <div className="adminHeroBrand">
             <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
@@ -112,12 +115,12 @@ function AdminDashboard({ config }) {
           </div>
           <div className="eyebrow">{config.badge}</div>
           <h2 className="heroTitle">{config.heroTitle}</h2>
-          <p className="heroText">{config.heroText}</p>
-          <AcademicHeroMeta items={["Academic year control", "Role governance", "Assessment readiness"]} />
+          <p className="heroText adminHeroTextCompact">{config.heroText}</p>
         </div>
-        <div className="adminHeroActions">
-          {config.quickActions.map((action) => (
-            <Link key={action.to} className="btn btnPrimary" to={action.to}>
+        <div className="adminQuickActionRail">
+          <span className="summaryLabel">Next actions</span>
+          {nextActions.map((action, index) => (
+            <Link key={action.to} className={index === 0 ? "btn btnPrimary" : "btn"} to={action.to}>
               {action.label}
             </Link>
           ))}
@@ -136,24 +139,23 @@ function AdminDashboard({ config }) {
 
       <DemoReadinessPanel roleKey="admin" />
 
-      <section className="adminSectionGrid">
-        {config.sections.map((section) => (
-          <article key={section.title} className="surfaceCard adminSectionCard">
-            <div className="sectionHeader">
-              <h3>{section.title}</h3>
-            </div>
-            <div className="sectionBody">
-              <div className="bulletStack adminList">
-                {section.items.map((item) => (
-                  <div key={item} className="listRow">
-                    <span className="listDot" />
-                    <span>{item}</span>
-                  </div>
-                ))}
+      <section className="surfaceCard adminNextActionCard">
+        <div className="sectionHeader">
+          <div>
+            <h3>Operational focus</h3>
+            <span className="sectionMeta">Short checklist for the next admin review.</span>
+          </div>
+        </div>
+        <div className="sectionBody">
+          <div className="adminCompactChecklist">
+            {priorityItems.map((item) => (
+              <div key={item} className="listRow">
+                <span className="listDot" />
+                <span>{item}</span>
               </div>
-            </div>
-          </article>
-        ))}
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );

@@ -101,7 +101,7 @@ export default function AdminSmuIntegrationPage() {
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
 
-        <section className="adminDashboardHero">
+        <section className="adminDashboardHero adminDashboardHeroCompact">
           <div className="adminDashboardHeroCopy">
             <div className="adminHeroBrand">
               <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />

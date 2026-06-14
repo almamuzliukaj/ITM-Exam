@@ -16,6 +16,7 @@ const navigationByRole = {
         { to: "/admin/academic", labelKey: "shell.nav.adminAcademic", icon: "AC" },
         { to: "/admin/enrollments", labelKey: "shell.nav.adminEnrollments", icon: "EN" },
         { to: "/admin/users", labelKey: "shell.nav.adminUsers", icon: "US" },
+        { to: "/admin/smu", labelKey: "shell.nav.adminSmu", icon: "SM" },
         { to: "/reports", labelKey: "shell.nav.adminReports", icon: "RP" },
       ],
     },

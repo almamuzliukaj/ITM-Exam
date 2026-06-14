@@ -60,11 +60,6 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
-export async function getExamLockdownReadiness(examId) {
-  const response = await api.get(`/api/exams/${examId}/lockdown-readiness`);
-  return response.data;
-}
-
 export async function addQuestion(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/questions`, payload);
   return response.data;

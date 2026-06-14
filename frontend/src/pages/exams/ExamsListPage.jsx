@@ -68,6 +68,11 @@ export default function ExamsListPage() {
     }
   }
 
+  function onStartExam(exam) {
+    if (!exam?.id) return;
+    window.location.href = `/exams/${exam.id}/attempt`;
+  }
+
   return (
     <AppShell
       user={user}
@@ -109,9 +114,6 @@ export default function ExamsListPage() {
                   <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
                     {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
                   </span>
-                  {exam.requiresLockdown ? (
-                    <span className="statusPill statusWarn">Lockdown</span>
-                  ) : null}
                   <span className="small">{exam.durationMinutes || 60} min</span>
                 </div>
                 <h3>{exam.title}</h3>
@@ -132,9 +134,15 @@ export default function ExamsListPage() {
                         {deletingId === exam.id ? "Deleting..." : "Delete draft"}
                       </button>
                     ) : null}
-                    <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                      {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
-                    </Link>
+                    {isStudent ? (
+                      <button className="btn btnPrimary" type="button" onClick={() => onStartExam(exam)}>
+                        Start
+                      </button>
+                    ) : (
+                      <Link className="btn" to={`/exams/${exam.id}`}>
+                        {t("examsList.open")}
+                      </Link>
+                    )}
                   </div>
                 </div>
               </article>

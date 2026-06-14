@@ -1,15 +1,15 @@
 import React from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { getToken } from "../lib/auth";
 
 export default function ProtectedRoute() {
   const token = getToken();
+  const location = useLocation();
 
-  // Nëse nuk ka token, dërgoje te login
   if (!token) {
-    return <Navigate to="/login" replace />;
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
 
-  // Nëse ka token, lejoje të shohë faqen (Outlet)
   return <Outlet />;
 }

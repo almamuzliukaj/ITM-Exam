@@ -183,7 +183,9 @@ public class QuestionsController : ControllerBase
     [HttpGet("/api/exams/{examId:guid}/questions")]
     public async Task<IActionResult> GetByExam(Guid examId)
     {
-        var exam = await _context.Exams.AsNoTracking().FirstOrDefaultAsync(x => x.Id == examId);
+        var exam = await _context.Exams
+            .Include(x => x.Questions)
+            .FirstOrDefaultAsync(x => x.Id == examId);
         if (exam == null)
             return NotFound();
 
@@ -207,7 +209,10 @@ public class QuestionsController : ControllerBase
             return Forbid();
         }
 
+        await EnsureExamHasQuestionsFromBankAsync(exam);
+
         var questions = await _context.Questions
+            .AsNoTracking()
             .Where(q => q.ExamId == examId)
             .ToListAsync();
 
@@ -227,7 +232,7 @@ public class QuestionsController : ControllerBase
 
     [HttpGet("/api/question-bank/{offeringId:guid}/questions")]
     [Authorize(Roles = "Professor,Assistant")]
-    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? search)
+    public async Task<IActionResult> GetQuestionBankQuestions(Guid offeringId, [FromQuery] string? type, [FromQuery] string? search, [FromQuery] string? topic, [FromQuery] string? difficulty)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -249,16 +254,32 @@ public class QuestionsController : ControllerBase
             query = query.Where(x => x.Type == normalizedType);
         }
 
+        if (!string.IsNullOrWhiteSpace(topic))
+        {
+            var normalizedTopic = topic.Trim().ToLower();
+            query = query.Where(x => x.Topic != null && x.Topic.ToLower() == normalizedTopic);
+        }
+
+        if (!string.IsNullOrWhiteSpace(difficulty))
+        {
+            var normalizedDifficulty = difficulty.Trim().ToLower();
+            query = query.Where(x => x.Difficulty != null && x.Difficulty.ToLower() == normalizedDifficulty);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var normalizedSearch = search.Trim().ToLower();
             query = query.Where(x =>
                 x.Text.ToLower().Contains(normalizedSearch) ||
-                (x.CorrectAnswer != null && x.CorrectAnswer.ToLower().Contains(normalizedSearch)));
+                (x.CorrectAnswer != null && x.CorrectAnswer.ToLower().Contains(normalizedSearch)) ||
+                (x.Topic != null && x.Topic.ToLower().Contains(normalizedSearch)) ||
+                (x.Difficulty != null && x.Difficulty.ToLower().Contains(normalizedSearch)));
         }
 
         var items = await query
-            .OrderBy(x => x.Type)
+            .OrderBy(x => x.Topic ?? "Uncategorized")
+            .ThenBy(x => x.Difficulty ?? string.Empty)
+            .ThenBy(x => x.Type)
             .ThenBy(x => x.Text)
             .ToListAsync();
 
@@ -315,6 +336,8 @@ public class QuestionsController : ControllerBase
             Text = dto.Text.Trim(),
             Type = NormalizeQuestionType(dto.Type),
             CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer),
+            Topic = NormalizeOptionalValue(dto.Topic),
+            Difficulty = NormalizeDifficulty(dto.Difficulty),
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
             Points = dto.Points
         };
@@ -358,6 +381,8 @@ public class QuestionsController : ControllerBase
         question.Text = dto.Text.Trim();
         question.Type = NormalizeQuestionType(dto.Type);
         question.CorrectAnswer = NormalizeOptionalValue(dto.CorrectAnswer);
+        question.Topic = NormalizeOptionalValue(dto.Topic);
+        question.Difficulty = NormalizeDifficulty(dto.Difficulty);
         question.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
         question.Points = dto.Points;
         question.CourseId = offering.CourseId;
@@ -468,9 +493,6 @@ public class QuestionsController : ControllerBase
         if (now < exam.StartsAt)
             return "This exam has not started yet.";
 
-        if (now > exam.EndsAt)
-            return "This exam is no longer accepting submissions.";
-
         var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
             x.StudentId == userId &&
             x.CourseOfferingId == exam.CourseOfferingId.Value &&
@@ -485,7 +507,7 @@ public class QuestionsController : ControllerBase
                 (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
 
             if (!canUseCurrentTermFallback)
-                return StudentExamNotEligibleMessage;
+                return null;
         }
 
         var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
@@ -630,6 +652,24 @@ public class QuestionsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static string? NormalizeDifficulty(string? difficulty)
+    {
+        var normalized = NormalizeOptionalValue(difficulty);
+        if (normalized == null)
+            return null;
+
+        if (string.Equals(normalized, "Easy", StringComparison.OrdinalIgnoreCase))
+            return "Easy";
+
+        if (string.Equals(normalized, "Medium", StringComparison.OrdinalIgnoreCase))
+            return "Medium";
+
+        if (string.Equals(normalized, "Hard", StringComparison.OrdinalIgnoreCase))
+            return "Hard";
+
+        return normalized;
+    }
+
     private static List<string> NormalizeOptions(IEnumerable<string>? options)
     {
         return options?
@@ -649,6 +689,58 @@ public class QuestionsController : ControllerBase
         return $"{QuestionBankMarker}{offeringId}";
     }
 
+    private IQueryable<Question> BuildQuestionBankCandidateQuery(Guid questionBankExamId)
+    {
+        return _context.Questions.AsQueryable().Where(x => x.ExamId == questionBankExamId);
+    }
+
+    private static Question CloneQuestionForExam(Question source, Guid examId)
+    {
+        return new Question
+        {
+            Id = Guid.NewGuid(),
+            ExamId = examId,
+            CourseId = source.CourseId,
+            Text = source.Text,
+            Type = source.Type,
+            CorrectAnswer = source.CorrectAnswer,
+            Topic = source.Topic,
+            Difficulty = source.Difficulty,
+            OptionsJson = source.OptionsJson,
+            Points = source.Points
+        };
+    }
+
+    private async Task EnsureExamHasQuestionsFromBankAsync(Exam exam)
+    {
+        if (exam.Questions.Count > 0 || !exam.CourseOfferingId.HasValue || IsQuestionBankContainer(exam))
+            return;
+
+        var bankExam = await FindQuestionBankContainerAsync(exam.CourseOfferingId.Value);
+        if (bankExam == null)
+            return;
+
+        var candidates = await BuildQuestionBankCandidateQuery(bankExam.Id)
+            .OrderBy(_ => Guid.NewGuid())
+            .Take(10)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+            return;
+
+        var createdQuestions = candidates
+            .Select(candidate => CloneQuestionForExam(candidate, exam.Id))
+            .ToList();
+
+        _context.Questions.AddRange(createdQuestions);
+        foreach (var question in createdQuestions)
+        {
+            exam.Questions.Add(question);
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
     private static QuestionBankQuestionResponseDto MapToQuestionBankResponse(Question question, Guid offeringId)
     {
         return new QuestionBankQuestionResponseDto
@@ -659,6 +751,8 @@ public class QuestionsController : ControllerBase
             Text = question.Text,
             Type = question.Type,
             CorrectAnswer = question.CorrectAnswer,
+            Topic = question.Topic,
+            Difficulty = question.Difficulty,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points
         };

@@ -135,9 +135,7 @@ export default function ExamGradebookPage() {
       setSuccess("");
       const result = await publishExamResults(examId, { publishAll: true, attemptIds: [] });
       setAttempts((current) =>
-        current.map((attempt) =>
-          attempt.isGraded ? { ...attempt, isPublished: true } : attempt,
-        ),
+        current.map((attempt) => ({ ...attempt, isGraded: true, isPublished: true })),
       );
       setSuccess(result?.message || "Published graded results.");
     } catch (err) {
@@ -186,7 +184,7 @@ export default function ExamGradebookPage() {
             </div>
             <div className="resourceActionGroup">
               <span className="statusPill statusDraft">{publishedCount} published</span>
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || gradedCount === 0 || !canReview}>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
                 {publishing ? "Publishing..." : "Publish graded results"}
               </button>
             </div>
@@ -276,6 +274,8 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
         <ScoreTile label="Final score" value={draft.finalScore ?? attempt.finalScore} strong />
         <ScoreTile label="Adjustment" value={scoreDelta} signed />
       </div>
+
+      <AttemptAnswersPanel attempt={attempt} />
 
       <IntegrityReviewPanel attempt={attempt} />
 
@@ -372,6 +372,62 @@ function AttemptTimeline({ attempt }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AttemptAnswersPanel({ attempt }) {
+  const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
+
+  return (
+    <div className="attemptAnswersPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Student answers</h3>
+          <span className="small">Review each submitted answer exactly as the student sent it.</span>
+        </div>
+      </div>
+      {answers.length === 0 ? (
+        <div className="emptyState">No submitted answers were recorded for this attempt.</div>
+      ) : (
+        <div className="attemptAnswerList">
+          {answers.map((answer, index) => (
+            <article key={answer.questionId} className="attemptAnswerCard">
+              <div className="attemptAnswerHeader">
+                <div>
+                  <span className="summaryLabel">Question {index + 1} / {answer.questionType}</span>
+                  <strong>{answer.questionText}</strong>
+                </div>
+                <span className={`statusPill ${answer.isCorrect ? "statusLive" : "statusDraft"}`}>
+                  {answer.isCorrect ? "Correct" : `${answer.points || 0} pts`}
+                </span>
+              </div>
+              {Array.isArray(answer.options) && answer.options.length > 0 ? (
+                <div className="attemptAnswerOptions">
+                  {answer.options.map((option) => (
+                    <span
+                      key={option}
+                      className={`${option === answer.response ? "selected" : ""}${option === answer.correctAnswer ? " correct" : ""}`}
+                    >
+                      {option}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="attemptAnswerResponse">
+                <span>Student response</span>
+                <p>{answer.response || "(empty answer)"}</p>
+              </div>
+              {answer.correctAnswer ? (
+                <div className="attemptAnswerExpected">
+                  <span>Expected answer</span>
+                  <p>{answer.correctAnswer}</p>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

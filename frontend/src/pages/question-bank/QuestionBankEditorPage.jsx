@@ -34,6 +34,8 @@ const EMPTY_FORM = {
   text: "",
   type: "MCQ",
   points: 10,
+  topic: "",
+  difficulty: "Medium",
   correctAnswer: "",
   options: ["", ""],
   starterCode: starterTemplates.CSharp,
@@ -82,6 +84,8 @@ export default function QuestionBankEditorPage() {
             text: extractPrompt(question.text || ""),
             type: question.type || "MCQ",
             points: Number(question.points) || 10,
+            topic: question.topic || "",
+            difficulty: question.difficulty || "Medium",
             correctAnswer: !technicalTypes.has(question.type) ? (question.correctAnswer || "") : "",
             options: Array.isArray(question.options) && question.options.length > 0 ? question.options : ["", ""],
             starterCode: extractStarterCode(question.text || "", question.type || "MCQ"),
@@ -149,6 +153,8 @@ export default function QuestionBankEditorPage() {
         text: buildQuestionText(form),
         type: form.type,
         points: Number(form.points) || 0,
+        topic: form.topic.trim(),
+        difficulty: form.difficulty,
         correctAnswer: technicalTypes.has(form.type) ? form.expectedAnswer.trim() : form.correctAnswer.trim(),
         options: form.type === "MCQ" ? form.options : [],
       };
@@ -264,6 +270,31 @@ export default function QuestionBankEditorPage() {
                       onChange={(e) => setForm((current) => ({ ...current, points: Number(e.target.value) }))}
                       disabled={saving}
                     />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionBank.topic")}</label>
+                    <input
+                      className="input"
+                      value={form.topic}
+                      onChange={(e) => setForm((current) => ({ ...current, topic: e.target.value }))}
+                      disabled={saving}
+                      placeholder={t("questionBank.editor.topicPlaceholder")}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">{t("questionBank.difficulty")}</label>
+                    <select
+                      className="input"
+                      value={form.difficulty}
+                      onChange={(e) => setForm((current) => ({ ...current, difficulty: e.target.value }))}
+                      disabled={saving}
+                    >
+                      <option value="Easy">{t("questionBank.difficulties.easy")}</option>
+                      <option value="Medium">{t("questionBank.difficulties.medium")}</option>
+                      <option value="Hard">{t("questionBank.difficulties.hard")}</option>
+                    </select>
                   </div>
                 </div>
               </div>

@@ -157,6 +157,11 @@ export default function ExamDetailsPage() {
     }
   }
 
+  function onStartAttempt() {
+    if (!examId) return;
+    window.location.href = `/exams/${examId}/attempt`;
+  }
+
   return (
     <AppShell
       user={user}
@@ -172,7 +177,11 @@ export default function ExamDetailsPage() {
               {publishing ? "Publishing..." : "Publish exam"}
             </button>
           ) : null}
-          {isStudent && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/attempt`}>Start attempt</Link> : null}
+          {isStudent && examId ? (
+            <button className="btn btnPrimary" type="button" onClick={onStartAttempt}>
+              Start attempt
+            </button>
+          ) : null}
           {canEdit && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
         </>
       }
@@ -197,33 +206,6 @@ export default function ExamDetailsPage() {
                 <span className="summaryLabel">{t("examDetails.questions")}</span>
                 <strong>{questions.length}</strong>
               </article>
-              <article className="summaryCard">
-                <span className="summaryLabel">Lockdown</span>
-                <strong>{exam?.requiresLockdown ? "Required" : "Optional"}</strong>
-              </article>
-            </section>
-
-            <section className="surfaceCard">
-              <div className="sectionHeader">
-                <h3>Exam integrity readiness</h3>
-                <span className="small">{exam?.requiresLockdown ? "Lockdown policy is configured for this exam." : "Standard browser guard is active for student sessions."}</span>
-              </div>
-              <div className="sectionBody">
-                <div className="lockdownReadinessGrid">
-                  <article>
-                    <span className="summaryLabel">Allowed client</span>
-                    <strong>{formatLockdownClient(exam?.allowedClient)}</strong>
-                  </article>
-                  <article>
-                    <span className="summaryLabel">Policy</span>
-                    <strong>{exam?.lockdownMode || "Advisory"}</strong>
-                  </article>
-                  <article>
-                    <span className="summaryLabel">Review path</span>
-                    <strong>Gradebook timeline</strong>
-                  </article>
-                </div>
-              </div>
             </section>
 
             {isDraft && !exam?.courseOfferingId ? (
@@ -447,12 +429,6 @@ function formatOfferingLabel(offering) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
 
   return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
-}
-
-function formatLockdownClient(value) {
-  if (value === "SafeExamBrowser") return "Safe Exam Browser";
-  if (value === "KioskClient") return "Kiosk client";
-  return "Standard browser";
 }
 
 function isPositiveNumber(value) {

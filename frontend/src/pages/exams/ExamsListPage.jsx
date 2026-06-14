@@ -92,6 +92,11 @@ export default function ExamsListPage() {
     }
   }
 
+  function onStartExam(exam) {
+    if (!exam?.id) return;
+    window.location.href = `/exams/${exam.id}/attempt`;
+  }
+
   return (
     <AppShell
       user={user}
@@ -146,6 +151,45 @@ export default function ExamsListPage() {
             <p>{t("examsList.emptyTitle")}</p>
             <p>{t("examsList.emptyText")}</p>
           </div>
+ exam-session-question-bank-fixes
+        ) : (
+          <section className="resourceGrid">
+            {exams.map((exam) => (
+              <article key={exam.id} className="resourceCard">
+                <div className="resourceMetaRow">
+                  <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
+                    {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
+                  </span>
+                  <span className="small">{exam.durationMinutes || 60} min</span>
+                </div>
+                <h3>{exam.title}</h3>
+                <p>{exam.description || t("examsList.noDescription")}</p>
+                <div className="resourceFooter">
+                  <div className="small">{t("examsList.openHint")}</div>
+                  <div className="resourceActionGroup">
+                    {canCreate && !exam.isPublished ? (
+                      <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
+                    ) : null}
+                    {canCreate && !exam.isPublished ? (
+                      <button
+                        className="btn btnDanger"
+                        type="button"
+                        onClick={() => onDeleteDraft(exam)}
+                        disabled={deletingId === exam.id}
+                      >
+                        {deletingId === exam.id ? "Deleting..." : "Delete draft"}
+                      </button>
+                    ) : null}
+                    {isStudent ? (
+                      <button className="btn btnPrimary" type="button" onClick={() => onStartExam(exam)}>
+                        Start
+                      </button>
+                    ) : (
+                      <Link className="btn" to={`/exams/${exam.id}`}>
+                        {t("examsList.open")}
+                      </Link>
+                    )}
+
         ) : isStudent ? (
           <section className="stackLg">
             <div className="resourceGrid">
@@ -182,6 +226,7 @@ export default function ExamsListPage() {
                         {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
                       </Link>
                     </div>
+ main
                   </div>
                 </article>
               ))}

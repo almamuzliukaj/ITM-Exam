@@ -8,6 +8,8 @@ public class Question
     public string? OptionsJson { get; set; }
     public string Type { get; set; } = null!;
     public string? CorrectAnswer { get; set; }
+    public string? Topic { get; set; }
+    public string? Difficulty { get; set; }
     public string Text { get; set; } = null!;
     public int Points { get; set; }
 

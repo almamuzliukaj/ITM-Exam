@@ -1,19 +1,22 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { login } from "../lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
+  const returnTo = searchParams.get("returnTo");
+  const isExamAttemptLogin = Boolean(returnTo?.includes("/attempt"));
   const presets = [
     { label: t("login.presets.admin"), email: "admin@onlineexam.com", password: "Password123!" },
     { label: t("login.presets.professor"), email: "prof@onlineexam.com", password: "Password123!" },
     { label: t("login.presets.student"), email: "student@onlineexam.com", password: "Password123!" },
   ];
 
-  const [email, setEmail] = useState("admin@onlineexam.com");
+  const [email, setEmail] = useState(isExamAttemptLogin ? "student@onlineexam.com" : "admin@onlineexam.com");
   const [password, setPassword] = useState("Password123!");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -25,7 +28,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/dashboard");
+      navigate(getSafeReturnPath(returnTo), { replace: true });
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -150,4 +153,12 @@ export default function Login() {
       </div>
     </div>
   );
+}
+
+function getSafeReturnPath(value) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return value;
 }

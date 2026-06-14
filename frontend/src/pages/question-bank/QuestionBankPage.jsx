@@ -19,6 +19,8 @@ export default function QuestionBankPage() {
     type: "",
     search: "",
   });
+  const [questionPage, setQuestionPage] = useState(1);
+  const [questionPageSize, setQuestionPageSize] = useState(6);
 
   const selectedOfferingId = searchParams.get("offeringId") || "";
 
@@ -79,6 +81,21 @@ export default function QuestionBankPage() {
     () => offerings.find((offering) => offering.id === selectedOfferingId) || null,
     [offerings, selectedOfferingId]
   );
+  const questionPageCount = Math.max(1, Math.ceil(questions.length / questionPageSize));
+  const visibleQuestions = useMemo(() => {
+    const startIndex = (questionPage - 1) * questionPageSize;
+    return questions.slice(startIndex, startIndex + questionPageSize);
+  }, [questionPage, questionPageSize, questions]);
+  const questionStart = questions.length === 0 ? 0 : (questionPage - 1) * questionPageSize + 1;
+  const questionEnd = Math.min(questions.length, questionPage * questionPageSize);
+
+  useEffect(() => {
+    setQuestionPage(1);
+  }, [filters.type, filters.search, selectedOfferingId, questionPageSize]);
+
+  useEffect(() => {
+    setQuestionPage((current) => Math.min(current, questionPageCount));
+  }, [questionPageCount]);
 
   async function handleDelete(questionId) {
     if (!window.confirm(t("questionBank.deleteConfirm"))) {
@@ -168,10 +185,21 @@ export default function QuestionBankPage() {
                   disabled={!selectedOfferingId}
                 />
               </div>
+
+              <div className="field questionBankField">
+                <label className="label">Per page</label>
+                <select className="input" value={questionPageSize} onChange={(e) => setQuestionPageSize(Number(e.target.value))} disabled={!selectedOfferingId}>
+                  <option value={6}>6 questions</option>
+                  <option value={12}>12 questions</option>
+                  <option value={24}>24 questions</option>
+                </select>
+              </div>
             </div>
 
             {selectedOffering ? (
-              <div className="small questionBankContext">{t("questionBank.selectedOffering", { offering: formatOffering(selectedOffering) })}</div>
+              <div className="small questionBankContext">
+                {t("questionBank.selectedOffering", { offering: formatOffering(selectedOffering) })} · Showing {questionStart}-{questionEnd} of {questions.length}
+              </div>
             ) : null}
           </div>
         </section>
@@ -191,45 +219,59 @@ export default function QuestionBankPage() {
             <p>{t("questionBank.emptyText")}</p>
           </div>
         ) : (
-          <section className="questionBankGrid">
-            {questions.map((question) => (
-              <article key={question.id} className="resourceCard questionBankCard">
-                <div className="resourceMetaRow">
-                  <span className={`statusPill ${question.type === "MCQ" ? "statusLive" : "statusDraft"}`}>{formatQuestionType(question.type)}</span>
-                  <span className="small">{t("questionBank.pointsValue", { count: question.points })}</span>
-                </div>
-                <h3>{extractPrompt(question)}</h3>
+          <section className="stackLg">
+            <div className="questionBankGrid">
+              {visibleQuestions.map((question) => (
+                <article key={question.id} className="resourceCard questionBankCard">
+                  <div className="resourceMetaRow">
+                    <span className={`statusPill ${question.type === "MCQ" ? "statusLive" : "statusDraft"}`}>{formatQuestionType(question.type)}</span>
+                    <span className="small">{t("questionBank.pointsValue", { count: question.points })}</span>
+                  </div>
+                  <h3>{extractPrompt(question)}</h3>
 
-                {question.type === "MCQ" ? (
-                  <div className="bulletStack compactStack">
-                    {question.options?.map((option) => (
-                      <div key={option} className="listRow">
-                        <span className="listDot" />
-                        <span>{option}{question.correctAnswer === option ? ` ${t("questionBank.correctTag")}` : ""}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : isTechnicalQuestion(question) ? (
-                  <TechnicalQuestionPreview question={question} />
-                ) : question.correctAnswer ? (
-                  <div className="questionBankModelAnswer">
-                    <strong>{t("questionBank.modelAnswer")}:</strong> {question.correctAnswer}
-                  </div>
-                ) : null}
+                  {question.type === "MCQ" ? (
+                    <div className="bulletStack compactStack">
+                      {question.options?.map((option) => (
+                        <div key={option} className="listRow">
+                          <span className="listDot" />
+                          <span>{option}{question.correctAnswer === option ? ` ${t("questionBank.correctTag")}` : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : isTechnicalQuestion(question) ? (
+                    <TechnicalQuestionPreview question={question} />
+                  ) : question.correctAnswer ? (
+                    <div className="questionBankModelAnswer">
+                      <strong>{t("questionBank.modelAnswer")}:</strong> {question.correctAnswer}
+                    </div>
+                  ) : null}
 
-                <div className="resourceFooter">
-                  <div className="small">{t("questionBank.cardHint")}</div>
-                  <div className="row questionBankActions">
-                    <Link className="btn" to={`/question-bank/questions/${question.id}/edit`}>
-                      {t("questionBank.edit")}
-                    </Link>
-                    <button className="btn btnGhost" type="button" onClick={() => handleDelete(question.id)}>
-                      {t("questionBank.delete")}
-                    </button>
+                  <div className="resourceFooter">
+                    <div className="small">{t("questionBank.cardHint")}</div>
+                    <div className="row questionBankActions">
+                      <Link className="btn" to={`/question-bank/questions/${question.id}/edit`}>
+                        {t("questionBank.edit")}
+                      </Link>
+                      <button className="btn btnGhost" type="button" onClick={() => handleDelete(question.id)}>
+                        {t("questionBank.delete")}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              ))}
+            </div>
+            <div className="paginationBar">
+              <span>Showing {questionStart}-{questionEnd} of {questions.length}</span>
+              <div className="paginationActions">
+                <button className="btn" type="button" disabled={questionPage <= 1} onClick={() => setQuestionPage((current) => Math.max(1, current - 1))}>
+                  Previous
+                </button>
+                <span className="paginationCurrent">Page {questionPage} of {questionPageCount}</span>
+                <button className="btn" type="button" disabled={questionPage >= questionPageCount} onClick={() => setQuestionPage((current) => Math.min(questionPageCount, current + 1))}>
+                  Next
+                </button>
+              </div>
+            </div>
           </section>
         )}
       </div>

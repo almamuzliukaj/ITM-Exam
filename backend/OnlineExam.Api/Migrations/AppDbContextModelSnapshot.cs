@@ -310,6 +310,9 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("MaximumPoints")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("RequiresLockdown")
                         .HasColumnType("boolean");
 

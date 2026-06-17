@@ -10,6 +10,11 @@ export async function createExam(payload) {
   return response.data;
 }
 
+export async function updateExam(examId, payload) {
+  const response = await api.put(`/api/exams/${examId}`, payload);
+  return response.data;
+}
+
 export async function publishExam(examId, payload = {}) {
   const response = await api.post(`/api/exams/${examId}/publish`, payload);
   return response.data;
@@ -72,6 +77,11 @@ export async function addQuestion(examId, payload) {
 
 export async function generateRandomQuestions(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/generate-random`, payload);
+  return response.data;
+}
+
+export async function updateExamQuestion(questionId, payload) {
+  const response = await api.put(`/api/questions/${questionId}`, payload);
   return response.data;
 }
 

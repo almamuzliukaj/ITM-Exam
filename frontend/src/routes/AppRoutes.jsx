@@ -54,6 +54,7 @@ export default function AppRoutes() {
           <Route path="/question-bank/new" element={<QuestionBankEditorPage />} />
           <Route path="/question-bank/questions/:questionId/edit" element={<QuestionBankEditorPage />} />
           <Route path="/exams/new" element={<ExamCreatePage />} />
+          <Route path="/exams/:examId/edit" element={<ExamCreatePage />} />
           <Route path="/exams/:examId/gradebook" element={<ExamGradebookPage />} />
         </Route>
 

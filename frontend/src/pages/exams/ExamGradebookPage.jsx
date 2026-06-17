@@ -55,6 +55,59 @@ export default function ExamGradebookPage() {
     };
   }, [examId]);
 
+  useEffect(() => {
+    const pendingAiAttempts = attempts.filter(
+      (attempt) => attempt.requiresManualGrading && !attempt.isGraded && !aiReviews[attempt.attemptId],
+    );
+
+    if (pendingAiAttempts.length === 0) return;
+
+    let active = true;
+
+    (async () => {
+      const reviews = await Promise.all(
+        pendingAiAttempts.map(async (attempt) => {
+          try {
+            const review = await evaluateTextAttempt(attempt.attemptId);
+            return { attemptId: attempt.attemptId, attempt, review };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (!active) return;
+
+      const successful = reviews.filter(Boolean);
+      if (successful.length === 0) return;
+
+      setAiReviews((current) => {
+        const next = { ...current };
+        for (const item of successful) {
+          next[item.attemptId] = item.review;
+        }
+        return next;
+      });
+
+      setDrafts((current) => {
+        const next = { ...current };
+        for (const item of successful) {
+          const suggestedManualScore = Number(item.review?.suggestedManualScore || 0);
+          next[item.attemptId] = {
+            manualScore: String(suggestedManualScore),
+            finalScore: String(Number(item.attempt.autoScore || 0) + suggestedManualScore),
+            notes: item.review?.reviewReminder || current[item.attemptId]?.notes || "",
+          };
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [attempts, aiReviews]);
+
   const gradedCount = useMemo(() => attempts.filter((attempt) => attempt.isGraded).length, [attempts]);
   const pendingCount = useMemo(() => attempts.filter((attempt) => !attempt.isGraded).length, [attempts]);
   const integrityCount = useMemo(
@@ -120,6 +173,14 @@ export default function ExamGradebookPage() {
             : item,
         ),
       );
+      setDrafts((current) => ({
+        ...current,
+        [attempt.attemptId]: {
+          manualScore: String(updated.manualScore ?? 0),
+          finalScore: String(updated.finalScore ?? updated.autoScore ?? 0),
+          notes: updated.gradingNotes || "",
+        },
+      }));
       setSuccess("Grade saved. The result remains hidden from students until published.");
     } catch (err) {
       setError(readApiMessage(err) || "Failed to save grade.");
@@ -252,7 +313,10 @@ export default function ExamGradebookPage() {
 
 function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabled, onDraftChange, onAiReview, onSaveGrade }) {
   const violationCount = Number(attempt.integrityViolationCount || 0);
-  const scoreDelta = Number(draft.finalScore || attempt.finalScore || 0) - Number(attempt.autoScore || 0);
+  const currentFinalScore = Number(draft.finalScore ?? attempt.finalScore ?? 0);
+  const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
+  const currentPercentage = attempt.examMaxPoints ? (currentFinalScore / Number(attempt.examMaxPoints || 0)) * 100 : 0;
+  const currentGrade = calculateGrade(currentPercentage);
 
   return (
     <article className="gradebookReviewCard">
@@ -272,8 +336,11 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
 
       <div className="gradebookScoreStrip">
         <ScoreTile label="Auto score" value={attempt.autoScore} />
-        <ScoreTile label="Manual score" value={draft.manualScore ?? attempt.manualScore} />
-        <ScoreTile label="Final score" value={draft.finalScore ?? attempt.finalScore} strong />
+        <ScoreTile label="AI/manual score" value={draft.manualScore ?? attempt.manualScore} />
+        <ScoreTile label="Final score" value={currentFinalScore} strong />
+        <ScoreTile label="Exam max points" value={attempt.examMaxPoints} />
+        <ScoreTile label="Score percentage" value={`${currentPercentage.toFixed(2)}%`} />
+        <ScoreTile label="Final grade" value={formatGrade(currentGrade, currentGrade >= 6)} />
         <ScoreTile label="Adjustment" value={scoreDelta} signed />
       </div>
 
@@ -321,7 +388,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
 
       <div className="resourceActionGroup gradebookActions">
         <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
-          {reviewing ? "Reviewing..." : "AI text review"}
+          {reviewing ? "Reviewing..." : "Re-run AI review"}
         </button>
         <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
           {saving ? "Saving..." : "Save human grade"}
@@ -348,7 +415,7 @@ function ScoreTile({ label, value, strong = false, signed = false }) {
   return (
     <div className={`gradebookScoreTile${strong ? " gradebookScoreTileStrong" : ""}`}>
       <span>{label}</span>
-      <strong>{signed ? formatSignedScore(value) : formatScore(value)}</strong>
+      <strong>{signed ? formatSignedScore(value) : formatDisplayValue(value)}</strong>
     </div>
   );
 }
@@ -469,6 +536,25 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatDisplayValue(value) {
+  if (typeof value === "string") return value;
+  return formatScore(value);
+}
+
+function formatGrade(grade, passed) {
+  if (!grade) return "-";
+  return `${grade} ${passed ? "(Pass)" : "(Fail)"}`;
+}
+
+function calculateGrade(percentage) {
+  if (percentage < 51) return 5;
+  if (percentage <= 60) return 6;
+  if (percentage <= 70) return 7;
+  if (percentage <= 80) return 8;
+  if (percentage <= 90) return 9;
+  return 10;
 }
 
 function matchesReviewFilter(attempt, filter) {

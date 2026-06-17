@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,41 @@ public class ExamsController : ControllerBase
     private const string IntegrityPolicyActionWarning = "Warning";
     private const string IntegrityPolicyActionFinalWarning = "FinalWarning";
     private const string IntegrityPolicyActionAutoSubmit = "AutoSubmit";
+    private static readonly HashSet<string> EvaluationStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "and", "for", "with", "that", "this", "from", "into", "your", "than", "then", "using",
+        "nje", "një", "dhe", "per", "për", "nga", "tek", "nje", "ose", "qe", "që", "eshte", "është",
+        "duhet", "mund", "me", "ne", "në", "te", "të", "si", "ku", "nga", "para", "pas", "gjithe", "gjithë"
+    };
+    private static readonly string[] SqlKeywords =
+    [
+        "select", "from", "where", "join", "group", "order", "by", "having", "count", "sum", "avg",
+        "insert", "update", "delete", "inner", "left", "right", "on", "distinct"
+    ];
+    private static readonly string[] CSharpKeywords =
+    [
+        "using", "system", "console", "writeline", "readline", "int", "string", "double", "decimal",
+        "parse", "return", "for", "foreach", "while", "if", "else", "class", "static", "void", "main", "public"
+    ];
+    private static readonly Dictionary<string, string[]> EvaluationSynonyms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["compiler"] = ["kompajler", "compiler", "kompilues"],
+        ["interpreter"] = ["interpreter", "interpretues"],
+        ["perkthen"] = ["perkthen", "perkthim", "perkthyer", "kompilon", "kompilon", "shnderron", "konverton"],
+        ["ekzekuton"] = ["ekzekuton", "ekzekutim", "run", "zbaton"],
+        ["hap"] = ["hap", "hapsh", "hapi", "step"],
+        ["rresht"] = ["rresht", "rreshti", "line"],
+        ["program"] = ["program", "kod", "aplikacion"],
+        ["para"] = ["para", "perpara", "meheret"],
+        ["lexon"] = ["lexon", "lexim", "read"],
+        ["pytje"] = ["pytje", "pyetje", "question"],
+        ["numer"] = ["numer", "numri", "number", "n"],
+        ["katror"] = ["katror", "square", "n*n", "n * n"],
+        ["filter"] = ["filter", "filtron", "where"],
+        ["student"] = ["student", "students", "studentet"],
+        ["viti"] = ["yearofstudy", "vit", "viti", "year"],
+        ["dy"] = ["2", "dy", "two"]
+    };
     private static readonly HashSet<string> AllowedIntegrityEventTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "TabHidden",
@@ -160,6 +196,9 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
 
+        if (dto.MaximumPoints <= 0)
+            return BadRequest(new { message = "MaximumPoints must be greater than 0." });
+
         if (dto.IsPublished)
             return BadRequest(new { message = "Exams must be created as drafts and published through the publish workflow." });
 
@@ -213,7 +252,8 @@ public class ExamsController : ControllerBase
             LockdownMode = NormalizeLockdownMode(dto.LockdownMode),
             CreatedByUserId = userId.Value,
             CreatedAt = DateTime.UtcNow,
-            CourseOfferingId = dto.CourseOfferingId
+            CourseOfferingId = dto.CourseOfferingId,
+            MaximumPoints = dto.MaximumPoints
         };
 
         _context.Exams.Add(exam);
@@ -223,6 +263,7 @@ public class ExamsController : ControllerBase
             exam.Title,
             exam.CourseOfferingId,
             exam.Status,
+            exam.MaximumPoints,
             exam.RequiresLockdown,
             exam.AllowedClient,
             exam.LockdownMode
@@ -242,9 +283,6 @@ public class ExamsController : ControllerBase
         if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
-        if (exam.IsPublished || exam.Status == "Published")
-            return BadRequest(new { message = "Published exams cannot be edited. Only draft exams can be edited." });
-
         var userId = GetCurrentUserId();
         if (userId == null)
             return Unauthorized();
@@ -254,6 +292,9 @@ public class ExamsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "Title is required." });
+
+        if (dto.MaximumPoints <= 0)
+            return BadRequest(new { message = "MaximumPoints must be greater than 0." });
 
         if (dto.IsPublished)
             return BadRequest(new { message = "Use the publish workflow to publish a draft exam after readiness checks pass." });
@@ -296,6 +337,7 @@ public class ExamsController : ControllerBase
         exam.DurationMinutes = durationMinutes;
         exam.IsPublished = false;
         exam.Status = "Draft";
+        exam.MaximumPoints = dto.MaximumPoints;
         exam.CourseOfferingId = dto.CourseOfferingId;
         exam.RequiresLockdown = dto.RequiresLockdown;
         exam.AllowedClient = NormalizeLockdownClient(dto.AllowedClient);
@@ -307,6 +349,7 @@ public class ExamsController : ControllerBase
             exam.Title,
             exam.CourseOfferingId,
             exam.Status,
+            exam.MaximumPoints,
             exam.RequiresLockdown,
             exam.AllowedClient,
             exam.LockdownMode
@@ -385,7 +428,7 @@ public class ExamsController : ControllerBase
         if (validationError != null)
             return BadRequest(new { message = validationError });
 
-        var (details, autoScore, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
+        var (details, autoScore, _, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
         var now = DateTime.UtcNow;
         var createdNewAttempt = false;
 
@@ -985,6 +1028,9 @@ public class ExamsController : ControllerBase
         if (!exam.CourseOfferingId.HasValue)
             return BadRequest(new { message = "Exam must be linked to a course offering before publishing." });
 
+        if (exam.MaximumPoints <= 0)
+            return BadRequest(new { message = "Exam maximum points must be greater than 0 before publishing." });
+
         var hasQuestions = await _context.Questions.AnyAsync(q => q.ExamId == id);
         if (!hasQuestions)
             return BadRequest(new { message = "Exam must have at least one question before publishing." });
@@ -1034,34 +1080,56 @@ public class ExamsController : ControllerBase
                 _context.Users,
                 attempt => attempt.StudentId,
                 user => user.Id,
-                (attempt, user) => new ExamAttemptSummaryDto
+                (attempt, user) => new
                 {
-                    AttemptId = attempt.Id,
-                    ExamId = attempt.ExamId,
-                    StudentId = attempt.StudentId,
+                    Attempt = attempt,
                     StudentName = user.FullName,
-                    StudentEmail = user.Email,
-                    Status = attempt.Status,
-                    StartedAt = attempt.StartedAt,
-                    LastSavedAt = attempt.LastSavedAt,
-                    SubmittedAt = attempt.SubmittedAt,
-                    AutoScore = attempt.AutoScore,
-                    ManualScore = attempt.ManualScore,
-                    FinalScore = attempt.FinalScore,
-                    RequiresManualGrading = attempt.RequiresManualGrading,
-                    IsGraded = attempt.IsGraded,
-                    IsPublished = attempt.IsPublished,
-                    GradedAt = attempt.GradedAt,
-                    GradingNotes = attempt.GradingNotes,
-                    IntegrityViolationCount = attempt.IntegrityViolationCount,
-                    IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
-                    IntegrityPolicyAction = attempt.IntegrityPolicyAction,
-                    IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
+                    StudentEmail = user.Email
                 })
-            .OrderByDescending(x => x.SubmittedAt)
+            .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
 
-        foreach (var attempt in attempts)
+        var questionTotal = await _context.Questions
+            .Where(x => x.ExamId == id)
+            .SumAsync(x => (double)x.Points);
+        var examMaxPoints = ResolveExamMaximumPoints(exam, questionTotal);
+
+        var mappedAttempts = attempts
+            .Select(item =>
+            {
+                var scorePercentage = CalculateScorePercentage(item.Attempt.FinalScore, examMaxPoints);
+                return new ExamAttemptSummaryDto
+                {
+                    AttemptId = item.Attempt.Id,
+                    ExamId = item.Attempt.ExamId,
+                    StudentId = item.Attempt.StudentId,
+                    StudentName = item.StudentName,
+                    StudentEmail = item.StudentEmail,
+                    Status = item.Attempt.Status,
+                    StartedAt = item.Attempt.StartedAt,
+                    LastSavedAt = item.Attempt.LastSavedAt,
+                    SubmittedAt = item.Attempt.SubmittedAt,
+                    AutoScore = item.Attempt.AutoScore,
+                    ManualScore = item.Attempt.ManualScore,
+                    FinalScore = item.Attempt.FinalScore,
+                    ExamMaxPoints = examMaxPoints,
+                    ScorePercentage = scorePercentage,
+                    FinalGrade = CalculateFinalGrade(scorePercentage),
+                    IsPassed = IsPassingGrade(scorePercentage),
+                    RequiresManualGrading = item.Attempt.RequiresManualGrading,
+                    IsGraded = item.Attempt.IsGraded,
+                    IsPublished = item.Attempt.IsPublished,
+                    GradedAt = item.Attempt.GradedAt,
+                    GradingNotes = item.Attempt.GradingNotes,
+                    IntegrityViolationCount = item.Attempt.IntegrityViolationCount,
+                    IntegrityLastViolationAt = item.Attempt.IntegrityLastViolationAt,
+                    IntegrityPolicyAction = item.Attempt.IntegrityPolicyAction,
+                    IntegrityAutoActionTriggeredAt = item.Attempt.IntegrityAutoActionTriggeredAt
+                };
+            })
+            .ToList();
+
+        foreach (var attempt in mappedAttempts)
         {
             if (!integrityByAttempt.TryGetValue(attempt.AttemptId, out var events))
                 continue;
@@ -1074,7 +1142,7 @@ public class ExamsController : ControllerBase
             attempt.IntegrityLastEventAt = events.Max(x => x.CreatedAt);
         }
 
-        return Ok(attempts);
+        return Ok(mappedAttempts);
     }
 
     [HttpPost("{examId:guid}/integrity-events")]
@@ -1123,9 +1191,10 @@ public class ExamsController : ControllerBase
         if (attempt.Status != ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "Only submitted attempts can be graded." });
 
-        var examPoints = await _context.Questions
+        var questionTotal = await _context.Questions
             .Where(x => x.ExamId == attempt.ExamId)
             .SumAsync(x => (double)x.Points);
+        var examPoints = ResolveExamMaximumPoints(attempt.Exam, questionTotal);
 
         var manualScore = dto.ManualScore ?? attempt.ManualScore;
         var finalScore = dto.FinalScore ?? (attempt.AutoScore + manualScore);
@@ -1146,6 +1215,7 @@ public class ExamsController : ControllerBase
         attempt.GradedAt = DateTime.UtcNow;
         attempt.GradedByUserId = userId.Value;
         attempt.GradingNotes = NormalizeOptionalValue(dto.Notes);
+        var scorePercentage = CalculateScorePercentage(attempt.FinalScore, examPoints);
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("ExamAttempt.Graded", "ExamAttempt", attempt.Id, new
@@ -1168,6 +1238,10 @@ public class ExamsController : ControllerBase
             AutoScore = attempt.AutoScore,
             ManualScore = attempt.ManualScore,
             FinalScore = attempt.FinalScore,
+            ExamMaxPoints = examPoints,
+            ScorePercentage = scorePercentage,
+            FinalGrade = CalculateFinalGrade(scorePercentage),
+            IsPassed = IsPassingGrade(scorePercentage),
             RequiresManualGrading = attempt.RequiresManualGrading,
             IsGraded = attempt.IsGraded,
             IsPublished = attempt.IsPublished,
@@ -1296,7 +1370,7 @@ public class ExamsController : ControllerBase
         var answers = ParseAttemptAnswers(attempt.AnswersJson);
         var suggestions = new List<AiTextEvaluationQuestionDto>();
 
-        foreach (var question in questions.Where(q => string.Equals(q.Type, "Text", StringComparison.OrdinalIgnoreCase)))
+        foreach (var question in questions.Where(RequiresAiReview))
         {
             var answer = answers.FirstOrDefault(x => x.QuestionId == question.Id);
             var response = answer?.Response ?? string.Empty;
@@ -1309,7 +1383,7 @@ public class ExamsController : ControllerBase
             AttemptId = attempt.Id,
             ExamId = attempt.ExamId,
             SuggestedManualScore = Math.Round(suggestions.Sum(x => x.SuggestedPoints), 2),
-            ReviewReminder = "AI assistance is a baseline suggestion only. Staff must review the answer and save the final grade manually.",
+            ReviewReminder = "AI completed the first review. The professor can keep or change this evaluation before publishing the final result.",
             Questions = suggestions
         });
     }
@@ -1376,13 +1450,13 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var results = await _context.ExamAttempts
+        var rawResults = await _context.ExamAttempts
             .Where(x => x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
             .Join(
                 _context.Exams,
                 attempt => attempt.ExamId,
                 exam => exam.Id,
-                (attempt, exam) => new StudentExamResultDto
+                (attempt, exam) => new
                 {
                     AttemptId = attempt.Id,
                     ExamId = attempt.ExamId,
@@ -1390,13 +1464,42 @@ public class ExamsController : ControllerBase
                     SubmittedAt = attempt.SubmittedAt,
                     Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
                     IsPublished = attempt.IsPublished,
-                    FinalScore = attempt.IsPublished ? attempt.FinalScore : null,
-                    AutoScore = attempt.IsPublished ? attempt.AutoScore : null,
-                    GradingNotes = attempt.IsPublished ? attempt.GradingNotes : null,
+                    FinalScore = attempt.FinalScore,
+                    AutoScore = attempt.AutoScore,
+                    GradingNotes = attempt.GradingNotes,
                     PublishedAt = attempt.PublishedAt
                 })
             .OrderByDescending(x => x.SubmittedAt)
             .ToListAsync();
+
+        var examPointLookup = await _context.Exams
+            .Select(exam => new { exam.Id, exam.MaximumPoints })
+            .ToDictionaryAsync(x => x.Id, x => (double)Math.Max(x.MaximumPoints, 0));
+
+        var results = rawResults
+            .Select(item =>
+            {
+                var examMaxPoints = examPointLookup.GetValueOrDefault(item.ExamId, 0);
+                var scorePercentage = item.IsPublished ? CalculateScorePercentage(item.FinalScore, examMaxPoints) : (double?)null;
+                return new StudentExamResultDto
+                {
+                    AttemptId = item.AttemptId,
+                    ExamId = item.ExamId,
+                    ExamTitle = item.ExamTitle,
+                    SubmittedAt = item.SubmittedAt,
+                    Status = item.Status,
+                    IsPublished = item.IsPublished,
+                    FinalScore = item.IsPublished ? item.FinalScore : null,
+                    AutoScore = item.IsPublished ? item.AutoScore : null,
+                    ExamMaxPoints = item.IsPublished ? examMaxPoints : null,
+                    ScorePercentage = scorePercentage,
+                    FinalGrade = scorePercentage.HasValue ? CalculateFinalGrade(scorePercentage.Value) : null,
+                    IsPassed = scorePercentage.HasValue ? IsPassingGrade(scorePercentage.Value) : null,
+                    GradingNotes = item.IsPublished ? item.GradingNotes : null,
+                    PublishedAt = item.PublishedAt
+                };
+            })
+            .ToList();
 
         await _auditLogService.LogAsync("StudentResults.ListViewed", "User", userId.Value, new
         {
@@ -1417,13 +1520,13 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var result = await _context.ExamAttempts
+        var rawResult = await _context.ExamAttempts
             .Where(x => x.Id == attemptId && x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
             .Join(
                 _context.Exams,
                 attempt => attempt.ExamId,
                 exam => exam.Id,
-                (attempt, exam) => new StudentExamResultDetailDto
+                (attempt, exam) => new
                 {
                     AttemptId = attempt.Id,
                     ExamId = attempt.ExamId,
@@ -1431,17 +1534,40 @@ public class ExamsController : ControllerBase
                     SubmittedAt = attempt.SubmittedAt,
                     Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
                     IsPublished = attempt.IsPublished,
-                    FinalScore = attempt.IsPublished ? attempt.FinalScore : null,
-                    AutoScore = attempt.IsPublished ? attempt.AutoScore : null,
-                    GradingNotes = attempt.IsPublished ? attempt.GradingNotes : null,
+                    FinalScore = attempt.FinalScore,
+                    AutoScore = attempt.AutoScore,
+                    GradingNotes = attempt.GradingNotes,
                     PublishedAt = attempt.PublishedAt,
                     RequiresManualGrading = attempt.RequiresManualGrading,
-                    IsGraded = attempt.IsGraded
+                    IsGraded = attempt.IsGraded,
+                    ExamMaximumPoints = exam.MaximumPoints
                 })
             .FirstOrDefaultAsync();
 
-        if (result == null)
+        if (rawResult == null)
             return NotFound(new { message = "Result not found." });
+
+        var resultExamPoints = Math.Max(rawResult.ExamMaximumPoints, 0);
+        var resultScorePercentage = rawResult.IsPublished ? CalculateScorePercentage(rawResult.FinalScore, resultExamPoints) : (double?)null;
+        var result = new StudentExamResultDetailDto
+        {
+            AttemptId = rawResult.AttemptId,
+            ExamId = rawResult.ExamId,
+            ExamTitle = rawResult.ExamTitle,
+            SubmittedAt = rawResult.SubmittedAt,
+            Status = rawResult.Status,
+            IsPublished = rawResult.IsPublished,
+            FinalScore = rawResult.IsPublished ? rawResult.FinalScore : null,
+            AutoScore = rawResult.IsPublished ? rawResult.AutoScore : null,
+            ExamMaxPoints = rawResult.IsPublished ? resultExamPoints : null,
+            ScorePercentage = resultScorePercentage,
+            FinalGrade = resultScorePercentage.HasValue ? CalculateFinalGrade(resultScorePercentage.Value) : null,
+            IsPassed = resultScorePercentage.HasValue ? IsPassingGrade(resultScorePercentage.Value) : null,
+            GradingNotes = rawResult.IsPublished ? rawResult.GradingNotes : null,
+            PublishedAt = rawResult.PublishedAt,
+            RequiresManualGrading = rawResult.RequiresManualGrading,
+            IsGraded = rawResult.IsGraded
+        };
 
         await _auditLogService.LogAsync("StudentResult.DetailViewed", "ExamAttempt", attemptId, new
         {
@@ -1511,20 +1637,39 @@ public class ExamsController : ControllerBase
         var availableCandidates = candidates
             .Where(candidate => !exam.Questions.Any(existing => IsSameQuestionContent(existing, candidate)))
             .OrderBy(_ => Guid.NewGuid())
-            .Take(dto.NumberOfQuestions)
             .ToList();
 
-        if (availableCandidates.Count < dto.NumberOfQuestions)
-            return BadRequest(new { message = "Not enough matching question bank entries are available for this request." });
+        if (availableCandidates.Count == 0)
+            return BadRequest(new { message = "No matching question bank entries are available for this request." });
 
-        var createdQuestions = availableCandidates
+        var currentTotalPoints = exam.Questions.Sum(question => question.Points);
+        var targetPoints = Math.Max(exam.MaximumPoints - currentTotalPoints, 0);
+        if (targetPoints <= 0)
+            return BadRequest(new { message = "This exam already meets or exceeds its maximum points. Adjust existing question points before generating more questions." });
+
+        var selectedCandidates = SelectBestQuestionSubset(availableCandidates, targetPoints, dto.NumberOfQuestions);
+        if (selectedCandidates.Count == 0)
+            return BadRequest(new { message = "No valid question combination could be created for the remaining exam points." });
+
+        var createdQuestions = selectedCandidates
             .Select(candidate => CloneQuestionForExam(candidate, exam.Id))
             .ToList();
 
         _context.Questions.AddRange(createdQuestions);
         await _context.SaveChangesAsync();
 
-        return Ok(createdQuestions.Select(MapToExamQuestionResponse));
+        var createdPoints = createdQuestions.Sum(question => question.Points);
+        var difference = createdPoints - targetPoints;
+
+        return Ok(new GenerateRandomExamQuestionsResponseDto
+        {
+            Questions = createdQuestions.Select(MapToExamQuestionResponse).ToList(),
+            TargetPoints = targetPoints,
+            TotalPoints = createdPoints,
+            Difference = difference,
+            IsExactMatch = difference == 0,
+            Message = BuildGenerationFeedbackMessage(targetPoints, createdPoints, difference)
+        });
     }
 
     [HttpPost("{examId:guid}/questions/{questionId:guid}/replace")]
@@ -1711,10 +1856,11 @@ public class ExamsController : ControllerBase
 
         return null;
     }
-    private static (List<QuestionScoreDetailDto> details, double autoScore, bool requiresManualGrading) BuildAttemptEvaluation(Exam exam, List<AnswerDto> submittedAnswers)
+    private static (List<QuestionScoreDetailDto> details, double autoScore, double aiManualScore, bool requiresManualGrading) BuildAttemptEvaluation(Exam exam, List<AnswerDto> submittedAnswers)
     {
         var details = new List<QuestionScoreDetailDto>();
         double autoScore = 0;
+        double aiManualScore = 0;
         var requiresManualGrading = false;
 
         foreach (var answer in submittedAnswers)
@@ -1735,6 +1881,7 @@ public class ExamsController : ControllerBase
             else
             {
                 requiresManualGrading = true;
+                aiManualScore += BuildTextEvaluationSuggestion(question, answer.Response).SuggestedPoints;
             }
 
             details.Add(new QuestionScoreDetailDto
@@ -1747,7 +1894,7 @@ public class ExamsController : ControllerBase
             autoScore += awarded;
         }
 
-        return (details, autoScore, requiresManualGrading);
+        return (details, autoScore, Math.Round(aiManualScore, 2), requiresManualGrading);
     }
 
     private static ExamAttemptDraftDto MapToDraftDto(ExamAttempt attempt)
@@ -1841,7 +1988,7 @@ public class ExamsController : ControllerBase
     }
     private static AiTextEvaluationQuestionDto BuildTextEvaluationSuggestion(Question question, string response)
     {
-        var expectedAnswer = NormalizeOptionalValue(question.CorrectAnswer);
+        var expectedAnswer = ResolveExpectedAnswer(question);
         var cleanResponse = response.Trim();
 
         if (string.IsNullOrWhiteSpace(cleanResponse))
@@ -1849,7 +1996,8 @@ public class ExamsController : ControllerBase
             return new AiTextEvaluationQuestionDto
             {
                 QuestionId = question.Id,
-                Prompt = question.Text,
+                Prompt = ResolveQuestionPrompt(question),
+                QuestionType = question.Type,
                 Response = cleanResponse,
                 ExpectedAnswer = expectedAnswer,
                 MaxPoints = question.Points,
@@ -1864,7 +2012,8 @@ public class ExamsController : ControllerBase
             return new AiTextEvaluationQuestionDto
             {
                 QuestionId = question.Id,
-                Prompt = question.Text,
+                Prompt = ResolveQuestionPrompt(question),
+                QuestionType = question.Type,
                 Response = cleanResponse,
                 ExpectedAnswer = expectedAnswer,
                 MaxPoints = question.Points,
@@ -1874,41 +2023,183 @@ public class ExamsController : ControllerBase
             };
         }
 
-        var expectedTokens = TokenizeForEvaluation(expectedAnswer);
-        var responseTokens = TokenizeForEvaluation(cleanResponse);
-        var overlapRatio = expectedTokens.Count == 0
+        return string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase)
+            ? BuildTechnicalEvaluationSuggestion(question, cleanResponse, expectedAnswer)
+            : BuildWrittenEvaluationSuggestion(question, cleanResponse, expectedAnswer);
+    }
+
+    private static AiTextEvaluationQuestionDto BuildWrittenEvaluationSuggestion(Question question, string cleanResponse, string expectedAnswer)
+    {
+        var expectedTerms = TokenizeOrderedTerms(expectedAnswer, preserveShortTerms: false);
+        var responseTerms = TokenizeOrderedTerms(cleanResponse, preserveShortTerms: false);
+        var expectedTokens = expectedTerms.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var responseTokens = responseTerms.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var expectedConceptGroups = BuildConceptGroups(expectedTokens);
+        var responseConceptGroups = BuildConceptGroups(responseTokens);
+        var semanticRecall = expectedConceptGroups.Count == 0
+            ? 0
+            : expectedConceptGroups.Count(group => responseConceptGroups.Contains(group)) / (double)expectedConceptGroups.Count;
+
+        var recall = expectedTokens.Count == 0
             ? 0
             : expectedTokens.Count(token => responseTokens.Contains(token)) / (double)expectedTokens.Count;
-        var lengthRatio = expectedTokens.Count == 0
+        var precision = responseTokens.Count == 0
             ? 0
-            : Math.Min(responseTokens.Count / (double)expectedTokens.Count, 1);
-        var scoreRatio = Math.Clamp((overlapRatio * 0.75) + (lengthRatio * 0.25), 0, 1);
-        var confidence = overlapRatio >= 0.75 ? "High" : overlapRatio >= 0.4 ? "Medium" : "Low";
+            : responseTokens.Count(token => expectedTokens.Contains(token)) / (double)responseTokens.Count;
+
+        var expectedPhrases = BuildPhrases(expectedTerms, 2);
+        var responsePhrases = BuildPhrases(responseTerms, 2);
+        var phraseRecall = expectedPhrases.Count == 0
+            ? 0
+            : expectedPhrases.Count(phrase => responsePhrases.Contains(phrase)) / (double)expectedPhrases.Count;
+
+        var completeness = expectedTerms.Count == 0
+            ? 0
+            : Math.Min(responseTerms.Count / (double)expectedTerms.Count, 1);
+
+        var scoreRatio = Math.Clamp(
+            (semanticRecall * 0.35) +
+            (recall * 0.25) +
+            (precision * 0.1) +
+            (phraseRecall * 0.15) +
+            (completeness * 0.15), 0, 1);
+
+        // Be more generous when the student clearly covers the expected concepts
+        // but uses different wording or ordering than the reference answer.
+        if (semanticRecall >= 0.9 && recall >= 0.75)
+            scoreRatio = Math.Max(scoreRatio, 0.95);
+        else if (semanticRecall >= 0.8 && recall >= 0.65)
+            scoreRatio = Math.Max(scoreRatio, 0.88);
+        else if (semanticRecall >= 0.7 && recall >= 0.55)
+            scoreRatio = Math.Max(scoreRatio, 0.8);
+
+        if (responseTerms.Count <= 2)
+            scoreRatio = Math.Min(scoreRatio, 0.35);
+
+        if (cleanResponse.Length < 20)
+            scoreRatio *= 0.85;
+
+        var matchedConcepts = expectedConceptGroups
+            .Where(responseConceptGroups.Contains)
+            .Take(6)
+            .ToList();
+        var confidence = scoreRatio >= 0.8 ? "High" : scoreRatio >= 0.5 ? "Medium" : "Low";
+        var rationale = matchedConcepts.Count > 0
+            ? $"Matched key concepts: {string.Join(", ", matchedConcepts)}. Semantic concept recall {Math.Round(semanticRecall * 100)}%, term recall {Math.Round(recall * 100)}%, and phrase recall {Math.Round(phraseRecall * 100)}%."
+            : "Very few expected concepts were found in the answer. Staff review is strongly recommended.";
 
         return new AiTextEvaluationQuestionDto
         {
             QuestionId = question.Id,
-            Prompt = question.Text,
+            Prompt = ResolveQuestionPrompt(question),
+            QuestionType = question.Type,
             Response = cleanResponse,
             ExpectedAnswer = expectedAnswer,
             MaxPoints = question.Points,
             SuggestedPoints = Math.Round(question.Points * scoreRatio, 2),
             Confidence = confidence,
-            Rationale = $"Baseline text similarity matched {Math.Round(overlapRatio * 100)}% of expected grading terms. Staff must confirm the final score."
+            Rationale = rationale
+        };
+    }
+
+    private static AiTextEvaluationQuestionDto BuildTechnicalEvaluationSuggestion(Question question, string cleanResponse, string expectedAnswer)
+    {
+        var prompt = ResolveQuestionPrompt(question);
+        var normalizedExpected = NormalizeTechnicalText(expectedAnswer);
+        var normalizedResponse = NormalizeTechnicalText(cleanResponse);
+        var normalizedPrompt = NormalizeTechnicalText(prompt);
+
+        if (!string.IsNullOrWhiteSpace(normalizedExpected) &&
+            string.Equals(normalizedExpected, normalizedResponse, StringComparison.OrdinalIgnoreCase))
+        {
+            return new AiTextEvaluationQuestionDto
+            {
+                QuestionId = question.Id,
+                Prompt = prompt,
+                QuestionType = question.Type,
+                Response = cleanResponse,
+                ExpectedAnswer = expectedAnswer,
+                MaxPoints = question.Points,
+                SuggestedPoints = question.Points,
+                Confidence = "High",
+                Rationale = "The submitted technical answer matches the expected solution pattern very closely."
+            };
+        }
+
+        var expectedConcepts = ExtractTechnicalConcepts(expectedAnswer, question.Type, prompt);
+        var responseConcepts = ExtractTechnicalConcepts(cleanResponse, question.Type, prompt);
+        var conceptRecall = expectedConcepts.Count == 0
+            ? 0
+            : expectedConcepts.Count(token => responseConcepts.Contains(token)) / (double)expectedConcepts.Count;
+        var conceptPrecision = responseConcepts.Count == 0
+            ? 0
+            : responseConcepts.Count(token => expectedConcepts.Contains(token)) / (double)responseConcepts.Count;
+
+        var requiredKeywords = ExtractRequiredKeywords(expectedAnswer, question.Type, prompt);
+        var matchedKeywords = requiredKeywords.Where(keyword => normalizedResponse.Contains(keyword, StringComparison.OrdinalIgnoreCase)).ToList();
+        var keywordCoverage = requiredKeywords.Count == 0
+            ? 0
+            : matchedKeywords.Count / (double)requiredKeywords.Count;
+
+        var structureCoverage = EvaluateTechnicalStructure(question.Type, normalizedResponse, normalizedExpected, prompt);
+        var lengthCoverage = Math.Min(cleanResponse.Length / (double)Math.Max(expectedAnswer.Length, 1), 1);
+
+        var scoreRatio = Math.Clamp(
+            (conceptRecall * 0.4) +
+            (conceptPrecision * 0.1) +
+            (keywordCoverage * 0.3) +
+            (structureCoverage * 0.15) +
+            (lengthCoverage * 0.05), 0, 1);
+
+        if (cleanResponse.Length < 12)
+            scoreRatio *= 0.65;
+
+        var exactIntentCoverage = EvaluateTechnicalIntentCoverage(question.Type, normalizedResponse, normalizedExpected, normalizedPrompt);
+        if (exactIntentCoverage >= 0.99)
+            scoreRatio = Math.Max(scoreRatio, 0.98);
+        else if (exactIntentCoverage >= 0.9)
+            scoreRatio = Math.Max(scoreRatio, 0.92);
+        else if (exactIntentCoverage >= 0.75)
+            scoreRatio = Math.Max(scoreRatio, 0.82);
+
+        var confidence = scoreRatio >= 0.8 ? "High" : scoreRatio >= 0.5 ? "Medium" : "Low";
+        var rationale = matchedKeywords.Count > 0
+            ? $"Matched technical markers: {string.Join(", ", matchedKeywords.Take(6))}. Required-structure coverage {Math.Round(structureCoverage * 100)}%. Intent coverage {Math.Round(exactIntentCoverage * 100)}%."
+            : "The response does not include enough of the expected technical markers or structure.";
+
+        return new AiTextEvaluationQuestionDto
+        {
+            QuestionId = question.Id,
+            Prompt = prompt,
+            QuestionType = question.Type,
+            Response = cleanResponse,
+            ExpectedAnswer = expectedAnswer,
+            MaxPoints = question.Points,
+            SuggestedPoints = Math.Round(question.Points * scoreRatio, 2),
+            Confidence = confidence,
+            Rationale = rationale
         };
     }
 
     private static HashSet<string> TokenizeForEvaluation(string value)
     {
-        var normalizedChars = value
-            .ToLowerInvariant()
+        return TokenizeOrderedTerms(value, preserveShortTerms: false).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static List<string> TokenizeOrderedTerms(string value, bool preserveShortTerms)
+    {
+        var normalizedChars = NormalizeForEvaluation(value)
             .Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ')
             .ToArray();
 
         return new string(normalizedChars)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(token => token.Length > 2)
-            .ToHashSet();
+            .Where(token => preserveShortTerms || token.Length > 2)
+            .Where(token => preserveShortTerms || !EvaluationStopWords.Contains(token))
+            .Select(NormalizeTokenForEvaluation)
+            .ToList();
     }
 
     private static bool IsSameQuestionContent(Question left, Question right)
@@ -1921,6 +2212,364 @@ public class ExamsController : ControllerBase
     private static string? NormalizeOptionalValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static bool RequiresAiReview(Question question)
+    {
+        return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveQuestionPrompt(Question question)
+    {
+        if (!string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            return question.Text;
+        }
+
+        return ExtractStructuredQuestionSection(question.Text, "Prompt") ?? question.Text;
+    }
+
+    private static string? ResolveExpectedAnswer(Question question)
+    {
+        var directAnswer = NormalizeOptionalValue(question.CorrectAnswer);
+        if (!string.IsNullOrWhiteSpace(directAnswer))
+            return directAnswer;
+
+        return ExtractStructuredQuestionSection(question.Text, "Expected answer / grading note");
+    }
+
+    private static string? ExtractStructuredQuestionSection(string value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var sections = value
+            .Split("\n\n---\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var section in sections)
+        {
+            var prefix = $"{label}:\n";
+            if (section.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return NormalizeOptionalValue(section[prefix.Length..]);
+        }
+
+        return null;
+    }
+
+    private static string NormalizeForEvaluation(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value
+            .ToLowerInvariant()
+            .Replace('ë', 'e')
+            .Replace('Ë', 'e')
+            .Replace('ç', 'c')
+            .Replace('Ç', 'c');
+    }
+
+    private static string NormalizeTokenForEvaluation(string token)
+    {
+        var normalized = NormalizeForEvaluation(token).Trim();
+        if (normalized.Length <= 3)
+            return normalized;
+
+        var suffixes = new[]
+        {
+            "imeve", "imit", "imin", "imet", "shem", "shme", "ues", "uesh", "ura", "rave", "rimi",
+            "tion", "ions", "ing", "ed", "es", "ve", "ve", "it", "in", "et", "at", "or", "er", "ur", "on", "an"
+        };
+
+        foreach (var suffix in suffixes.OrderByDescending(x => x.Length))
+        {
+            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && normalized.Length > suffix.Length + 2)
+                return normalized[..^suffix.Length];
+        }
+
+        return normalized;
+    }
+
+    private static HashSet<string> BuildConceptGroups(IEnumerable<string> tokens)
+    {
+        var groups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in tokens)
+        {
+            var normalized = NormalizeTokenForEvaluation(token);
+            var group = ResolveConceptGroup(normalized);
+            if (!string.IsNullOrWhiteSpace(group))
+                groups.Add(group);
+        }
+
+        return groups;
+    }
+
+    private static string ResolveConceptGroup(string token)
+    {
+        foreach (var pair in EvaluationSynonyms)
+        {
+            if (pair.Key.Equals(token, StringComparison.OrdinalIgnoreCase))
+                return pair.Key;
+
+            if (pair.Value.Any(candidate => NormalizeTokenForEvaluation(candidate).Equals(token, StringComparison.OrdinalIgnoreCase)))
+                return pair.Key;
+        }
+
+        return token;
+    }
+
+    private static HashSet<string> BuildPhrases(IReadOnlyList<string> terms, int phraseLength)
+    {
+        var phrases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (terms.Count < phraseLength)
+            return phrases;
+
+        for (var index = 0; index <= terms.Count - phraseLength; index++)
+        {
+            phrases.Add(string.Join(' ', terms.Skip(index).Take(phraseLength)));
+        }
+
+        return phrases;
+    }
+
+    private static string NormalizeTechnicalText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var withoutComments = Regex.Replace(value, @"(--.*?$|//.*?$|/\*.*?\*/)", " ", RegexOptions.Multiline | RegexOptions.Singleline);
+        var normalizedWhitespace = Regex.Replace(withoutComments.ToLowerInvariant(), @"\s+", " ").Trim();
+        return normalizedWhitespace.TrimEnd(';');
+    }
+
+    private static HashSet<string> ExtractTechnicalConcepts(string value, string questionType, string prompt)
+    {
+        var concepts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var normalized = NormalizeTechnicalText(value);
+        foreach (Match match in Regex.Matches(normalized, @"[a-z_][a-z0-9_\.]*|\d+|[><=!]=|[+\-*/=]"))
+        {
+            var token = match.Value.Trim();
+            if (string.IsNullOrWhiteSpace(token))
+                continue;
+
+            if (token.Length <= 1 && !char.IsDigit(token[0]) && !"+-*/=".Contains(token))
+                continue;
+
+            concepts.Add(token);
+        }
+
+        foreach (var keyword in ExtractRequiredKeywords(value, questionType, prompt))
+        {
+            concepts.Add(keyword);
+        }
+
+        return concepts;
+    }
+
+    private static List<string> ExtractRequiredKeywords(string expectedAnswer, string questionType, string prompt)
+    {
+        var normalizedExpected = NormalizeTechnicalText(expectedAnswer);
+        var normalizedPrompt = NormalizeTechnicalText(prompt);
+        var source = $"{normalizedExpected} {normalizedPrompt}";
+        var keywords = string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase)
+            ? SqlKeywords
+            : CSharpKeywords;
+
+        return keywords
+            .Where(keyword => source.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static double EvaluateTechnicalStructure(string questionType, string normalizedResponse, string normalizedExpected, string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedResponse))
+            return 0;
+
+        double structureScore = 0;
+        double structureWeight = 0;
+
+        void AddSignal(bool condition, double weight)
+        {
+            structureWeight += weight;
+            if (condition)
+                structureScore += weight;
+        }
+
+        if (string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            AddSignal(normalizedResponse.Contains("select"), 1.2);
+            AddSignal(normalizedResponse.Contains("from"), 1.2);
+            if (normalizedExpected.Contains("where") || NormalizeTechnicalText(prompt).Contains("where"))
+                AddSignal(normalizedResponse.Contains("where"), 1.1);
+            AddSignal(normalizedResponse.Contains("=") || normalizedResponse.Contains(">") || normalizedResponse.Contains("<"), 0.8);
+        }
+        else
+        {
+            AddSignal(normalizedResponse.Contains("console.writeline") || normalizedResponse.Contains("console"), 1.2);
+            if (normalizedExpected.Contains("readline") || normalizedExpected.Contains("parse"))
+                AddSignal(normalizedResponse.Contains("readline") || normalizedResponse.Contains("parse"), 1.0);
+            AddSignal(normalizedResponse.Contains("="), 0.7);
+            AddSignal(normalizedResponse.Contains("*") || normalizedResponse.Contains("+") || normalizedResponse.Contains("-") || normalizedResponse.Contains("/"), 0.8);
+            AddSignal(normalizedResponse.Contains("main") || normalizedResponse.Contains("return"), 0.5);
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedExpected))
+            AddSignal(normalizedResponse == normalizedExpected || normalizedResponse.Contains(normalizedExpected), 1.4);
+
+        return structureWeight <= 0 ? 0 : structureScore / structureWeight;
+    }
+
+    private static double EvaluateTechnicalIntentCoverage(string questionType, string normalizedResponse, string normalizedExpected, string normalizedPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedResponse))
+            return 0;
+
+        var combinedSource = $"{normalizedExpected} {normalizedPrompt}";
+
+        return string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase)
+            ? EvaluateSqlIntentCoverage(normalizedResponse, combinedSource)
+            : EvaluateCSharpIntentCoverage(normalizedResponse, combinedSource);
+    }
+
+    private static double EvaluateSqlIntentCoverage(string normalizedResponse, string combinedSource)
+    {
+        double matched = 0;
+        double total = 0;
+
+        void AddRule(bool shouldCheck, bool isMatched, double weight)
+        {
+            if (!shouldCheck)
+                return;
+
+            total += weight;
+            if (isMatched)
+                matched += weight;
+        }
+
+        AddRule(true, normalizedResponse.Contains("select"), 1.2);
+        AddRule(true, normalizedResponse.Contains("from"), 1.2);
+        AddRule(combinedSource.Contains("students"), normalizedResponse.Contains("students"), 1.0);
+        AddRule(combinedSource.Contains("where"), normalizedResponse.Contains("where"), 1.0);
+        AddRule(combinedSource.Contains("yearofstudy"), normalizedResponse.Contains("yearofstudy"), 1.2);
+        AddRule(combinedSource.Contains("= 2") || combinedSource.Contains("=2") || combinedSource.Contains(" dy "), normalizedResponse.Contains("= 2") || normalizedResponse.Contains("=2"), 1.0);
+
+        return total <= 0 ? 0 : matched / total;
+    }
+
+    private static double EvaluateCSharpIntentCoverage(string normalizedResponse, string combinedSource)
+    {
+        double matched = 0;
+        double total = 0;
+
+        void AddRule(bool shouldCheck, bool isMatched, double weight)
+        {
+            if (!shouldCheck)
+                return;
+
+            total += weight;
+            if (isMatched)
+                matched += weight;
+        }
+
+        var expectsInput = combinedSource.Contains("readline") || combinedSource.Contains("parse") || combinedSource.Contains("pranon nje numer") || combinedSource.Contains("lexoje nje numer");
+        var expectsSquare = combinedSource.Contains("n * n") || combinedSource.Contains("n*n") || combinedSource.Contains("katror");
+
+        AddRule(true, normalizedResponse.Contains("console.writeline"), 1.3);
+        AddRule(expectsInput, normalizedResponse.Contains("readline") || normalizedResponse.Contains("parse"), 1.2);
+        AddRule(true, normalizedResponse.Contains("main"), 0.5);
+        AddRule(expectsSquare, normalizedResponse.Contains("n * n") || normalizedResponse.Contains("n*n") || normalizedResponse.Contains("math.pow"), 1.4);
+        AddRule(true, normalizedResponse.Contains("="), 0.4);
+
+        return total <= 0 ? 0 : matched / total;
+    }
+
+    private static double ResolveExamMaximumPoints(Exam exam, double currentQuestionTotal)
+    {
+        if (exam.MaximumPoints > 0)
+            return exam.MaximumPoints;
+
+        return currentQuestionTotal > 0 ? currentQuestionTotal : 100;
+    }
+
+    private static List<Question> SelectBestQuestionSubset(IReadOnlyList<Question> candidates, int targetPoints, int maxQuestions)
+    {
+        var cappedMaxQuestions = Math.Max(1, maxQuestions);
+        var states = new Dictionary<int, SubsetSelectionState>
+        {
+            [0] = new(0, [])
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var snapshot = states.Values.ToList();
+            foreach (var state in snapshot)
+            {
+                var nextCount = state.Count + 1;
+                if (nextCount > cappedMaxQuestions)
+                    continue;
+
+                var nextPoints = state.TotalPoints + candidate.Points;
+                var nextQuestions = new List<Question>(state.Questions) { candidate };
+
+                if (!states.TryGetValue(nextPoints, out var existingState) || nextCount < existingState.Count)
+                {
+                    states[nextPoints] = new SubsetSelectionState(nextPoints, nextQuestions);
+                }
+            }
+        }
+
+        var best = states.Values
+            .Where(state => state.Count > 0)
+            .OrderBy(state => Math.Abs(state.TotalPoints - targetPoints))
+            .ThenBy(state => state.TotalPoints > targetPoints ? 1 : 0)
+            .ThenBy(state => state.Count)
+            .FirstOrDefault();
+
+        return best?.Questions ?? [];
+    }
+
+    private static string BuildGenerationFeedbackMessage(int targetPoints, int totalPoints, int difference)
+    {
+        if (difference == 0)
+            return $"Generated an exact question set with {totalPoints} / {targetPoints} target points.";
+
+        if (difference < 0)
+            return $"Generated {totalPoints} points, which is {Math.Abs(difference)} below the remaining target of {targetPoints}. You can now raise one or more question scores.";
+
+        return $"Generated {totalPoints} points, which is {difference} above the remaining target of {targetPoints}. You can now reduce one or more question scores.";
+    }
+
+    private sealed record SubsetSelectionState(int TotalPoints, List<Question> Questions)
+    {
+        public int Count => Questions.Count;
+    }
+
+    private static double CalculateScorePercentage(double finalScore, double examMaxPoints)
+    {
+        if (examMaxPoints <= 0)
+            return 0;
+
+        var boundedScore = Math.Clamp(finalScore, 0, examMaxPoints);
+        return Math.Round((boundedScore / examMaxPoints) * 100, 2);
+    }
+
+    private static int CalculateFinalGrade(double scorePercentage)
+    {
+        if (scorePercentage < 51) return 5;
+        if (scorePercentage <= 60) return 6;
+        if (scorePercentage <= 70) return 7;
+        if (scorePercentage <= 80) return 8;
+        if (scorePercentage <= 90) return 9;
+        return 10;
+    }
+
+    private static bool IsPassingGrade(double scorePercentage)
+    {
+        return CalculateFinalGrade(scorePercentage) >= 6;
     }
 
     private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)

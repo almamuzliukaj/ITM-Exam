@@ -21,3 +21,13 @@ public class ExamQuestionResponseDto
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }
 }
+
+public class GenerateRandomExamQuestionsResponseDto
+{
+    public List<ExamQuestionResponseDto> Questions { get; set; } = [];
+    public int TargetPoints { get; set; }
+    public int TotalPoints { get; set; }
+    public int Difference { get; set; }
+    public bool IsExactMatch { get; set; }
+    public string Message { get; set; } = string.Empty;
+}

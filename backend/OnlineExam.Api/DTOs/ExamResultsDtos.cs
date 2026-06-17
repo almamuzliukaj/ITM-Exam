@@ -27,6 +27,10 @@ public class ExamAttemptSummaryDto
     public double AutoScore { get; set; }
     public double ManualScore { get; set; }
     public double FinalScore { get; set; }
+    public double ExamMaxPoints { get; set; }
+    public double ScorePercentage { get; set; }
+    public int FinalGrade { get; set; }
+    public bool IsPassed { get; set; }
     public bool RequiresManualGrading { get; set; }
     public bool IsGraded { get; set; }
     public bool IsPublished { get; set; }
@@ -63,6 +67,10 @@ public class StudentExamResultDto
     public bool IsPublished { get; set; }
     public double? FinalScore { get; set; }
     public double? AutoScore { get; set; }
+    public double? ExamMaxPoints { get; set; }
+    public double? ScorePercentage { get; set; }
+    public int? FinalGrade { get; set; }
+    public bool? IsPassed { get; set; }
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
 }
@@ -77,6 +85,10 @@ public class StudentExamResultDetailDto
     public bool IsPublished { get; set; }
     public double? FinalScore { get; set; }
     public double? AutoScore { get; set; }
+    public double? ExamMaxPoints { get; set; }
+    public double? ScorePercentage { get; set; }
+    public int? FinalGrade { get; set; }
+    public bool? IsPassed { get; set; }
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
     public bool RequiresManualGrading { get; set; }
@@ -95,6 +107,7 @@ public class AiTextEvaluationQuestionDto
 {
     public Guid QuestionId { get; set; }
     public string Prompt { get; set; } = string.Empty;
+    public string QuestionType { get; set; } = string.Empty;
     public string Response { get; set; } = string.Empty;
     public string? ExpectedAnswer { get; set; }
     public double MaxPoints { get; set; }

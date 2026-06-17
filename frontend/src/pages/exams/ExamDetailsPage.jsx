@@ -1,5 +1,12 @@
 import { Link, useParams } from "react-router-dom";
-import { generateRandomQuestions, getExam, listQuestions, publishExam, replaceExamQuestion } from "../../lib/examsApi";
+import {
+  generateRandomQuestions,
+  getExam,
+  listQuestions,
+  publishExam,
+  replaceExamQuestion,
+  updateExamQuestion,
+} from "../../lib/examsApi";
 import { listMyOfferings } from "../../lib/academicApi";
 import { canManageExams } from "../../lib/permissions";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -19,6 +26,9 @@ export default function ExamDetailsPage() {
   const [publishing, setPublishing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [replacingId, setReplacingId] = useState("");
+  const [savingPointsId, setSavingPointsId] = useState("");
+  const [pointDrafts, setPointDrafts] = useState({});
+  const [generationFeedback, setGenerationFeedback] = useState(null);
   const [error, setError] = useState("");
   const [generator, setGenerator] = useState({
     numberOfQuestions: 3,
@@ -31,6 +41,12 @@ export default function ExamDetailsPage() {
     () => isPositiveNumber(generator.numberOfQuestions) && Boolean(exam?.courseOfferingId),
     [exam?.courseOfferingId, generator.numberOfQuestions],
   );
+  const currentQuestionPoints = useMemo(
+    () => questions.reduce((sum, question) => sum + Number(question.points || 0), 0),
+    [questions],
+  );
+  const examMaximumPoints = Number(exam?.maximumPoints || 0);
+  const pointsDifference = currentQuestionPoints - examMaximumPoints;
 
   useEffect(() => {
     if (!examId) return;
@@ -45,7 +61,9 @@ export default function ExamDetailsPage() {
         if (!active) return;
         setExam(examData);
         setSelectedOfferingId(examData?.courseOfferingId || "");
-        setQuestions(Array.isArray(questionData) ? questionData : []);
+        const examQuestions = Array.isArray(questionData) ? questionData : [];
+        setQuestions(examQuestions);
+        setPointDrafts(buildPointDrafts(examQuestions));
       } catch {
         if (active) setError(t("examDetails.error"));
       } finally {
@@ -117,12 +135,15 @@ export default function ExamDetailsPage() {
     try {
       setGenerating(true);
       setError("");
+      setGenerationFeedback(null);
       const created = await generateRandomQuestions(examId, {
         numberOfQuestions: Number(generator.numberOfQuestions),
         type: generator.type || null,
       });
-      const newQuestions = Array.isArray(created) ? created : [];
+      const newQuestions = Array.isArray(created?.questions) ? created.questions : [];
       setQuestions((current) => [...current, ...newQuestions]);
+      setPointDrafts((current) => ({ ...current, ...buildPointDrafts(newQuestions) }));
+      setGenerationFeedback(created);
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -131,6 +152,49 @@ export default function ExamDetailsPage() {
       setError(apiMessage || "Failed to generate random questions.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function onSaveQuestionPoints(question) {
+    const draftValue = pointDrafts[question.id];
+    const nextPoints = Number(draftValue);
+
+    if (!Number.isFinite(nextPoints) || nextPoints <= 0) {
+      setError("Question points must be greater than 0.");
+      return;
+    }
+
+    try {
+      setSavingPointsId(question.id);
+      setError("");
+      await updateExamQuestion(question.id, {
+        text: question.text,
+        type: question.type,
+        courseId: question.courseId || null,
+        options: Array.isArray(question.options) ? question.options : [],
+        correctAnswer: question.correctAnswer ?? null,
+        points: nextPoints,
+      });
+
+      setQuestions((current) =>
+        current.map((item) =>
+          item.id === question.id
+            ? {
+                ...item,
+                points: nextPoints,
+                text: question.text,
+              }
+            : item,
+        ),
+      );
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to update question points.");
+    } finally {
+      setSavingPointsId("");
     }
   }
 
@@ -146,6 +210,10 @@ export default function ExamDetailsPage() {
       setQuestions((current) =>
         current.map((item) => (item.id === question.id ? replacement : item)),
       );
+      setPointDrafts((current) => ({
+        ...current,
+        [replacement.id]: String(replacement.points ?? 0),
+      }));
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -172,6 +240,7 @@ export default function ExamDetailsPage() {
         <>
           <Link className="btn" to="/exams">{t("examDetails.backToExams")}</Link>
           {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/gradebook`}>Gradebook</Link> : null}
+          {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/edit`}>Edit exam</Link> : null}
           {isDraft ? (
             <button className="btn btnPrimary" type="button" onClick={onPublish} disabled={publishing || !canPublishDraft}>
               {publishing ? "Publishing..." : "Publish exam"}
@@ -206,6 +275,68 @@ export default function ExamDetailsPage() {
                 <span className="summaryLabel">{t("examDetails.questions")}</span>
                 <strong>{questions.length}</strong>
               </article>
+ feature/exam-max-points-grading
+              <article className="summaryCard">
+                <span className="summaryLabel">Maximum points</span>
+                <strong>{examMaximumPoints || "-"}</strong>
+              </article>
+              <article className="summaryCard">
+                <span className="summaryLabel">Lockdown</span>
+                <strong>{exam?.requiresLockdown ? "Required" : "Optional"}</strong>
+              </article>
+            </section>
+
+            <section className="surfaceCard">
+              <div className="sectionHeader">
+                <div>
+                  <h3>Point balance</h3>
+                  <span className="small">Keep the exam aligned with the professor-defined maximum score.</span>
+                </div>
+                <span className={`statusPill ${pointsDifference === 0 ? "statusPublished" : "statusDraft"}`}>
+                  {pointsDifference === 0 ? "Balanced" : pointsDifference > 0 ? `+${pointsDifference} over` : `${Math.abs(pointsDifference)} under`}
+                </span>
+              </div>
+              <div className="sectionBody">
+                <div className="lockdownReadinessGrid">
+                  <article>
+                    <span className="summaryLabel">Exam maximum</span>
+                    <strong>{examMaximumPoints}</strong>
+                  </article>
+                  <article>
+                    <span className="summaryLabel">Current question total</span>
+                    <strong>{currentQuestionPoints}</strong>
+                  </article>
+                  <article>
+                    <span className="summaryLabel">Difference</span>
+                    <strong>{pointsDifference === 0 ? "0" : pointsDifference > 0 ? `+${pointsDifference}` : String(pointsDifference)}</strong>
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section className="surfaceCard">
+              <div className="sectionHeader">
+                <h3>Exam integrity readiness</h3>
+                <span className="small">{exam?.requiresLockdown ? "Lockdown policy is configured for this exam." : "Standard browser guard is active for student sessions."}</span>
+              </div>
+              <div className="sectionBody">
+                <div className="lockdownReadinessGrid">
+                  <article>
+                    <span className="summaryLabel">Allowed client</span>
+                    <strong>{formatLockdownClient(exam?.allowedClient)}</strong>
+                  </article>
+                  <article>
+                    <span className="summaryLabel">Policy</span>
+                    <strong>{exam?.lockdownMode || "Advisory"}</strong>
+                  </article>
+                  <article>
+                    <span className="summaryLabel">Review path</span>
+                    <strong>Gradebook timeline</strong>
+                  </article>
+                </div>
+              </div>
+
+ main
             </section>
 
             {isDraft && !exam?.courseOfferingId ? (
@@ -244,7 +375,7 @@ export default function ExamDetailsPage() {
                 <div className="sectionBody stackLg">
                   <div className="questionBankFormGrid">
                     <div className="field">
-                      <label className="label">{t("examDetails.generator.count")}</label>
+                      <label className="label">Maximum generated questions</label>
                       <input
                         className="input"
                         type="number"
@@ -253,6 +384,7 @@ export default function ExamDetailsPage() {
                         onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
                         disabled={generating}
                       />
+                      <span className="fieldHint">The generator will target the remaining exam points and stay within this question count cap.</span>
                     </div>
                     <div className="field">
                       <label className="label">{t("questionBank.type")}</label>
@@ -265,9 +397,18 @@ export default function ExamDetailsPage() {
                         <option value="">{t("questionBank.allTypes")}</option>
                         <option value="MCQ">MCQ</option>
                         <option value="Text">{t("common.text")}</option>
+                        <option value="CSharp">C#</option>
+                        <option value="SQL">SQL</option>
                       </select>
                     </div>
                   </div>
+
+                  {generationFeedback ? (
+                    <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
+                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Point adjustment recommended"}</strong>
+                      <span>{generationFeedback.message}</span>
+                    </div>
+                  ) : null}
 
                   <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
                     <button
@@ -311,6 +452,12 @@ export default function ExamDetailsPage() {
                         t={t}
                         isDraft={isDraft}
                         replacing={replacingId === question.id}
+                        savingPoints={savingPointsId === question.id}
+                        pointValue={pointDrafts[question.id] ?? String(question.points ?? 0)}
+                        onPointChange={(value) =>
+                          setPointDrafts((current) => ({ ...current, [question.id]: value }))
+                        }
+                        onSavePoints={onSaveQuestionPoints}
                         onReplace={onReplaceQuestion}
                       />
                     ))}
@@ -325,7 +472,18 @@ export default function ExamDetailsPage() {
   );
 }
 
-function QuestionPreview({ question, index, t, isDraft, replacing, onReplace }) {
+function QuestionPreview({
+  question,
+  index,
+  t,
+  isDraft,
+  replacing,
+  savingPoints,
+  pointValue,
+  onPointChange,
+  onSavePoints,
+  onReplace,
+}) {
   const parsed = parseTechnicalQuestion(question);
 
   return (
@@ -363,6 +521,20 @@ function QuestionPreview({ question, index, t, isDraft, replacing, onReplace }) 
 
         {isDraft ? (
           <div className="resourceActionGroup" style={{ marginTop: 12 }}>
+            <div className="field" style={{ minWidth: 180 }}>
+              <label className="label">Exam points</label>
+              <input
+                className="input"
+                type="number"
+                min="1"
+                value={pointValue}
+                onChange={(e) => onPointChange(e.target.value)}
+                disabled={savingPoints}
+              />
+            </div>
+            <button className="btn" type="button" onClick={() => onSavePoints(question)} disabled={savingPoints}>
+              {savingPoints ? "Saving..." : "Save points"}
+            </button>
             <button className="btn" type="button" onClick={() => onReplace(question)} disabled={replacing}>
               {replacing ? t("examDetails.generator.replacing") : t("examDetails.generator.replace")}
             </button>
@@ -433,4 +605,10 @@ function formatOfferingLabel(offering) {
 
 function isPositiveNumber(value) {
   return Number(value) > 0;
+}
+
+function buildPointDrafts(questionList) {
+  return Object.fromEntries(
+    (Array.isArray(questionList) ? questionList : []).map((question) => [question.id, String(question.points ?? 0)]),
+  );
 }

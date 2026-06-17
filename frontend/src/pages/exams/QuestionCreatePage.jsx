@@ -82,7 +82,11 @@ export default function QuestionCreatePage() {
         type: form.type,
         points: Number(form.points) || 0,
         options: form.type === "MCQ" ? normalizeOptions(form.options) : [],
-        correctAnswer: form.type === "MCQ" ? normalizeOptionalValue(form.correctAnswer) : null,
+        correctAnswer: form.type === "MCQ"
+          ? normalizeOptionalValue(form.correctAnswer)
+          : form.type === "Text"
+            ? normalizeOptionalValue(form.expectedAnswer)
+            : null,
       });
       nav(`/exams/${examId}`);
     } catch (err) {
@@ -271,6 +275,20 @@ export default function QuestionCreatePage() {
                       ))}
                     </select>
                   </div>
+                </div>
+              ) : null}
+
+              {form.type === "Text" ? (
+                <div className="field">
+                  <label className="label">Expected answer or grading note</label>
+                  <textarea
+                    className="input textarea textareaCompact"
+                    value={form.expectedAnswer}
+                    onChange={(e) => setForm((current) => ({ ...current, expectedAnswer: e.target.value }))}
+                    disabled={saving || loadingExam}
+                    placeholder="Write the reference answer or grading criteria for this text question."
+                    rows={4}
+                  />
                 </div>
               ) : null}
 

@@ -8,6 +8,7 @@ public class Exam
     public DateTime StartsAt { get; set; }
     public DateTime EndsAt { get; set; }
     public int DurationMinutes { get; set; }
+    public int MaximumPoints { get; set; } = 100;
     public Guid CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool IsPublished { get; set; }

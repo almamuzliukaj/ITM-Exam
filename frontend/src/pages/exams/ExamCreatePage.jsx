@@ -1,5 +1,5 @@
-import { Link, useNavigate } from "react-router-dom";
-import { createExam } from "../../lib/examsApi";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { createExam, getExam, updateExam } from "../../lib/examsApi";
 import { listMyOfferings } from "../../lib/academicApi";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -9,20 +9,32 @@ import { useTranslation } from "react-i18next";
 export default function ExamCreatePage() {
   const { t } = useTranslation();
   const nav = useNavigate();
+  const { examId } = useParams();
   const { user, loading, error: userError } = useCurrentUser();
   const [form, setForm] = useState({
     title: "",
     description: "",
     durationMinutes: 60,
+    maximumPoints: 100,
+    startsAt: "",
+    endsAt: "",
     courseOfferingId: "",
   });
   const [offerings, setOfferings] = useState([]);
   const [offeringsLoading, setOfferingsLoading] = useState(true);
+  const [examLoading, setExamLoading] = useState(Boolean(examId));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const isEditMode = Boolean(examId);
   const canSubmit = useMemo(
-    () => Boolean(form.title.trim()) && Boolean(form.courseOfferingId) && !saving && !offeringsLoading,
-    [form.courseOfferingId, form.title, offeringsLoading, saving],
+    () =>
+      Boolean(form.title.trim()) &&
+      Boolean(form.courseOfferingId) &&
+      Number(form.maximumPoints) > 0 &&
+      !saving &&
+      !offeringsLoading &&
+      !examLoading,
+    [examLoading, form.courseOfferingId, form.maximumPoints, form.title, offeringsLoading, saving],
   );
 
   useEffect(() => {
@@ -56,23 +68,81 @@ export default function ExamCreatePage() {
     };
   }, [t]);
 
+  useEffect(() => {
+    if (!examId) {
+      setExamLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    (async () => {
+      try {
+        setExamLoading(true);
+        const exam = await getExam(examId);
+        if (!active) return;
+
+        setForm({
+          title: exam?.title || "",
+          description: exam?.description || "",
+          durationMinutes: Number(exam?.durationMinutes) || 60,
+          maximumPoints: Number(exam?.maximumPoints) || 100,
+          startsAt: toDateTimeLocalValue(exam?.startsAt),
+          endsAt: toDateTimeLocalValue(exam?.endsAt),
+          courseOfferingId: exam?.courseOfferingId || "",
+          requiresLockdown: Boolean(exam?.requiresLockdown),
+          allowedClient: exam?.allowedClient || "StandardBrowser",
+          lockdownMode: exam?.lockdownMode || "Advisory",
+        });
+      } catch (err) {
+        if (active) {
+          setError(err?.response?.data?.message || "Failed to load exam for editing.");
+        }
+      } finally {
+        if (active) setExamLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [examId]);
+
   async function saveExam(e) {
     e.preventDefault();
     setError("");
 
     try {
       setSaving(true);
-      const created = await createExam({
+      const payload = {
         title: form.title,
         description: form.description,
         durationMinutes: Number(form.durationMinutes) || 60,
+        maximumPoints: Number(form.maximumPoints) || 100,
+        startsAt: toIsoOrNull(form.startsAt),
+        endsAt: toIsoOrNull(form.endsAt),
         courseOfferingId: form.courseOfferingId || null,
         isPublished: false,
+feature/exam-max-points-grading
+        requiresLockdown: form.requiresLockdown,
+        allowedClient: form.allowedClient,
+        lockdownMode: form.lockdownMode,
+      };
+
+      if (isEditMode) {
+        const updated = await updateExam(examId, payload);
+        nav(`/exams/${updated.id}`);
+      } else {
+        const created = await createExam(payload);
+        nav(`/exams/${created.id}`);
+      }
+
         requiresLockdown: false,
         allowedClient: "StandardBrowser",
         lockdownMode: "Advisory",
       });
       nav(`/exams/${created.id}`);
+ main
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -88,6 +158,10 @@ export default function ExamCreatePage() {
     return <div className="pageState">{t("examCreate.loading")}</div>;
   }
 
+  if (examLoading) {
+    return <div className="pageState">Loading exam editor...</div>;
+  }
+
   if (!user) {
     return <div className="pageState">{userError || t("examCreate.userError")}</div>;
   }
@@ -96,8 +170,8 @@ export default function ExamCreatePage() {
     <AppShell
       user={user}
       badge={t("examCreate.badge")}
-      title={t("examCreate.title")}
-      subtitle={t("examCreate.subtitle")}
+      title={isEditMode ? "Edit exam" : t("examCreate.title")}
+      subtitle={isEditMode ? "Update the existing exam, including lockdown settings, without creating a new one." : t("examCreate.subtitle")}
       actions={<Link className="btn" to="/exams">{t("common.cancel")}</Link>}
     >
       <section className="formSurface">
@@ -107,7 +181,7 @@ export default function ExamCreatePage() {
               <h3>{t("examCreate.configuration")}</h3>
               <span className="sectionMeta">Set the course, timing, and delivery policy before adding questions.</span>
             </div>
-            <span className="statusPill statusDraft">Draft setup</span>
+            <span className="statusPill statusDraft">{isEditMode ? "Edit mode" : "Draft setup"}</span>
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
@@ -168,6 +242,38 @@ export default function ExamCreatePage() {
                     />
                   </div>
 
+                  <div className="field">
+                    <label className="label">Maximum exam points</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      value={form.maximumPoints}
+                      onChange={(e) => setForm({ ...form, maximumPoints: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Starts at</label>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={form.startsAt}
+                      onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Ends at</label>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={form.endsAt}
+                      onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
+                    />
+                  </div>
+
                   <div className="field fieldSpanFull">
                     <div className="label">{t("examCreate.descriptionLabel")}</div>
                     <textarea
@@ -181,14 +287,14 @@ export default function ExamCreatePage() {
               </div>
 
               <div className="publishNotice">
-                <strong>Draft and publish workflow</strong>
-                <span>Save the exam draft first, attach questions in the builder, then publish it for eligible students.</span>
+                <strong>{isEditMode ? "Published exams return to draft after editing" : "Draft and publish workflow"}</strong>
+                <span>{isEditMode ? "After saving changes, review the exam and publish it again so students use the updated settings." : "Save the exam draft first, attach questions in the builder, then publish it for eligible students."}</span>
               </div>
 
               <div className="formActionsBar">
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
                 <button className="btn btnPrimary" type="submit" disabled={!canSubmit}>
-                  {saving ? t("examCreate.creating") : "Save draft"}
+                  {saving ? (isEditMode ? "Saving changes..." : t("examCreate.creating")) : (isEditMode ? "Save changes" : "Save draft")}
                 </button>
               </div>
             </form>
@@ -207,4 +313,18 @@ function formatOfferingOption(offering) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "No section";
 
   return `${courseTitle} / ${term} / ${section}`;
+}
+
+function toDateTimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toIsoOrNull(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }

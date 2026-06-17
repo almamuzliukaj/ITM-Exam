@@ -191,6 +191,14 @@ function ResultCard({ result }) {
       </div>
       <dl className="resultMetaList">
         <div>
+          <dt>Grade</dt>
+          <dd>{formatGrade(result.finalGrade, result.isPassed)}</dd>
+        </div>
+        <div>
+          <dt>Percentage</dt>
+          <dd>{formatPercentage(result.scorePercentage)}</dd>
+        </div>
+        <div>
           <dt>Auto score</dt>
           <dd>{formatScore(result.autoScore)}</dd>
         </div>
@@ -223,6 +231,16 @@ function formatDateTime(value) {
 function formatStatus(status) {
   if (status === "ReadyToPublish") return "Ready";
   return status || "Pending";
+}
+
+function formatPercentage(value) {
+  if (value == null) return "-";
+  return `${Number(value).toFixed(2)}%`;
+}
+
+function formatGrade(grade, passed) {
+  if (!grade) return "-";
+  return `${grade} ${passed ? "(Pass)" : "(Fail)"}`;
 }
 
 function readApiMessage(err) {

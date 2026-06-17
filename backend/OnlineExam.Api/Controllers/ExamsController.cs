@@ -1664,6 +1664,7 @@ public class ExamsController : ControllerBase
             Text = question.Text,
             Type = question.Type,
             CorrectAnswer = question.CorrectAnswer,
+            CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points
         };
@@ -1732,7 +1733,7 @@ public class ExamsController : ControllerBase
             if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
-                    string.Equals(question.CorrectAnswer.Trim(), answer.Response.Trim(), StringComparison.OrdinalIgnoreCase))
+                    IsCorrectMcqResponse(question.CorrectAnswer, answer.Response))
                 {
                     awarded = question.Points;
                 }
@@ -1945,6 +1946,45 @@ public class ExamsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static bool IsCorrectMcqResponse(string? correctAnswer, string? response)
+    {
+        var correctAnswers = GetCorrectAnswers(correctAnswer);
+        var submittedAnswers = GetCorrectAnswers(response);
+
+        if (correctAnswers.Count == 0 || submittedAnswers.Count == 0)
+            return false;
+
+        return correctAnswers.Count == submittedAnswers.Count &&
+               correctAnswers.All(correct => submittedAnswers.Any(submitted => string.Equals(submitted, correct, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static List<string> GetCorrectAnswers(string? correctAnswer)
+    {
+        var normalized = NormalizeOptionalValue(correctAnswer);
+        if (normalized == null)
+            return [];
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<string>>(normalized);
+            if (parsed != null)
+            {
+                return parsed
+                    .Select(NormalizeOptionalValue)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Older MCQ answers are stored as plain text.
+        }
+
+        return [normalized];
+    }
+
     private static ExamIntegrityEventDto? TryMapIntegrityEvent(AuditLog log)
     {
         if (string.IsNullOrWhiteSpace(log.DetailsJson))
@@ -1987,9 +2027,8 @@ public class ExamsController : ControllerBase
         {
             answerByQuestion.TryGetValue(question.Id, out var response);
             var normalizedResponse = NormalizeOptionalValue(response) ?? string.Empty;
-            var normalizedCorrect = NormalizeOptionalValue(question.CorrectAnswer) ?? string.Empty;
-            var isCorrect = !string.IsNullOrWhiteSpace(normalizedCorrect) &&
-                string.Equals(normalizedResponse, normalizedCorrect, StringComparison.OrdinalIgnoreCase);
+            var isCorrect = !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
+                IsCorrectMcqResponse(question.CorrectAnswer, normalizedResponse);
 
             return new ExamAttemptAnswerReviewDto
             {

@@ -51,6 +51,7 @@ export default function ExamsListPage() {
     const startIndex = (examPage - 1) * examPageSize;
     return filteredExams.slice(startIndex, startIndex + examPageSize);
   }, [examPage, examPageSize, filteredExams]);
+  const groupedVisibleExams = useMemo(() => groupExamsByOffering(visibleExams), [visibleExams]);
   const examStart = filteredExams.length === 0 ? 0 : (examPage - 1) * examPageSize + 1;
   const examEnd = Math.min(filteredExams.length, examPage * examPageSize);
 
@@ -90,11 +91,6 @@ export default function ExamsListPage() {
     } finally {
       setDeletingId("");
     }
-  }
-
-  function onStartExam(exam) {
-    if (!exam?.id) return;
-    window.location.href = `/exams/${exam.id}/attempt`;
   }
 
   return (
@@ -151,45 +147,6 @@ export default function ExamsListPage() {
             <p>{t("examsList.emptyTitle")}</p>
             <p>{t("examsList.emptyText")}</p>
           </div>
- exam-session-question-bank-fixes
-        ) : (
-          <section className="resourceGrid">
-            {exams.map((exam) => (
-              <article key={exam.id} className="resourceCard">
-                <div className="resourceMetaRow">
-                  <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
-                    {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
-                  </span>
-                  <span className="small">{exam.durationMinutes || 60} min</span>
-                </div>
-                <h3>{exam.title}</h3>
-                <p>{exam.description || t("examsList.noDescription")}</p>
-                <div className="resourceFooter">
-                  <div className="small">{t("examsList.openHint")}</div>
-                  <div className="resourceActionGroup">
-                    {canCreate && !exam.isPublished ? (
-                      <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
-                    ) : null}
-                    {canCreate && !exam.isPublished ? (
-                      <button
-                        className="btn btnDanger"
-                        type="button"
-                        onClick={() => onDeleteDraft(exam)}
-                        disabled={deletingId === exam.id}
-                      >
-                        {deletingId === exam.id ? "Deleting..." : "Delete draft"}
-                      </button>
-                    ) : null}
-                    {isStudent ? (
-                      <button className="btn btnPrimary" type="button" onClick={() => onStartExam(exam)}>
-                        Start
-                      </button>
-                    ) : (
-                      <Link className="btn" to={`/exams/${exam.id}`}>
-                        {t("examsList.open")}
-                      </Link>
-                    )}
-
         ) : isStudent ? (
           <section className="stackLg">
             <div className="resourceGrid">
@@ -226,7 +183,6 @@ export default function ExamsListPage() {
                         {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
                       </Link>
                     </div>
- main
                   </div>
                 </article>
               ))}
@@ -242,66 +198,81 @@ export default function ExamsListPage() {
           </section>
         ) : (
           <section className="stackLg">
-            <div className="tableWrap">
-              <table className="dataTable examDirectoryTable">
-                <thead>
-                  <tr>
-                    <th>Exam</th>
-                    <th>Offering</th>
-                    <th>Status</th>
-                    <th>Duration</th>
-                    <th>Security</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleExams.map((exam) => (
-                    <tr key={exam.id}>
-                      <td>
-                        <div className="examDirectoryTitle">
-                          <strong>{exam.title}</strong>
-                          <span>{exam.description || t("examsList.noDescription")}</span>
-                        </div>
-                      </td>
-                      <td>{formatExamOffering(exam)}</td>
-                      <td>
-                        <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
-                          {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
-                        </span>
-                      </td>
-                      <td>{exam.durationMinutes || 60} min</td>
-                      <td>
-                        {exam.requiresLockdown ? (
-                          <span className="statusPill statusWarn">Lockdown</span>
-                        ) : (
-                          <span className="statusPill statusDraft">Standard</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="resourceActionGroup">
-                          {canCreate && !exam.isPublished ? (
-                            <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
-                          ) : null}
-                          {canCreate && !exam.isPublished ? (
-                            <button
-                              className="btn btnDanger"
-                              type="button"
-                              onClick={() => onDeleteDraft(exam)}
-                              disabled={deletingId === exam.id}
-                            >
-                              {deletingId === exam.id ? "Deleting..." : "Delete draft"}
-                            </button>
-                          ) : null}
-                          <Link className="btn" to={`/exams/${exam.id}`}>
-                            {t("examsList.open")}
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {groupedVisibleExams.map((group) => (
+              <div className="examOfferingGroup" key={group.label}>
+                <div className="examOfferingGroupHeader">
+                  <div>
+                    <span className="summaryLabel">Course offering</span>
+                    <h3>{group.label}</h3>
+                  </div>
+                  <span className="statusPill statusDraft">{group.items.length} exam{group.items.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="tableWrap">
+                  <table className="dataTable examDirectoryTable">
+                    <thead>
+                      <tr>
+                        <th>Exam</th>
+                        <th>Status</th>
+                        <th>Duration</th>
+                        <th>Security</th>
+                        <th>Next action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((exam) => (
+                        <tr key={exam.id}>
+                          <td>
+                            <div className="examDirectoryTitle">
+                              <strong>{exam.title}</strong>
+                              <span>{exam.description || t("examsList.noDescription")}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
+                              {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
+                            </span>
+                          </td>
+                          <td>{exam.durationMinutes || 60} min</td>
+                          <td>
+                            {exam.requiresLockdown ? (
+                              <span className="statusPill statusWarn">Lockdown</span>
+                            ) : (
+                              <span className="statusPill statusDraft">Standard</span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="resourceActionGroup">
+                              {canCreate && !exam.isPublished ? (
+                                <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
+                              ) : null}
+                              {exam.isPublished ? (
+                                <Link className="btn btnPrimary" to={`/exams/${exam.id}/gradebook`}>Open gradebook</Link>
+                              ) : null}
+                              <Link className="btn" to={`/exams/${exam.id}`}>
+                                {exam.isPublished ? "Review exam" : t("examsList.open")}
+                              </Link>
+                              <Link className="btn" to="/reports">
+                                Reports
+                              </Link>
+                              {canCreate && !exam.isPublished ? (
+                                <button
+                                  className="btn btnDanger"
+                                  type="button"
+                                  onClick={() => onDeleteDraft(exam)}
+                                  disabled={deletingId === exam.id}
+                                >
+                                  {deletingId === exam.id ? "Deleting..." : "Delete draft"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
             <div className="paginationBar">
               <span>Showing {examStart}-{examEnd} of {filteredExams.length}</span>
               <div className="paginationActions">
@@ -329,4 +300,18 @@ function formatExamOffering(exam) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "";
 
   return [courseLabel, term, section].filter(Boolean).join(" | ");
+}
+
+function groupExamsByOffering(exams) {
+  const groups = new Map();
+
+  for (const exam of exams) {
+    const label = formatExamOffering(exam);
+    if (!groups.has(label)) {
+      groups.set(label, []);
+    }
+    groups.get(label).push(exam);
+  }
+
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
 }

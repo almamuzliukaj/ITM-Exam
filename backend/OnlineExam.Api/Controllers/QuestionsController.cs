@@ -66,6 +66,7 @@ public class QuestionsController : ControllerBase
             Text = question.Text,
             Type = question.Type,
             CorrectAnswer = User.IsInRole("Student") ? null : question.CorrectAnswer,
+            CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points
         });
@@ -225,6 +226,7 @@ public class QuestionsController : ControllerBase
             Text = q.Text,
             Type = q.Type,
             CorrectAnswer = includeCorrectAnswer ? q.CorrectAnswer : null,
+            CorrectAnswerCount = GetCorrectAnswers(q.CorrectAnswer).Count,
             Options = ParseOptions(q.OptionsJson),
             Points = q.Points
         }));
@@ -617,12 +619,12 @@ public class QuestionsController : ControllerBase
             if (options.Count < 2)
                 return "MCQ questions require at least two options.";
 
-            var correctAnswer = NormalizeOptionalValue(dto.CorrectAnswer);
-            if (string.IsNullOrWhiteSpace(correctAnswer))
+            var correctAnswers = GetCorrectAnswers(dto.CorrectAnswer);
+            if (correctAnswers.Count == 0)
                 return "MCQ questions require a correct answer.";
 
-            if (!options.Any(x => string.Equals(x, correctAnswer, StringComparison.OrdinalIgnoreCase)))
-                return "Correct answer must match one of the MCQ options.";
+            if (correctAnswers.Any(correctAnswer => !options.Any(option => string.Equals(option, correctAnswer, StringComparison.OrdinalIgnoreCase))))
+                return "Every correct answer must match one of the MCQ options.";
         }
 
         return null;
@@ -771,6 +773,33 @@ public class QuestionsController : ControllerBase
         {
             return [];
         }
+    }
+
+    private static List<string> GetCorrectAnswers(string? correctAnswer)
+    {
+        var normalized = NormalizeOptionalValue(correctAnswer);
+        if (normalized == null)
+            return [];
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<string>>(normalized);
+            if (parsed != null)
+            {
+                return parsed
+                    .Select(NormalizeOptionalValue)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Older questions store a single correct answer as plain text.
+        }
+
+        return [normalized];
     }
 
     private Guid? GetCurrentUserId()

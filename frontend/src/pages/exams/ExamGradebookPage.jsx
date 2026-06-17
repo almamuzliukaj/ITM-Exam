@@ -222,24 +222,27 @@ export default function ExamGradebookPage() {
                 <span>Switch filters to see other gradebook queues for this exam.</span>
               </div>
             ) : (
-              <div className="gradebookReviewList">
-                {visibleAttempts.map((attempt) => (
-                  <AttemptReviewCard
-                    key={attempt.attemptId}
-                    attempt={attempt}
-                    draft={drafts[attempt.attemptId] || {}}
-                    aiReview={aiReviews[attempt.attemptId]}
-                    reviewing={reviewingId === attempt.attemptId}
-                    saving={savingId === attempt.attemptId}
-                    disabled={!canReview}
-                    onDraftChange={(nextDraft) =>
-                      setDrafts((current) => ({ ...current, [attempt.attemptId]: nextDraft }))
-                    }
-                    onAiReview={() => onAiReview(attempt)}
-                    onSaveGrade={() => onSaveGrade(attempt)}
-                  />
-                ))}
-              </div>
+              <>
+                <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} />
+                <div className="gradebookReviewList">
+                  {visibleAttempts.map((attempt) => (
+                    <AttemptReviewCard
+                      key={attempt.attemptId}
+                      attempt={attempt}
+                      draft={drafts[attempt.attemptId] || {}}
+                      aiReview={aiReviews[attempt.attemptId]}
+                      reviewing={reviewingId === attempt.attemptId}
+                      saving={savingId === attempt.attemptId}
+                      disabled={!canReview}
+                      onDraftChange={(nextDraft) =>
+                        setDrafts((current) => ({ ...current, [attempt.attemptId]: nextDraft }))
+                      }
+                      onAiReview={() => onAiReview(attempt)}
+                      onSaveGrade={() => onSaveGrade(attempt)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </section>
@@ -248,12 +251,72 @@ export default function ExamGradebookPage() {
   );
 }
 
+function GradebookAttemptTable({ attempts, drafts }) {
+  return (
+    <div className="tableWrap gradebookAttemptTableWrap">
+      <table className="dataTable gradebookAttemptTable">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Attempt</th>
+            <th>Submitted</th>
+            <th>Auto score</th>
+            <th>Manual score</th>
+            <th>Final score</th>
+            <th>Publication</th>
+            <th>Integrity</th>
+            <th>Review</th>
+          </tr>
+        </thead>
+        <tbody>
+          {attempts.map((attempt) => {
+            const draft = drafts[attempt.attemptId] || {};
+            const violations = Number(attempt.integrityViolationCount || 0);
+            return (
+              <tr key={attempt.attemptId}>
+                <td>
+                  <div className="examDirectoryTitle">
+                    <strong>{attempt.studentName || "Student"}</strong>
+                    <span>{attempt.studentEmail || "No email recorded"}</span>
+                  </div>
+                </td>
+                <td>
+                  <span className={`statusPill ${attempt.isGraded ? "statusReady" : "statusWarn"}`}>
+                    {attempt.isGraded ? "Reviewed" : "Needs review"}
+                  </span>
+                </td>
+                <td>{formatDateTime(attempt.submittedAt) || "Pending"}</td>
+                <td>{formatScore(attempt.autoScore)}</td>
+                <td>{formatScore(draft.manualScore ?? attempt.manualScore)}</td>
+                <td>{formatScore(draft.finalScore ?? attempt.finalScore)}</td>
+                <td>
+                  <ResultBadge attempt={attempt} />
+                </td>
+                <td>
+                  <span className={`statusPill ${violations > 0 ? "statusWarn" : "statusLive"}`}>
+                    {violations > 0 ? `${violations} flag${violations === 1 ? "" : "s"}` : "Clear"}
+                  </span>
+                </td>
+                <td>
+                  <a className="btn" href={`#attempt-${attempt.attemptId}`}>
+                    Review
+                  </a>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabled, onDraftChange, onAiReview, onSaveGrade }) {
   const violationCount = Number(attempt.integrityViolationCount || 0);
   const scoreDelta = Number(draft.finalScore || attempt.finalScore || 0) - Number(attempt.autoScore || 0);
 
   return (
-    <article className="gradebookReviewCard">
+    <article className="gradebookReviewCard" id={`attempt-${attempt.attemptId}`}>
       <div className="gradebookReviewHeader">
         <div className="gradebookStudentBlock">
           <span className="summaryLabel">Student attempt</span>

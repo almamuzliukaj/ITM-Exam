@@ -1794,7 +1794,6 @@ input[type="radio"]{
   line-height: 1.65;
 }
 
- exam-session-question-bank-fixes
 .examStartButton{
   min-width: 180px;
   min-height: 56px;
@@ -1810,6 +1809,10 @@ input[type="radio"]{
 .examRulesGrid article{
   min-height: 132px;
   padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
 
 .studentExamFocusPanel{
   display: grid;
@@ -1919,7 +1922,6 @@ input[type="radio"]{
   align-items: center;
   gap: 18px;
   padding: 18px 20px;
- main
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fbfcfe;
@@ -1946,7 +1948,6 @@ input[type="radio"]{
   color: var(--text);
 }
 
- exam-session-question-bank-fixes
 .secureExamHeader{
   position: sticky;
   top: 0;
@@ -1963,6 +1964,10 @@ input[type="radio"]{
 }
 
 .secureExamBrand{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
 .studentJourneyPanel{
   border: 1px solid #d5dfeb;
@@ -2021,7 +2026,6 @@ input[type="radio"]{
 }
 
 .draftRestoreBanner{
-main
   display: flex;
   align-items: center;
   gap: 14px;
@@ -2763,7 +2767,6 @@ main
   background: linear-gradient(135deg, #e5f3ea 0 50%, #fff7ed 50% 100%);
 }
 
-exam-session-question-bank-fixes
 .examQuestionNav button.active{
   outline: 0;
   border-color: #155aa8;
@@ -2787,10 +2790,10 @@ exam-session-question-bank-fixes
   color: var(--muted);
   font-weight: 700;
   text-align: center;
+}
 
 .examNavigatorSubmit{
   margin-top: 16px;
- main
 }
 
 .questionHeaderActions{
@@ -3020,7 +3023,6 @@ exam-session-question-bank-fixes
   color: white;
 }
 
- exam-session-question-bank-fixes
 .questionBankFilters{
   gap: 16px;
   flex-wrap: wrap;
@@ -3161,6 +3163,7 @@ exam-session-question-bank-fixes
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+}
 
 .listControlPanel{
   background: linear-gradient(180deg, #ffffff, #fbfcfe);
@@ -3173,7 +3176,6 @@ exam-session-question-bank-fixes
 
 .questionBankField{
   min-width: 0;
- main
 }
 
 .questionImportSummary span{
@@ -4350,9 +4352,17 @@ body{
   letter-spacing: -.025em;
 }
 
+.loginTitle{
+  font-size: clamp(28px, 3.2vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -.025em;
+}
+
 .pageSubtitle,
 .heroText,
-.adminDashboardHeroCompact .heroText{
+.adminDashboardHeroCompact .heroText,
+.loginText,
+.panelText{
   margin-top: 7px;
   font-size: 14px;
   line-height: 1.5;
@@ -4410,6 +4420,43 @@ body{
 
 .adminDashboardHeroCompact{
   min-height: auto;
+}
+
+.loginContent{
+  gap: 22px;
+  padding: 24px;
+}
+
+.loginIntro,
+.loginPanel{
+  padding: 28px;
+  border-radius: 4px;
+}
+
+.loginFeatureGrid{
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.featureTile{
+  padding: 12px;
+  border-radius: 4px;
+  gap: 5px;
+}
+
+.featureTile span{
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.panelTitle{
+  font-size: 24px;
+}
+
+.presetChip{
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 .adminHeroMeta{
@@ -4563,6 +4610,9 @@ body{
 .reportScopeNote,
 .reportTabs,
 .demoReadinessGrid article,
+.loginIntro,
+.loginPanel,
+.featureTile,
 .questionBankModelAnswer,
 .technicalCodeBlock,
 .integrityBanner,
@@ -4581,6 +4631,8 @@ body{
 .segmentedControl,
 .segmentedControl button,
 .languageSwitcherButton,
+.languageSwitcherSelect,
+.presetChip,
 .languageSwitcherMenu,
 .filterTab,
 .questionIndex,
@@ -4661,5 +4713,291 @@ body{
     border: 1px solid #9aa8ba;
     background: #ffffff !important;
     color: #111827 !important;
+  }
+}
+
+/* Professor workflow refinement */
+.questionBankWorkspace .sectionHeader{
+  align-items: flex-start;
+}
+
+.questionBankFilters{
+  grid-template-columns: minmax(280px, 1.6fr) repeat(4, minmax(140px, 1fr));
+  align-items: end;
+}
+
+.questionBankFieldWide{
+  min-width: 280px;
+}
+
+.questionBankContextRow{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.questionBankSummaryGrid{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.questionAuthoringPanel{
+  border-color: #9fb7d2;
+  box-shadow: none;
+}
+
+.questionTypeSelector{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.questionTypeSelector button{
+  display: flex;
+  min-height: 72px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.questionTypeSelector button strong{
+  font-size: 14px;
+}
+
+.questionTypeSelector button span{
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.questionTypeSelector button.active{
+  border-color: var(--primary);
+  background: #edf5ff;
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.authoringSubsection{
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fbfdff;
+}
+
+.questionOptionGrid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.questionOptionInput{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.questionAuthoringActions{
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.formErrorSummary{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid #f0b4aa;
+  border-radius: 4px;
+  background: #fff4f2;
+  color: #7a271a;
+  font-size: 13px;
+}
+
+.fieldError{
+  display: block;
+  margin-top: 6px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.requiredMark{
+  color: #b42318;
+}
+
+.inputInvalid{
+  border-color: #d92d20;
+  box-shadow: 0 0 0 2px rgba(217, 45, 32, 0.08);
+}
+
+.technicalAuthoringTextarea{
+  min-height: 180px;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.questionBankTableWrap{
+  border-radius: 4px;
+}
+
+.questionBankTable th:nth-child(1){
+  width: 36%;
+}
+
+.questionBankTable th:nth-child(7){
+  width: 180px;
+}
+
+.tableDisclosure{
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tableDisclosure strong{
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.tableDisclosure span{
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.questionDetailRow td{
+  background: #f8fafc;
+}
+
+.questionDetailPanel{
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.questionDetailPanel p{
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.questionOptionPreview{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.questionOptionPreview span{
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.questionOptionPreview span.correct{
+  border-color: #86c5a3;
+  background: #ecfdf3;
+  color: #027a48;
+  font-weight: 700;
+}
+
+.examOfferingGroup{
+  display: grid;
+  gap: 10px;
+}
+
+.examOfferingGroupHeader{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.examOfferingGroupHeader h3{
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.examDirectoryTable th:nth-child(1){
+  width: 34%;
+}
+
+.examDirectoryTable th:nth-child(5){
+  width: 360px;
+}
+
+.gradebookAttemptTableWrap{
+  border-radius: 4px;
+}
+
+.gradebookAttemptTable{
+  min-width: 1080px;
+}
+
+.gradebookAttemptTable th:nth-child(1){
+  width: 240px;
+}
+
+.gradebookAttemptTable th:nth-child(9){
+  width: 110px;
+}
+
+@media (max-width: 1100px){
+  .questionBankFilters,
+  .questionTypeSelector,
+  .questionBankSummaryGrid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .questionOptionGrid{
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px){
+  .questionBankFilters,
+  .questionTypeSelector,
+  .questionBankSummaryGrid{
+    grid-template-columns: 1fr;
+  }
+
+  .questionOptionInput{
+    grid-template-columns: 1fr;
   }
 }

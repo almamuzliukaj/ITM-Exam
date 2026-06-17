@@ -1,14 +1,12 @@
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, saveExamAttemptDraft, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamLockdownReadiness, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
   const { examId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const isLiveSession = location.pathname.endsWith("/session");
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [exam, setExam] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -26,11 +24,11 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [lockdownReadiness, setLockdownReadiness] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const submittedRef = useRef(false);
@@ -40,11 +38,12 @@ export default function StudentExamSessionPage() {
   const violationCount = integrityEvents.length;
   const serverViolationCount = Number(integrityPolicy?.attemptViolationCount || 0);
   const effectiveViolationCount = Math.max(violationCount, serverViolationCount);
-  const finalWarningThreshold = Number(integrityPolicy?.finalWarningThreshold || 2);
-  const autoActionThreshold = Number(integrityPolicy?.autoActionThreshold || 3);
+  const finalWarningThreshold = Number(integrityPolicy?.finalWarningThreshold || 3);
+  const autoActionThreshold = Number(integrityPolicy?.autoActionThreshold || 5);
   const shouldShowFinalWarning = Boolean(integrityPolicy?.shouldShowFinalWarning) || effectiveViolationCount >= finalWarningThreshold;
   const shouldAutoSubmit = Boolean(integrityPolicy?.shouldAutoSubmit) || effectiveViolationCount >= autoActionThreshold;
   const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
+  const lockdownBlocked = Boolean(lockdownReadiness?.requiresLockdown && !lockdownReadiness?.canStartAttempt);
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -61,32 +60,23 @@ export default function StudentExamSessionPage() {
         setLoading(true);
         setError("");
         const examData = await getExam(examId);
+        const readiness = await getExamLockdownReadiness(examId).catch(() => null);
         if (!active) return;
 
         setExam(examData);
+        setLockdownReadiness(readiness);
 
-        if (!isLiveSession) {
-          const questionData = await listQuestions(examId).catch(() => []);
-          if (!active) return;
-          setQuestions(Array.isArray(questionData) ? questionData : []);
+        if (readiness?.requiresLockdown && !readiness.canStartAttempt) {
+          setQuestions([]);
+          setAttemptId("");
           setSessionTiming(null);
           setTimeRemaining(0);
           return;
         }
 
-        const restored = readDraft(storageKey);
-        const provisionalTiming = buildSessionTiming(examData, null, restored);
-        setSessionTiming(provisionalTiming);
-        setTimeRemaining(calculateRemainingSeconds(provisionalTiming));
-
-        let attemptData = null;
-        try {
-          attemptData = await getCurrentExamAttempt(examId);
-        } catch (err) {
-          setError(getApiMessage(err, "The exam attempt could not be started, but the question list will still be checked."));
-        }
-        const [questionData, integritySummary] = await Promise.all([
-          listQuestions(examId).catch(() => []),
+        const [questionData, attemptData, integritySummary] = await Promise.all([
+          listQuestions(examId),
+          getCurrentExamAttempt(examId),
           getCurrentExamIntegritySummary(examId).catch(() => null),
         ]);
         if (!active) return;
@@ -110,17 +100,15 @@ export default function StudentExamSessionPage() {
             .slice(0, 12));
         }
 
-        const timing = buildSessionTiming(examData, attemptData, restored);
+        const restored = readDraft(storageKey);
+        const timing = buildSessionTiming(examData, restored);
         setSessionTiming(timing);
         setTimeRemaining(calculateRemainingSeconds(timing));
 
-        const serverAnswers = Array.isArray(attemptData?.answers) ? mapAnswerListToState(attemptData.answers) : {};
-        const restoredAnswers = restored?.answers && typeof restored.answers === "object" ? restored.answers : {};
-        const nextAnswers = Object.keys(restoredAnswers).length > 0 ? { ...serverAnswers, ...restoredAnswers } : serverAnswers;
-        if (Object.keys(nextAnswers).length > 0) {
-          setAnswers(nextAnswers);
-          setLoadedDraftAt(restored?.savedAt || attemptData?.lastSavedAt || "");
-          setSavedAt(restored?.savedAt || attemptData?.lastSavedAt || "");
+        if (restored?.answers && typeof restored.answers === "object") {
+          setAnswers(restored.answers);
+          setLoadedDraftAt(restored.savedAt || "");
+          setSavedAt(restored.savedAt || "");
           setDraftRestored(true);
         }
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
@@ -138,7 +126,7 @@ export default function StudentExamSessionPage() {
     return () => {
       active = false;
     };
-  }, [examId, isLiveSession, storageKey, user]);
+  }, [examId, storageKey, user]);
 
   useEffect(() => {
     if (!sessionTiming) return;
@@ -165,36 +153,21 @@ export default function StudentExamSessionPage() {
       }));
       setSavedAt(nextSavedAt);
       setSaveState(state);
-      saveExamAttemptDraft(examId, {
-        answers: Object.entries(answers).map(([questionId, response]) => ({
-          questionId,
-          response: String(response || "").trim(),
-        })),
-      })
-        .then((draft) => {
-          if (draft?.lastSavedAt) {
-            setSavedAt(draft.lastSavedAt);
-          }
-          setSaveState("saved");
-        })
-        .catch(() => {
-          setSaveState("error");
-        });
     } catch {
       setSaveState("error");
     }
-  }, [answers, examId, flaggedQuestions, result, sessionTiming, storageKey]);
+  }, [answers, flaggedQuestions, result, sessionTiming, storageKey]);
 
   useEffect(() => {
-    if (!isLiveSession || !storageKey || loading || result || !sessionTiming) return;
+    if (!storageKey || loading || result || !sessionTiming) return;
 
     setSaveState("saving");
     const timeout = window.setTimeout(() => persistDraft("saved"), 650);
     return () => window.clearTimeout(timeout);
-  }, [answers, flaggedQuestions, isLiveSession, loading, persistDraft, result, sessionTiming, storageKey]);
+  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey]);
 
   useEffect(() => {
-    if (!isLiveSession || !storageKey || loading || result || !sessionTiming) return;
+    if (!storageKey || loading || result || !sessionTiming) return;
 
     function saveOnExit() {
       persistDraft("saved");
@@ -222,7 +195,7 @@ export default function StudentExamSessionPage() {
       window.removeEventListener("beforeunload", warnBeforeUnload);
       document.removeEventListener("visibilitychange", saveWhenHidden);
     };
-  }, [answers, isLiveSession, loading, persistDraft, result, sessionTiming, storageKey]);
+  }, [answers, loading, persistDraft, result, sessionTiming, storageKey]);
 
   const recordViolation = useCallback((eventType, message, metadata = {}) => {
     if (!examId || result || submittedRef.current) return;
@@ -284,36 +257,35 @@ export default function StudentExamSessionPage() {
   }, [attemptId, examId, finalWarningThreshold, result]);
 
   useEffect(() => {
-    if (!isLiveSession || loading || result) return;
+    if (loading || result) return;
 
-    window.history.pushState({ examLock: true }, "", window.location.href);
     setFullscreenActive(Boolean(document.fullscreenElement));
 
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") {
-        recordViolation("TAB_SWITCH", "Exam tab was hidden or the browser was minimized.");
+        recordViolation("TabHidden", "Exam tab was hidden during the session.");
       }
     }
 
     function onWindowBlur() {
-      recordViolation("WINDOW_BLUR", "Exam window lost focus.");
+      recordViolation("WindowBlur", "Exam window lost focus.");
     }
 
     function onFullscreenChange() {
       const active = Boolean(document.fullscreenElement);
       setFullscreenActive(active);
       if (!active) {
-        recordViolation("EXIT_FULLSCREEN", "Fullscreen mode was exited.");
+        recordViolation("FullscreenExit", "Fullscreen mode was exited.");
       }
     }
 
     function onBlockedInteraction(event) {
       event.preventDefault();
       const eventType = event.type === "contextmenu"
-          ? "RIGHT_CLICK_ATTEMPT"
+          ? "RightClickAttempt"
           : event.type === "copy"
-            ? "COPY_ATTEMPT"
-            : "PASTE_ATTEMPT";
+            ? "CopyAttempt"
+            : "PasteAttempt";
       recordViolation(eventType, "Restricted browser interaction was attempted.");
     }
 
@@ -321,52 +293,33 @@ export default function StudentExamSessionPage() {
       const key = event.key?.toLowerCase();
       const blockedCombo =
         (event.ctrlKey || event.metaKey) && ["c", "v", "x", "p", "s", "u", "a"].includes(key);
-      const blockedDevtoolsCombo =
-        (event.ctrlKey || event.metaKey) && event.shiftKey && ["i", "j", "c"].includes(key);
-      const blockedBackCombo = event.altKey && key === "arrowleft";
       const blockedSystemKey = ["f12", "printscreen"].includes(key);
-      if (!blockedCombo && !blockedDevtoolsCombo && !blockedBackCombo && !blockedSystemKey) return;
+      if (!blockedCombo && !blockedSystemKey) return;
 
       event.preventDefault();
-      const eventType =
-        key === "p" || key === "printscreen"
-          ? "PRINT_ATTEMPT"
-          : blockedDevtoolsCombo || key === "f12" || key === "u"
-            ? "DEVTOOLS_ATTEMPT"
-            : blockedBackCombo
-              ? "BACK_NAVIGATION"
-              : "SHORTCUT_ATTEMPT";
-      recordViolation(eventType, "Restricted keyboard shortcut was attempted.", {
-        key: event.key,
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-      });
+      recordViolation(
+        key === "p" || key === "printscreen" ? "PrintAttempt" : "ShortcutAttempt",
+        "Restricted keyboard shortcut was attempted.",
+        { key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey },
+      );
     }
 
     function onBeforePrint(event) {
       event.preventDefault?.();
-      recordViolation("PRINT_ATTEMPT", "Print action was attempted during the exam.");
+      recordViolation("PrintAttempt", "Print action was attempted during the exam.");
     }
 
     function onOffline() {
       setNetworkOnline(false);
-      recordViolation("NETWORK_OFFLINE", "Network connection was lost during the exam.");
+      recordViolation("NetworkOffline", "Network connection was lost during the exam.");
     }
 
     function onOnline() {
       setNetworkOnline(true);
     }
 
-    function onPopState() {
-      window.history.pushState({ examLock: true }, "", window.location.href);
-      recordViolation("BACK_NAVIGATION", "Back navigation was attempted during the exam.");
-    }
-
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
-    window.addEventListener("popstate", onPopState);
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("contextmenu", onBlockedInteraction);
     document.addEventListener("copy", onBlockedInteraction);
@@ -379,7 +332,6 @@ export default function StudentExamSessionPage() {
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
-      window.removeEventListener("popstate", onPopState);
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       document.removeEventListener("contextmenu", onBlockedInteraction);
       document.removeEventListener("copy", onBlockedInteraction);
@@ -389,7 +341,7 @@ export default function StudentExamSessionPage() {
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("online", onOnline);
     };
-  }, [isLiveSession, loading, recordViolation, result]);
+  }, [loading, recordViolation, result]);
 
   const submit = useCallback(async (reason = "manual") => {
     if (!examId || submittedRef.current) return;
@@ -405,28 +357,24 @@ export default function StudentExamSessionPage() {
         })),
       };
       const submission = await submitExamAttempt(examId, payload);
-      if (document.fullscreenElement && document.exitFullscreen) {
-        await document.exitFullscreen().catch(() => {});
-      }
       localStorage.removeItem(storageKey);
       setShowSubmitReview(false);
       setResult({ ...submission, reason });
-      navigate("/results", { replace: true });
     } catch (err) {
       submittedRef.current = false;
       setError(getApiMessage(err, "Failed to submit the exam."));
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, navigate, storageKey]);
+  }, [answers, examId, storageKey]);
 
   useEffect(() => {
-    if (!isLiveSession || !shouldShowFinalWarning || result || loading) return;
+    if (!shouldShowFinalWarning || result || loading) return;
     setShowFinalWarning(true);
-  }, [isLiveSession, loading, result, shouldShowFinalWarning]);
+  }, [loading, result, shouldShowFinalWarning]);
 
   useEffect(() => {
-    if (!isLiveSession || !shouldAutoSubmit || result || submitting || loading || questions.length === 0) {
+    if (!shouldAutoSubmit || result || submitting || loading || questions.length === 0) {
       if (!shouldAutoSubmit) setAutoActionCountdown(null);
       return;
     }
@@ -434,7 +382,7 @@ export default function StudentExamSessionPage() {
     setShowSubmitReview(false);
     setShowFinalWarning(false);
     setAutoActionCountdown((current) => current ?? 5);
-  }, [isLiveSession, loading, questions.length, result, shouldAutoSubmit, submitting]);
+  }, [loading, questions.length, result, shouldAutoSubmit, submitting]);
 
   useEffect(() => {
     if (autoActionCountdown == null || result || submitting) return;
@@ -454,25 +402,16 @@ export default function StudentExamSessionPage() {
   }, [autoActionCountdown, persistDraft, result, submit, submitting]);
 
   useEffect(() => {
-    if (isLiveSession && !loading && exam && questions.length > 0 && sessionTiming && timeRemaining === 0 && !result && !submitting) {
+    if (!loading && exam && questions.length > 0 && sessionTiming && timeRemaining === 0 && !result && !submitting) {
       submit("timer");
     }
-  }, [exam, isLiveSession, loading, questions.length, result, sessionTiming, submit, submitting, timeRemaining]);
-
-  useEffect(() => {
-    if (questions.length === 0) {
-      setActiveQuestionIndex(0);
-      return;
-    }
-
-    setActiveQuestionIndex((current) => Math.min(current, questions.length - 1));
-  }, [questions.length]);
+  }, [exam, loading, questions.length, result, sessionTiming, submit, submitting, timeRemaining]);
 
   if (userLoading) return <div className="pageState">Loading session...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
   if (user.role !== "Student") return <div className="pageState">Only students can open an exam session.</div>;
 
-  const answeredCount = questions.filter((question) => String(answers[question.id] || "").trim().length > 0).length;
+  const answeredCount = questions.filter((question) => isAnswerFilled(answers[question.id])).length;
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
   const progressPercent = questions.length ? Math.round((answeredCount / questions.length) * 100) : 0;
@@ -501,97 +440,48 @@ export default function StudentExamSessionPage() {
     setSaveState("idle");
   }
 
-  async function startLiveSession() {
-    if (document.fullscreenEnabled && !document.fullscreenElement) {
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        // The live session still opens; the integrity guard will ask again there.
-      }
-    }
-    navigate(`/exams/${examId}/session`);
-  }
-
-  if (!isLiveSession) {
-    return (
-      <AppShell
-        user={user}
-        badge="Exam briefing"
-        title={exam?.title || "Student exam"}
-        subtitle={exam?.description || "Review the exam information before starting the secure session."}
-        actions={<Link className="btn" to="/exams">Back to exams</Link>}
-      >
-        <div className="stackXl">
-          {error ? <div className="alert">{error}</div> : null}
-          {loading ? (
-            <div className="pageStateCard">Loading exam information...</div>
-          ) : (
-            <>
-              <section className="examBriefingHero">
-                <div>
-                  <span className="summaryLabel">Ready check</span>
-                  <h2>{exam?.title || "Exam session"}</h2>
-                  <p>
-                    When you start, the exam opens in a focused fullscreen workspace. Questions are shown one by one,
-                    answers are saved on this device, and the timer continues until submission.
-                  </p>
-                </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession}>
-                  Start exam
-                </button>
-              </section>
-
-              <section className="summaryStrip">
-                <article className="summaryCard">
-                  <span className="summaryLabel">Duration</span>
-                  <strong>{exam?.durationMinutes || 60} min</strong>
-                </article>
-                <article className="summaryCard">
-                  <span className="summaryLabel">Questions</span>
-                  <strong>{questions.length}</strong>
-                </article>
-                <article className="summaryCard">
-                  <span className="summaryLabel">Student</span>
-                  <strong>{user.fullName || user.email}</strong>
-                </article>
-              </section>
-
-              <section className="surfaceCard">
-                <div className="sectionHeader">
-                  <div>
-                    <h3>Exam rules</h3>
-                    <span className="small">These rules apply after you press Start exam.</span>
-                  </div>
-                </div>
-                <div className="sectionBody">
-                  <div className="examRulesGrid">
-                    <article>
-                      <strong>Stay on the exam page</strong>
-                      <span>Leaving the tab, losing focus, print, copy, paste, and right-click actions are recorded.</span>
-                    </article>
-                    <article>
-                      <strong>Use fullscreen</strong>
-                      <span>The system requests fullscreen and warns if fullscreen is exited.</span>
-                    </article>
-                    <article>
-                      <strong>Submit at the end</strong>
-                      <span>The final question has a Finish and submit action. The timer also submits automatically.</span>
-                    </article>
-                  </div>
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-      </AppShell>
-    );
-  }
-
   return (
-    <div className="secureExamShell">
-      <main className="secureExamMain">
-        <div className="stackXl">
+    <AppShell
+      user={user}
+      badge="Exam session"
+      title={exam?.title || "Student exam"}
+      subtitle={exam?.description || "Answer each question, keep an eye on the timer, and submit when ready."}
+      actions={
+        <>
+          <Link className="btn" to="/exams">Back to exams</Link>
+          {!result && !lockdownBlocked ? (
+            <button className="btn" type="button" onClick={enterFullscreen}>
+              {fullscreenActive ? "Fullscreen active" : "Enter fullscreen"}
+            </button>
+          ) : null}
+          {!result && !lockdownBlocked ? (
+            <button className="btn btnPrimary examSubmitBtn" type="button" onClick={() => setShowSubmitReview(true)} disabled={submitting || loading || questions.length === 0 || interactionLocked}>
+              {submitting ? "Submitting..." : "Submit exam"}
+            </button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
+        {!result && lockdownReadiness ? (
+          <LockdownReadinessPanel readiness={lockdownReadiness} />
+        ) : null}
+
+        {!result && !lockdownBlocked ? (
+          <IntegrityWarningBanner
+            violationCount={violationCount}
+            effectiveViolationCount={effectiveViolationCount}
+            locked={interactionLocked}
+            autoSubmitActive={shouldAutoSubmit}
+            autoActionCountdown={autoActionCountdown}
+            events={integrityEvents}
+            policy={integrityPolicy}
+            fullscreenActive={fullscreenActive}
+            networkOnline={networkOnline}
+            onFullscreen={enterFullscreen}
+          />
+        ) : null}
 
         {draftRestored && !result ? (
           <section className="draftRestoreBanner">
@@ -610,12 +500,7 @@ export default function StudentExamSessionPage() {
             result={result}
             answeredCount={answeredCount}
             questionsCount={questions.length}
-            onDone={async () => {
-              if (document.fullscreenElement && document.exitFullscreen) {
-                await document.exitFullscreen().catch(() => {});
-              }
-              navigate("/results");
-            }}
+            onDone={() => navigate("/exams")}
           />
         ) : null}
 
@@ -625,7 +510,7 @@ export default function StudentExamSessionPage() {
             flaggedCount={flaggedCount}
             questionsCount={questions.length}
             submitting={submitting}
-            timeRemaining={displayTimeRemaining}
+            timeRemaining={timeRemaining}
             onCancel={() => setShowSubmitReview(false)}
             onConfirm={() => submit("manual")}
           />
@@ -643,39 +528,29 @@ export default function StudentExamSessionPage() {
 
         {loading ? (
           <div className="pageStateCard">Loading questions...</div>
+        ) : !result && lockdownBlocked ? (
+          <div className="pageStateCard">
+            Open this exam in the required lockdown client, then reload the page to start the attempt.
+          </div>
         ) : !result ? (
           <>
-            <section className="secureExamCommandBar">
-              <div className="secureExamBrand secureExamBrandLight">
-                <div className="secureExamLogo">ITM</div>
-                <div>
-                  <strong>ITM Exam</strong>
-                  <span>{user.fullName || user.email}</span>
-                </div>
+            <section className="examSessionBar">
+              <div>
+                <span className="summaryLabel">Time remaining</span>
+                <strong className={timeRemaining <= 300 ? "timerDanger" : ""}>{formatDuration(timeRemaining)}</strong>
+                <small>Started {formatSavedAt(sessionTiming?.startedAt)}</small>
               </div>
-              <div className="secureExamStatus secureExamStatusLight">
-                <span className="securePulse" />
-                <strong>{shouldAutoSubmit ? "Submitting by policy" : "Exam in progress"}</strong>
+              <div>
+                <span className="summaryLabel">Progress</span>
+                <strong>{answeredCount}/{questions.length}</strong>
+                <small>{unansweredCount} unanswered, {flaggedCount} flagged</small>
               </div>
-              <div className="secureTimerTile">
-                <span>Time remaining</span>
-                <strong className={displayTimeRemaining <= 300 ? "timerDanger" : ""}>{formatDuration(displayTimeRemaining)}</strong>
+              <div>
+                <span className="summaryLabel">Autosave</span>
+                <strong>{formatSavedAt(savedAt || loadedDraftAt)}</strong>
+                <small>{formatSaveState(saveState)}</small>
               </div>
             </section>
-
- exam-session-question-bank-fixes
-            <section className="secureExamWorkspace">
-              <ExamRulesPanel />
-
-              <div className="secureQuestionPanel">
-                <div className="secureQuestionHeader">
-                  <div>
-                    <h2>{exam?.title || "Student exam"}</h2>
-                    <span>Total Questions: {questions.length} | Total Points: {sumPoints(questions)}</span>
-                  </div>
-                </div>
-                {activeQuestion ? (
-                  <>
 
             <StudentExamFocusPanel
               exam={exam}
@@ -720,45 +595,22 @@ export default function StudentExamSessionPage() {
               <div className="examQuestionStack">
                 {questions.length ? (
                   questions.map((question, index) => (
- main
                     <QuestionAnswerCard
-                      key={activeQuestion.id}
-                      index={activeQuestionIndex}
-                      question={activeQuestion}
-                      value={answers[activeQuestion.id] || ""}
-                      flagged={Boolean(flaggedQuestions[activeQuestion.id])}
+                      key={question.id}
+                      index={index}
+                      question={question}
+                      value={answers[question.id] || ""}
+                      flagged={Boolean(flaggedQuestions[question.id])}
                       disabled={interactionLocked}
-                      onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
+                      onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
-                          [activeQuestion.id]: !current[activeQuestion.id],
+                          [question.id]: !current[question.id],
                         }))
                       }
                     />
-                    <div className="examQuestionStepper">
-                      <button className="btn" type="button" onClick={() => setActiveQuestionIndex((current) => Math.max(0, current - 1))} disabled={isFirstQuestion}>
-                        Previous
-                      </button>
-                      <span>
-                        Question {activeQuestionIndex + 1} of {questions.length}
-                      </span>
-                      <button
-                        className="btn btnPrimary"
-                        type="button"
-                        onClick={() => {
-                          if (isLastQuestion) {
-                            submit("completed");
-                          } else {
-                            setActiveQuestionIndex((current) => Math.min(questions.length - 1, current + 1));
-                          }
-                        }}
-                        disabled={submitting || interactionLocked}
-                      >
-                        {isLastQuestion ? (submitting ? "Submitting..." : "Finish and submit") : "Next"}
-                      </button>
-                    </div>
-                  </>
+                  ))
                 ) : (
                   <div className="emptyState">
                     <strong>No questions are attached.</strong>
@@ -767,20 +619,10 @@ export default function StudentExamSessionPage() {
                 )}
               </div>
 
-              <aside className="secureQuestionNavigator">
+              <aside className="examNavigator surfaceCard">
                 <div className="sectionHeader">
                   <div>
                     <h3>Questions</h3>
-exam-session-question-bank-fixes
-                    <span className="small">{answeredCount} answered, {unansweredCount} not answered</span>
-                  </div>
-                </div>
-                <div className="sectionBody">
-                  <div className="secureLegend">
-                    <span><i className="legendAnswered" />Answered</span>
-                    <span><i />Not answered</span>
-                    <span><i className="legendFlagged" />Marked for review</span>
-
                     <span className="small">{answeredCount} answered, {flaggedCount} flagged</span>
                   </div>
                 </div>
@@ -792,28 +634,19 @@ exam-session-question-bank-fixes
                     <span><i className="legendOpen" /> Open</span>
                     <span><i className="legendAnswered" /> Answered</span>
                     <span><i className="legendFlagged" /> Flagged</span>
- main
                   </div>
                   <div className="examQuestionNav">
                     {questions.map((question, index) => (
-                      <button
-                        type="button"
+                      <a
                         key={question.id}
-                        className={`${getQuestionNavClass(answers[question.id], flaggedQuestions[question.id])}${index === activeQuestionIndex ? " active" : ""}`}
-                        onClick={() => setActiveQuestionIndex(index)}
+                        className={getQuestionNavClass(answers[question.id], flaggedQuestions[question.id])}
+                        href={`#question-${question.id}`}
                         title={flaggedQuestions[question.id] ? "Flagged for review" : "Question"}
                       >
                         {index + 1}
-                      </button>
+                      </a>
                     ))}
                   </div>
- exam-session-question-bank-fixes
-                  <div className="secureSideStatus">
-                    <span>Violations <strong>{effectiveViolationCount}</strong></span>
-                    <span>Internet <strong>{networkOnline ? "Connected" : "Offline"}</strong></span>
-                    <span>Autosave <strong>{formatSavedAt(savedAt || loadedDraftAt)}</strong></span>
-                  </div>
-
                   <button
                     className="btn btnPrimary btnBlock examNavigatorSubmit"
                     type="button"
@@ -822,30 +655,11 @@ exam-session-question-bank-fixes
                   >
                     Review and submit
                   </button>
- main
                 </div>
               </aside>
             </section>
-
-            <SecureExamFooter
-              fullscreenActive={fullscreenActive}
-              startedAt={sessionTiming?.startedAt}
-              saveState={saveState}
-              warningText={effectiveViolationCount >= autoActionThreshold
-                ? "Violation limit reached. Your exam is being submitted."
-                : `${effectiveViolationCount}/${autoActionThreshold} violations recorded`}
-              submitting={submitting}
-              canSubmit={questions.length > 0 && !interactionLocked}
-              onSubmit={() => setShowSubmitReview(true)}
-              onExit={() => navigate("/exams")}
-            />
           </>
         ) : null}
- exam-session-question-bank-fixes
-        </div>
-      </main>
-    </div>
-
       </div>
     </AppShell>
   );
@@ -940,7 +754,6 @@ function LockdownReadinessPanel({ readiness }) {
         </article>
       </div>
     </section>
- main
   );
 }
 
@@ -948,8 +761,10 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
+  const isMultiAnswerMcq = isMcq && Number(question.correctAnswerCount || 1) > 1;
   const options = Array.isArray(question.options) ? question.options : [];
-  const answered = String(value || "").trim().length > 0;
+  const selectedOptions = parseSelectedOptions(value);
+  const answered = isAnswerFilled(value);
 
   return (
     <article id={`question-${question.id}`} className="surfaceCard examQuestionCard">
@@ -985,18 +800,29 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
         {isMcq && options.length > 0 ? (
           <div className="examMcqOptions">
             {options.map((option) => (
-              <label key={option} className={`examMcqOption${value === option ? " selected" : ""}`}>
+              <label key={option} className={`examMcqOption${(isMultiAnswerMcq ? selectedOptions.includes(option) : value === option) ? " selected" : ""}`}>
                 <input
-                  type="radio"
+                  type={isMultiAnswerMcq ? "checkbox" : "radio"}
                   name={`question-${question.id}`}
                   value={option}
-                  checked={value === option}
-                  onChange={(event) => onChange(event.target.value)}
+                  checked={isMultiAnswerMcq ? selectedOptions.includes(option) : value === option}
+                  onChange={(event) => {
+                    if (!isMultiAnswerMcq) {
+                      onChange(event.target.value);
+                      return;
+                    }
+
+                    const nextSelected = event.target.checked
+                      ? [...selectedOptions, option]
+                      : selectedOptions.filter((item) => item !== option);
+                    onChange(serializeSelectedOptions(nextSelected));
+                  }}
                   disabled={disabled}
                 />
                 <span>{option}</span>
               </label>
             ))}
+            {isMultiAnswerMcq ? <span className="small">Select all correct answers.</span> : null}
           </div>
         ) : (
           <textarea
@@ -1012,67 +838,35 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
   );
 }
 
-function ExamRulesPanel() {
-  const rules = [
-    "Do not switch tabs or exit the exam window.",
-    "Do not use external materials, books, notes, or other applications.",
-    "Do not copy, paste, print, right-click, or use restricted shortcuts.",
-    "Do not communicate with other people during the exam.",
-    "Any violation may be logged and reviewed by staff.",
-    "The exam is automatically submitted when time is up.",
-  ];
-
+function IntegrityWarningBanner({ violationCount, effectiveViolationCount, locked, autoSubmitActive, autoActionCountdown, events, policy, fullscreenActive, networkOnline, onFullscreen }) {
+  const latest = events[0];
+  const policyAction = policy?.recommendedAction || policy?.RecommendedAction || "None";
   return (
-    <aside className="secureRulesPanel">
-      <h3>Exam Rules</h3>
-      <div className="secureRulesList">
-        {rules.map((rule, index) => (
-          <div key={rule} className="secureRuleItem">
-            <span>{index + 1}</span>
-            <p>{rule}</p>
-          </div>
-        ))}
+    <section className={`integrityBanner ${locked ? "integrityBannerLocked" : violationCount >= 3 ? "integrityBannerWarn" : ""}`}>
+      <div>
+        <span className="summaryLabel">Exam integrity guard</span>
+        <strong>
+          {autoSubmitActive
+            ? `Auto-submit ${autoActionCountdown == null ? "pending" : `in ${autoActionCountdown}s`}`
+            : locked
+              ? "Interaction locked"
+              : `${effectiveViolationCount} warning${effectiveViolationCount === 1 ? "" : "s"}`}
+        </strong>
+        <p>
+          {autoSubmitActive
+            ? "The integrity policy threshold was reached. Your current answers will be submitted automatically for staff review."
+            : locked
+            ? "Too many integrity warnings were recorded. Contact staff before continuing."
+            : latest?.message || "Stay in fullscreen, keep this tab active, and avoid copy/paste or right-click actions."}
+        </p>
+        <div className="integrityStatusGrid" aria-label="Exam integrity status">
+          <span className={fullscreenActive ? "statusOk" : "statusWarn"}>{fullscreenActive ? "Fullscreen active" : "Fullscreen required"}</span>
+          <span className={networkOnline ? "statusOk" : "statusWarn"}>{networkOnline ? "Online" : "Offline"}</span>
+          <span className={policyAction === "None" ? "statusOk" : "statusWarn"}>{formatPolicyAction(policyAction)}</span>
+        </div>
       </div>
-      <label className="secureRulesConfirm">
-        <input type="checkbox" checked readOnly />
-        <span>I have read and understood the rules above.</span>
-      </label>
-    </aside>
-  );
-}
-
-function SecureExamFooter({ fullscreenActive, startedAt, saveState, warningText, submitting, canSubmit, onSubmit, onExit }) {
-  return (
-    <footer className="secureExamFooter">
-      <div className="secureFooterItem">
-        <span>Protected session</span>
-        <strong>Violations are logged and reported.</strong>
-      </div>
-      <div className="secureFooterItem">
-        <span>Fullscreen</span>
-        <strong>{fullscreenActive ? "Active" : "Required to continue"}</strong>
-      </div>
-      <div className="secureFooterItem">
-        <span>Started at</span>
-        <strong>{formatSavedAt(startedAt)}</strong>
-      </div>
-      <div className="secureFooterItem">
-        <span>Autosave</span>
-        <strong>{formatSaveState(saveState)}</strong>
-      </div>
-      <div className="secureFooterItem">
-        <span>Integrity</span>
-        <strong>{warningText}</strong>
-      </div>
-      <div className="secureFooterActions">
-        <button className="btn" type="button" onClick={onExit}>
-          Exit exam
-        </button>
-        <button className="btn btnDanger" type="button" onClick={onSubmit} disabled={submitting || !canSubmit}>
-          {submitting ? "Submitting..." : "Submit exam"}
-        </button>
-      </div>
-    </footer>
+      <button className="btn" type="button" onClick={onFullscreen} disabled={autoSubmitActive}>Fullscreen</button>
+    </section>
   );
 }
 
@@ -1233,16 +1027,8 @@ function readDraft(storageKey) {
   }
 }
 
-function buildSessionTiming(exam, attempt, restored) {
+function buildSessionTiming(exam, restored) {
   const now = Date.now();
-  const serverExpiry = Date.parse(attempt?.expiresAt || "");
-  if (Number.isFinite(serverExpiry)) {
-    return {
-      startedAt: attempt?.startedAt || new Date(now).toISOString(),
-      expiresAt: new Date(serverExpiry).toISOString(),
-    };
-  }
-
   const restoredExpiry = Date.parse(restored?.expiresAt || "");
   if (Number.isFinite(restoredExpiry) && restoredExpiry > now) {
     return {
@@ -1256,15 +1042,6 @@ function buildSessionTiming(exam, attempt, restored) {
     startedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + durationMinutes * 60 * 1000).toISOString(),
   };
-}
-
-function mapAnswerListToState(answers) {
-  return answers.reduce((state, answer) => {
-    if (answer?.questionId) {
-      state[answer.questionId] = answer.response || "";
-    }
-    return state;
-  }, {});
 }
 
 function calculateRemainingSeconds(sessionTiming) {
@@ -1300,7 +1077,7 @@ function formatSaveState(saveState) {
 
 function getQuestionNavClass(answer, flagged) {
   const classes = [];
-  if (String(answer || "").trim()) classes.push("answered");
+  if (isAnswerFilled(answer)) classes.push("answered");
   if (flagged) classes.push("flagged");
   return classes.join(" ");
 }
@@ -1319,6 +1096,33 @@ function getApiMessage(err, fallback) {
 function formatQuestionType(type) {
   if (type === "CSharp") return "C#";
   return type || "Answer";
+}
+
+function isAnswerFilled(answer) {
+  const selected = parseSelectedOptions(answer);
+  if (selected.length > 0) return true;
+  return String(answer || "").trim().length > 0;
+}
+
+function parseSelectedOptions(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+  } catch {
+    // Single-answer MCQ responses are plain text.
+  }
+
+  return [];
+}
+
+function serializeSelectedOptions(options) {
+  const normalized = Array.from(new Set((options || []).map((option) => String(option || "").trim()).filter(Boolean)));
+  return normalized.length === 0 ? "" : JSON.stringify(normalized);
 }
 
 function parseTechnicalQuestion(question) {
@@ -1353,28 +1157,29 @@ function createClientSessionId() {
 function getIntegrityEventMessage(eventType) {
   const messages = {
     TabHidden: "Exam tab was hidden during the session.",
-    TAB_SWITCH: "Exam tab was hidden or the browser was minimized.",
     WindowBlur: "Exam window lost focus.",
-    WINDOW_BLUR: "Exam window lost focus.",
     FullscreenExit: "Fullscreen mode was exited.",
-    EXIT_FULLSCREEN: "Fullscreen mode was exited.",
     CopyAttempt: "Copy action was attempted.",
-    COPY_ATTEMPT: "Copy action was attempted.",
     PasteAttempt: "Paste action was attempted.",
-    PASTE_ATTEMPT: "Paste action was attempted.",
     RightClickAttempt: "Right-click was attempted.",
-    RIGHT_CLICK_ATTEMPT: "Right-click was attempted.",
     ShortcutAttempt: "Restricted keyboard shortcut was attempted.",
-    SHORTCUT_ATTEMPT: "Restricted keyboard shortcut was attempted.",
-    DEVTOOLS_ATTEMPT: "Developer tools or source viewing was attempted.",
     PrintAttempt: "Print action was attempted.",
-    PRINT_ATTEMPT: "Print action was attempted.",
     FullscreenRequestFailed: "Fullscreen mode could not be entered.",
-    FULLSCREEN_REQUEST_FAILED: "Fullscreen mode could not be entered.",
     NetworkOffline: "Network connection was lost during the exam.",
-    NETWORK_OFFLINE: "Network connection was lost during the exam.",
-    BACK_NAVIGATION: "Back navigation was attempted during the exam.",
   };
   return messages[eventType] || "Integrity warning was recorded.";
 }
 
+function formatPolicyAction(action) {
+  if (!action || action === "None") return "Policy clear";
+  if (action === "Warning") return "Policy warning";
+  if (action === "FinalWarning") return "Final warning";
+  if (action === "AutoSubmit") return "Auto action";
+  return action;
+}
+
+function formatLockdownClient(value) {
+  if (value === "SafeExamBrowser") return "Safe Exam Browser";
+  if (value === "KioskClient") return "Kiosk client";
+  return "Standard browser";
+}

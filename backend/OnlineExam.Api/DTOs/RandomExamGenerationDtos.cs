@@ -18,6 +18,7 @@ public class ExamQuestionResponseDto
     public string Text { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string? CorrectAnswer { get; set; }
+    public int CorrectAnswerCount { get; set; } = 1;
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }
 }

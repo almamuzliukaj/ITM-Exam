@@ -1,5 +1,47 @@
 # Work Log (Agnesa14)
 
+## 2026-06-08 - Sprint 30
+- Improved the student exam attempt screen with a focused workspace summary panel.
+- Added progress, autosave, safety, policy, unanswered, and flagged question indicators.
+- Added a question navigator progress bar, status legend, and secondary review-submit action.
+- Documented the student exam focus layout and manual validation checklist.
+
+## 2026-06-08 - Sprint 29
+- Added a university UI consistency review for professional frontend quality checks.
+- Added frontend standards for dropdowns, tables, empty states, academic tone, and responsive behavior.
+- Improved shared dropdown, table, and empty-state styling for clearer desktop and mobile presentation.
+
+## 2026-06-08 - Sprint 28
+- Added a demo operations runbook for startup, port checks, troubleshooting, and demo-day control.
+- Documented fixes for PostgreSQL connection failures, locked backend executables, Vite dependency issues, rejected Git pushes, and generated build artifacts.
+- Linked the runbook from the master documentation and manual test guide.
+
+## 2026-06-08 - Sprint 27
+- Added release QA evidence documentation for final demo and release review.
+- Added required screenshot, command evidence, role walkthrough, and known release notes.
+- Linked the release evidence guide from the master documentation and manual test guide.
+
+## 2026-06-08 - Sprint 26
+- Added professional branch, commit, PR, and handoff workflow documentation.
+- Added a pull request handoff section to the manual test guide.
+- Linked the change workflow from the documentation master index.
+
+## 2026-06-08 - Sprint 25
+- Added a university demo readiness panel to role dashboards.
+- Documented role-by-role presentation checks in `docs/demo-readiness-checklist.md`.
+- Connected the demo readiness checklist from the master docs and manual test guide.
+
+## 2026-05-29 - Sprint 24
+- Completed Agnesa's student journey validation pass.
+- Added visible validation checkpoints to the student exam session and result pages.
+- Expanded the manual test guide with repeatable student attempt, autosave, submit, duplicate-submit, and result visibility checks.
+
+## 2026-05-29
+- Completed Sprint 23 frontend task for SMU synced data usage.
+- Added source-aware admin behavior for users, academic structure, and enrollment screens.
+- Locked manual creation, import, edit, and cohort actions for SMU-owned records when integration is configured.
+- Kept synced records visible for review and dropdown selection while preserving Online Exam carry-over controls.
+
 ## 2026-05-09
 - Completed Sprint 13 baseline task: added AI-assisted text-answer evaluation with required human review.
 - Added backend endpoint for text-answer evaluation suggestions and connected it to the staff gradebook workflow.

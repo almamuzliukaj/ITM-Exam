@@ -45,6 +45,7 @@ Assistant visibility must remain limited to assigned offerings.
 - Future result visibility pages
 
 Student pages must show only eligible published academic content.
+The student attempt page should expose progress, autosave state, safety status, flagged questions, and submit review without requiring the student to search across the page.
 
 ## 10.6 UI Quality Rules
 
@@ -52,3 +53,8 @@ Student pages must show only eligible published academic content.
 - Buttons should reflect real workflow state, such as draft versus published.
 - Draft exam actions should not be shown after publication unless explicitly supported.
 - UI labels should use consistent English terminology.
+- Demo-critical dashboards should show role-specific readiness checkpoints before final presentation.
+- Controlled choices should use labeled dropdowns with professional placeholders and disabled states.
+- Staff and admin tables should remain scannable on desktop and contained inside horizontal wrappers on mobile.
+- UI consistency should be reviewed against `docs/university-ui-consistency-review.md` before demo-critical frontend pull requests.
+- Student exam focus layout should be reviewed against `docs/student-exam-focus-layout.md` before changing the attempt screen.

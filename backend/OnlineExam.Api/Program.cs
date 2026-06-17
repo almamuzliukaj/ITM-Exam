@@ -376,6 +376,12 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "PublishedByUserId" uuid NULL;
 
+            ALTER TABLE IF EXISTS "Questions"
+            ADD COLUMN IF NOT EXISTS "Topic" text NULL;
+
+            ALTER TABLE IF EXISTS "Questions"
+            ADD COLUMN IF NOT EXISTS "Difficulty" text NULL;
+
             UPDATE "ExamAttempts"
             SET "Status" = CASE WHEN "SubmittedAt" IS NULL THEN 'InProgress' ELSE 'Submitted' END
             WHERE "Status" IS NULL OR "Status" = '';

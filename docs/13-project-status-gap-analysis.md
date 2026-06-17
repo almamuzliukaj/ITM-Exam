@@ -18,6 +18,14 @@ The repository currently includes:
 - Grading and result publication flow.
 - Student result visibility page with pending and published states.
 - Baseline exam-integrity event tracking and lockdown readiness configuration.
+- SMU integration contract, readiness page, and source-aware admin review mode for synced academic data.
+- Student journey validation checkpoints for attempt readiness, autosave, submit safety, and result visibility.
+- Role dashboard demo-readiness checkpoints for university presentation flow.
+- Professional branch, commit, pull request, and sprint handoff workflow documentation.
+- Release QA evidence checklist for screenshots, role walkthroughs, build evidence, and known limitations.
+- Demo operations runbook for local startup, troubleshooting, port checks, and presentation control.
+- University UI consistency review for dropdowns, tables, empty states, academic tone, and responsive behavior.
+- Student exam focus layout with visible progress, autosave, safety, policy, flagged question, and submit review signals.
 
 ## 13.2 Completed or Mostly Completed Areas
 
@@ -27,17 +35,29 @@ The repository currently includes:
 - Sprint 13 has implemented AI-assisted review and result publication foundations.
 - Sprint 14 has implemented carry-over progression foundation, security stabilization, and final delivery planning.
 - Sprint 15 through Sprint 17 have implemented the student exam session UI, autosave safety, and student result visibility for Agnesa's track.
+- Sprint 22 through Sprint 23 have implemented SMU readiness and frontend source-of-truth handling for Agnesa's admin screens.
+- Sprint 24 has added a repeatable student journey validation guide and visible frontend checkpoints for demo testing.
+- Sprint 25 has added role-based university demo readiness checkpoints and a presentation checklist.
+- Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
+- Sprint 27 has added release QA evidence documentation for final demo and review readiness.
+- Sprint 28 has added a demo operations runbook for startup reliability and common local failure recovery.
+- Sprint 29 has added university UI consistency standards and shared styling improvements for professional presentation.
+- Sprint 30 has improved the student attempt screen with a focused workspace summary and navigator review controls.
 
 ## 13.3 Remaining Risks
 
 - Sprint statuses in Notion may not always match implementation status after recent commits.
 - Text/code/SQL grading still needs additional polish and edge-case review.
 - Integrity features currently capture and display baseline events; stronger policy enforcement and Safe Exam Browser integration remain future work.
-- SMU integration still needs a formal contract and implementation plan with the external academic-management project.
+- SMU integration still depends on final external API availability and team agreement on production sync scheduling.
 
 ## 13.4 Recommended Next Steps
 
 1. Keep each sprint on its own branch and pull request.
 2. Use the manual test guide before opening or merging demo-critical pull requests.
-3. Continue Sprint 19 with frontend integrity guard improvements.
-4. Define the SMU integration contract before removing admin-owned academic data screens.
+3. Use the professional change workflow before pushing sprint branches.
+4. Attach release QA evidence before final demo or delivery review.
+5. Run the demo operations checklist before presenting the application live.
+6. Apply the university UI consistency checklist to each remaining demo-critical page.
+7. Continue applying focused layout reviews to staff gradebook, exam authoring, and admin review screens.
+8. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.

@@ -42,6 +42,19 @@ public class ExamAttemptSummaryDto
     public DateTime? IntegrityAutoActionTriggeredAt { get; set; }
     public DateTime? IntegrityLastEventAt { get; set; }
     public List<ExamIntegrityEventDto> IntegrityEvents { get; set; } = [];
+    public List<ExamAttemptAnswerReviewDto> Answers { get; set; } = [];
+}
+
+public class ExamAttemptAnswerReviewDto
+{
+    public Guid QuestionId { get; set; }
+    public string QuestionText { get; set; } = string.Empty;
+    public string QuestionType { get; set; } = string.Empty;
+    public List<string> Options { get; set; } = [];
+    public string? CorrectAnswer { get; set; }
+    public string Response { get; set; } = string.Empty;
+    public int Points { get; set; }
+    public bool IsCorrect { get; set; }
 }
 
 public class StudentExamResultDto

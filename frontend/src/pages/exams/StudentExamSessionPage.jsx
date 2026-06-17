@@ -411,9 +411,10 @@ export default function StudentExamSessionPage() {
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
   if (user.role !== "Student") return <div className="pageState">Only students can open an exam session.</div>;
 
-  const answeredCount = questions.filter((question) => String(answers[question.id] || "").trim().length > 0).length;
+  const answeredCount = questions.filter((question) => isAnswerFilled(answers[question.id])).length;
   const flaggedCount = questions.filter((question) => flaggedQuestions[question.id]).length;
   const unansweredCount = questions.length - answeredCount;
+  const progressPercent = questions.length ? Math.round((answeredCount / questions.length) * 100) : 0;
   async function enterFullscreen() {
     if (!document.fullscreenEnabled) {
       recordViolation("FullscreenRequestFailed", "This browser does not allow fullscreen mode.");
@@ -551,6 +552,22 @@ export default function StudentExamSessionPage() {
               </div>
             </section>
 
+            <StudentExamFocusPanel
+              exam={exam}
+              user={user}
+              attemptId={attemptId}
+              progressPercent={progressPercent}
+              answeredCount={answeredCount}
+              questionsCount={questions.length}
+              unansweredCount={unansweredCount}
+              flaggedCount={flaggedCount}
+              saveState={saveState}
+              savedAt={savedAt || loadedDraftAt}
+              networkOnline={networkOnline}
+              fullscreenActive={fullscreenActive}
+              interactionLocked={interactionLocked}
+            />
+
             <section className="examIntegrityStrip">
               <div>
                 <strong>Guided session</strong>
@@ -561,6 +578,18 @@ export default function StudentExamSessionPage() {
                 <span>Total available points</span>
               </div>
             </section>
+
+            <StudentJourneyValidationPanel
+              questionsCount={questions.length}
+              answeredCount={answeredCount}
+              sessionTiming={sessionTiming}
+              savedAt={savedAt || loadedDraftAt}
+              saveState={saveState}
+              lockdownBlocked={lockdownBlocked}
+              integrityPolicy={integrityPolicy}
+              fullscreenActive={fullscreenActive}
+              networkOnline={networkOnline}
+            />
 
             <section className="examSessionLayout">
               <div className="examQuestionStack">
@@ -583,7 +612,10 @@ export default function StudentExamSessionPage() {
                     />
                   ))
                 ) : (
-                  <div className="emptyState">This exam has no questions yet.</div>
+                  <div className="emptyState">
+                    <strong>No questions are attached.</strong>
+                    <span>This exam cannot be completed until staff attach at least one question.</span>
+                  </div>
                 )}
               </div>
 
@@ -591,10 +623,18 @@ export default function StudentExamSessionPage() {
                 <div className="sectionHeader">
                   <div>
                     <h3>Questions</h3>
-                    <span className="small">{answeredCount} answered</span>
+                    <span className="small">{answeredCount} answered, {flaggedCount} flagged</span>
                   </div>
                 </div>
                 <div className="sectionBody">
+                  <div className="examNavigatorProgress" aria-label={`Exam progress ${progressPercent}%`}>
+                    <span style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <div className="examNavigatorLegend" aria-label="Question status legend">
+                    <span><i className="legendOpen" /> Open</span>
+                    <span><i className="legendAnswered" /> Answered</span>
+                    <span><i className="legendFlagged" /> Flagged</span>
+                  </div>
                   <div className="examQuestionNav">
                     {questions.map((question, index) => (
                       <a
@@ -607,6 +647,14 @@ export default function StudentExamSessionPage() {
                       </a>
                     ))}
                   </div>
+                  <button
+                    className="btn btnPrimary btnBlock examNavigatorSubmit"
+                    type="button"
+                    onClick={() => setShowSubmitReview(true)}
+                    disabled={submitting || questions.length === 0 || interactionLocked}
+                  >
+                    Review and submit
+                  </button>
                 </div>
               </aside>
             </section>
@@ -614,6 +662,69 @@ export default function StudentExamSessionPage() {
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function StudentExamFocusPanel({
+  exam,
+  user,
+  attemptId,
+  progressPercent,
+  answeredCount,
+  questionsCount,
+  unansweredCount,
+  flaggedCount,
+  saveState,
+  savedAt,
+  networkOnline,
+  fullscreenActive,
+  interactionLocked,
+}) {
+  const studentName = user?.fullName || user?.name || user?.email || "Student";
+  const attemptLabel = attemptId ? String(attemptId).slice(0, 8) : "Pending";
+  const saveLabel = savedAt ? formatSavedAt(savedAt) : "Waiting for first save";
+
+  return (
+    <section className="studentExamFocusPanel" aria-label="Exam focus summary">
+      <div className="studentExamFocusHeader">
+        <div>
+          <span className="summaryLabel">Focused exam workspace</span>
+          <h3>{exam?.title || "Student exam"}</h3>
+          <p>{studentName} · Attempt {attemptLabel}</p>
+        </div>
+        <div className="studentExamFocusScore">
+          <strong>{progressPercent}%</strong>
+          <span>{answeredCount}/{questionsCount} answered</span>
+        </div>
+      </div>
+
+      <div className="studentExamProgressTrack" aria-hidden="true">
+        <span style={{ width: `${progressPercent}%` }} />
+      </div>
+
+      <div className="studentExamFocusGrid">
+        <article>
+          <span className="summaryLabel">Remaining work</span>
+          <strong>{unansweredCount} unanswered</strong>
+          <small>{flaggedCount} question(s) flagged for review</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Autosave</span>
+          <strong>{formatSaveState(saveState)}</strong>
+          <small>{saveLabel}</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Exam safety</span>
+          <strong>{networkOnline ? "Online" : "Connection lost"}</strong>
+          <small>{fullscreenActive ? "Fullscreen is active" : "Fullscreen is not active"}</small>
+        </article>
+        <article>
+          <span className="summaryLabel">Policy state</span>
+          <strong>{interactionLocked ? "Locked" : "Active"}</strong>
+          <small>{interactionLocked ? "Submit review is controlled by policy" : "You can continue answering"}</small>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -650,8 +761,10 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
+  const isMultiAnswerMcq = isMcq && Number(question.correctAnswerCount || 1) > 1;
   const options = Array.isArray(question.options) ? question.options : [];
-  const answered = String(value || "").trim().length > 0;
+  const selectedOptions = parseSelectedOptions(value);
+  const answered = isAnswerFilled(value);
 
   return (
     <article id={`question-${question.id}`} className="surfaceCard examQuestionCard">
@@ -687,18 +800,29 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
         {isMcq && options.length > 0 ? (
           <div className="examMcqOptions">
             {options.map((option) => (
-              <label key={option} className={`examMcqOption${value === option ? " selected" : ""}`}>
+              <label key={option} className={`examMcqOption${(isMultiAnswerMcq ? selectedOptions.includes(option) : value === option) ? " selected" : ""}`}>
                 <input
-                  type="radio"
+                  type={isMultiAnswerMcq ? "checkbox" : "radio"}
                   name={`question-${question.id}`}
                   value={option}
-                  checked={value === option}
-                  onChange={(event) => onChange(event.target.value)}
+                  checked={isMultiAnswerMcq ? selectedOptions.includes(option) : value === option}
+                  onChange={(event) => {
+                    if (!isMultiAnswerMcq) {
+                      onChange(event.target.value);
+                      return;
+                    }
+
+                    const nextSelected = event.target.checked
+                      ? [...selectedOptions, option]
+                      : selectedOptions.filter((item) => item !== option);
+                    onChange(serializeSelectedOptions(nextSelected));
+                  }}
                   disabled={disabled}
                 />
                 <span>{option}</span>
               </label>
             ))}
+            {isMultiAnswerMcq ? <span className="small">Select all correct answers.</span> : null}
           </div>
         ) : (
           <textarea
@@ -826,7 +950,69 @@ function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
         </div>
         <div className="heroActions examDoneActions">
           <button className="btn btnPrimary" type="button" onClick={onDone}>Return to exams</button>
+          <Link className="btn" to="/results">View results queue</Link>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function StudentJourneyValidationPanel({
+  questionsCount,
+  answeredCount,
+  sessionTiming,
+  savedAt,
+  saveState,
+  lockdownBlocked,
+  integrityPolicy,
+  fullscreenActive,
+  networkOnline,
+}) {
+  const items = [
+    {
+      label: "Attempt access",
+      detail: lockdownBlocked ? "Blocked by lockdown readiness" : "Student can access this attempt",
+      passed: !lockdownBlocked,
+    },
+    {
+      label: "Questions",
+      detail: questionsCount > 0 ? `${questionsCount} loaded` : "No questions loaded",
+      passed: questionsCount > 0,
+    },
+    {
+      label: "Timer",
+      detail: sessionTiming?.expiresAt ? `Ends ${formatSavedAt(sessionTiming.expiresAt)}` : "No session timer",
+      passed: Boolean(sessionTiming?.expiresAt),
+    },
+    {
+      label: "Draft safety",
+      detail: savedAt ? `${formatSaveState(saveState)} at ${formatSavedAt(savedAt)}` : "Waiting for first answer",
+      passed: Boolean(savedAt) || answeredCount === 0,
+    },
+    {
+      label: "Integrity",
+      detail: `${fullscreenActive ? "Fullscreen active" : "Fullscreen available"}; ${networkOnline ? "online" : "offline"}`,
+      passed: Boolean(integrityPolicy) || fullscreenActive || networkOnline,
+    },
+  ];
+
+  return (
+    <section className="studentJourneyPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Student journey validation</h3>
+          <span className="sectionMeta">Use this panel during final testing to confirm the exam session is ready end to end.</span>
+        </div>
+        <span className="statusPill statusLive">{items.filter((item) => item.passed).length}/{items.length}</span>
+      </div>
+      <div className="studentJourneyGrid">
+        {items.map((item) => (
+          <article key={item.label} className={item.passed ? "journeyCheckPassed" : "journeyCheckWarn"}>
+            <span>{item.passed ? "Ready" : "Check"}</span>
+            <strong>{item.label}</strong>
+            <small>{item.detail}</small>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -891,7 +1077,7 @@ function formatSaveState(saveState) {
 
 function getQuestionNavClass(answer, flagged) {
   const classes = [];
-  if (String(answer || "").trim()) classes.push("answered");
+  if (isAnswerFilled(answer)) classes.push("answered");
   if (flagged) classes.push("flagged");
   return classes.join(" ");
 }
@@ -910,6 +1096,33 @@ function getApiMessage(err, fallback) {
 function formatQuestionType(type) {
   if (type === "CSharp") return "C#";
   return type || "Answer";
+}
+
+function isAnswerFilled(answer) {
+  const selected = parseSelectedOptions(answer);
+  if (selected.length > 0) return true;
+  return String(answer || "").trim().length > 0;
+}
+
+function parseSelectedOptions(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+  } catch {
+    // Single-answer MCQ responses are plain text.
+  }
+
+  return [];
+}
+
+function serializeSelectedOptions(options) {
+  const normalized = Array.from(new Set((options || []).map((option) => String(option || "").trim()).filter(Boolean)));
+  return normalized.length === 0 ? "" : JSON.stringify(normalized);
 }
 
 function parseTechnicalQuestion(question) {

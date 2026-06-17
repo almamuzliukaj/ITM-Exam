@@ -225,6 +225,11 @@ export default function ExamDetailsPage() {
     }
   }
 
+  function onStartAttempt() {
+    if (!examId) return;
+    window.location.href = `/exams/${examId}/attempt`;
+  }
+
   return (
     <AppShell
       user={user}
@@ -241,7 +246,11 @@ export default function ExamDetailsPage() {
               {publishing ? "Publishing..." : "Publish exam"}
             </button>
           ) : null}
-          {isStudent && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/attempt`}>Start attempt</Link> : null}
+          {isStudent && examId ? (
+            <button className="btn btnPrimary" type="button" onClick={onStartAttempt}>
+              Start attempt
+            </button>
+          ) : null}
           {canEdit && examId ? <Link className="btn btnPrimary" to={`/exams/${examId}/questions/new`}>{t("examDetails.addQuestion")}</Link> : null}
         </>
       }
@@ -266,6 +275,7 @@ export default function ExamDetailsPage() {
                 <span className="summaryLabel">{t("examDetails.questions")}</span>
                 <strong>{questions.length}</strong>
               </article>
+ feature/exam-max-points-grading
               <article className="summaryCard">
                 <span className="summaryLabel">Maximum points</span>
                 <strong>{examMaximumPoints || "-"}</strong>
@@ -325,6 +335,8 @@ export default function ExamDetailsPage() {
                   </article>
                 </div>
               </div>
+
+ main
             </section>
 
             {isDraft && !exam?.courseOfferingId ? (
@@ -589,12 +601,6 @@ function formatOfferingLabel(offering) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "Section -";
 
   return `${code}${name ? ` - ${name}` : ""} / ${term} / ${year}, ${semester}, ${section}`;
-}
-
-function formatLockdownClient(value) {
-  if (value === "SafeExamBrowser") return "Safe Exam Browser";
-  if (value === "KioskClient") return "Kiosk client";
-  return "Standard browser";
 }
 
 function isPositiveNumber(value) {

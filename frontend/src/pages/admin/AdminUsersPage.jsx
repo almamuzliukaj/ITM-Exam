@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
+import SmuSourceBanner from "../../components/SmuSourceBanner";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useSmuIntegrationStatus } from "../../hooks/useSmuIntegrationStatus";
 import {
   createUser,
   importUsers,
@@ -29,6 +31,7 @@ const initialCreateForm = {
 export default function AdminUsersPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
+  const smuStatus = useSmuIntegrationStatus();
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({ search: "", role: "", status: "all" });
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -45,6 +48,9 @@ export default function AdminUsersPage() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ fullName: "", role: "Student", isActive: true });
   const [passwordDrafts, setPasswordDrafts] = useState({});
+  const [activeUserTool, setActiveUserTool] = useState("");
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const [directoryPageSize, setDirectoryPageSize] = useState(10);
 
   const queryFilters = useMemo(() => {
     const statusFilter = filters.status === "all" ? {} : { isActive: filters.status === "active" };
@@ -62,6 +68,14 @@ export default function AdminUsersPage() {
 
     return { active, inactive, staff };
   }, [users]);
+  const directoryPageCount = Math.max(1, Math.ceil(users.length / directoryPageSize));
+  const visibleUsers = useMemo(() => {
+    const startIndex = (directoryPage - 1) * directoryPageSize;
+    return users.slice(startIndex, startIndex + directoryPageSize);
+  }, [directoryPage, directoryPageSize, users]);
+  const directoryStart = users.length === 0 ? 0 : (directoryPage - 1) * directoryPageSize + 1;
+  const directoryEnd = Math.min(users.length, directoryPage * directoryPageSize);
+  const smuManaged = smuStatus.isConfigured;
 
   const loadUsers = useCallback(async () => {
     try {
@@ -80,8 +94,20 @@ export default function AdminUsersPage() {
     loadUsers();
   }, [loadUsers]);
 
+  useEffect(() => {
+    setDirectoryPage(1);
+  }, [filters.search, filters.role, filters.status, directoryPageSize]);
+
+  useEffect(() => {
+    setDirectoryPage((current) => Math.min(current, directoryPageCount));
+  }, [directoryPageCount]);
+
   async function handleCreateUser(e) {
     e.preventDefault();
+    if (smuManaged) {
+      setPageError("SMU is the source of truth for students and staff. Run SMU sync instead of creating accounts manually.");
+      return;
+    }
     try {
       setCreating(true);
       setPageError("");
@@ -105,6 +131,10 @@ export default function AdminUsersPage() {
   }
 
   async function handleImportUsers() {
+    if (smuManaged) {
+      setPageError("CSV import is locked while SMU is the active source of truth.");
+      return;
+    }
     try {
       const { rows, errors } = parseCsvRows(importText, t);
       setImportPreview(rows.map((row) => ({ ...row, error: errors[row.__line] || "" })));
@@ -139,6 +169,10 @@ export default function AdminUsersPage() {
   }
 
   function beginEdit(account) {
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Student and staff profile fields are managed by SMU while integration is active.");
+      return;
+    }
     setEditingId(account.id);
     setEditForm({
       fullName: account.fullName,
@@ -160,6 +194,10 @@ export default function AdminUsersPage() {
   }
 
   async function toggleStatus(account) {
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Student and staff activation status is managed by SMU while integration is active.");
+      return;
+    }
     try {
       setPageError("");
       await updateUserStatus(account.id, !account.isActive);
@@ -175,6 +213,11 @@ export default function AdminUsersPage() {
   }
 
   async function handleResetPassword(userId) {
+    const account = users.find((entry) => entry.id === userId);
+    if (isSmuManagedAccount(account, smuManaged)) {
+      setPageError("Password reset for SMU-managed students and staff should be handled from the source system.");
+      return;
+    }
     const newPassword = passwordDrafts[userId];
     if (!newPassword) {
       setPageError(t("adminUsers.resetMissing"));
@@ -210,8 +253,15 @@ export default function AdminUsersPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        <SmuSourceBanner
+          title="Students and staff come from SMU"
+          description="Synced student, professor, and assistant records are displayed here for review. Manual account creation and CSV import are fallback tools only when SMU is not configured."
+          isConfigured={smuStatus.isConfigured}
+          loading={smuStatus.loading}
+          error={smuStatus.error}
+        />
 
-        <section className="adminDashboardHero">
+        <section className="adminDashboardHero adminDashboardHeroCompact">
           <div className="adminDashboardHeroCopy">
             <div className="adminHeroBrand">
               <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
@@ -237,11 +287,48 @@ export default function AdminUsersPage() {
           </div>
         </section>
 
-        <section className="dashboardGrid dashboardGridWide">
+        <section className="surfaceCard adminControlPanel">
+          <div className="sectionHeader">
+            <div>
+              <h3>Account workspace controls</h3>
+              <span className="sectionMeta">Keep the directory visible and open account tools only when needed.</span>
+            </div>
+          </div>
+          <div className="sectionBody">
+            <div className="adminToolbar">
+              <div className="segmentedControl" aria-label="User management tool">
+                <button className={activeUserTool === "" ? "active" : ""} type="button" onClick={() => setActiveUserTool("")}>
+                  Directory
+                </button>
+                <button className={activeUserTool === "create" ? "active" : ""} type="button" onClick={() => setActiveUserTool("create")}>
+                  Create user
+                </button>
+                <button className={activeUserTool === "import" ? "active" : ""} type="button" onClick={() => setActiveUserTool("import")}>
+                  Import CSV
+                </button>
+              </div>
+              <div className="adminToolbarStatus">
+                <span className="statusPill statusLive">{userSummary.active} active</span>
+                <span className="statusPill statusDraft">{userSummary.inactive} inactive</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {activeUserTool === "create" || activeUserTool === "import" ? (
+        <section className="dashboardGrid dashboardGridWide adminCreatePanel">
+          {activeUserTool === "create" ? (
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>{t("adminUsers.createUser")}</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>{t("adminUsers.createUser")}</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU owns students and staff." : "Manual fallback for local accounts."}</span>
+              </div>
+            </div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCreateUser}>
+                {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update students, professors, and assistants.</div> : null}
+                <fieldset className="formFieldset" disabled={smuManaged}>
                 <div className="field">
                   <label className="label">{t("adminUsers.fullName")}</label>
                   <input className="input" value={createForm.fullName} onChange={(e) => setCreateForm((c) => ({ ...c, fullName: e.target.value }))} required />
@@ -265,13 +352,23 @@ export default function AdminUsersPage() {
                   <span>{t("adminUsers.activeAccount")}</span>
                 </label>
                 <button className="btn btnPrimary" type="submit" disabled={creating}>{creating ? t("adminUsers.creating") : t("adminUsers.createButton")}</button>
+                </fieldset>
               </form>
             </div>
           </article>
+          ) : null}
 
+          {activeUserTool === "import" ? (
           <article className="surfaceCard adminFormCard">
-            <div className="sectionHeader"><h3>{t("adminUsers.bulkImport")}</h3></div>
+            <div className="sectionHeader">
+              <div>
+                <h3>{t("adminUsers.bulkImport")}</h3>
+                <span className="sectionMeta">{smuManaged ? "Locked because SMU sync replaces CSV import." : "Manual fallback for seed/import work."}</span>
+              </div>
+            </div>
             <div className="sectionBody stackLg">
+              {smuManaged ? <div className="pageStateCard">CSV import is disabled while SMU is active. Use the SMU sync page to preview and import records.</div> : null}
+              <fieldset className="formFieldset" disabled={smuManaged}>
               <div className="field">
                 <label className="label">{t("adminUsers.defaultPassword")}</label>
                 <input className="input" value={defaultPassword} onChange={(e) => setDefaultPassword(e.target.value)} placeholder={t("adminUsers.defaultPasswordPlaceholder")} />
@@ -290,10 +387,14 @@ export default function AdminUsersPage() {
                   {importing ? t("adminUsers.importing") : t("adminUsers.importUsers")}
                 </button>
               </div>
+              </fieldset>
             </div>
           </article>
+          ) : null}
         </section>
+        ) : null}
 
+        {activeUserTool === "import" ? (
         <section className="surfaceCard adminTableCard">
           <div className="sectionHeader"><h3>{t("adminUsers.importPreview")}</h3></div>
           <div className="sectionBody">
@@ -329,8 +430,9 @@ export default function AdminUsersPage() {
             )}
           </div>
         </section>
+        ) : null}
 
-        {importResult ? (
+        {activeUserTool === "import" && importResult ? (
           <section className="dashboardGrid">
             <article className="surfaceCard adminTableCard">
               <div className="sectionHeader"><h3>{t("adminUsers.importSummary")}</h3></div>
@@ -402,7 +504,14 @@ export default function AdminUsersPage() {
         ) : null}
 
         <section className="surfaceCard adminTableCard">
-          <div className="sectionHeader"><h3>{t("adminUsers.userDirectory")}</h3></div>
+          <div className="sectionHeader">
+            <div>
+              <h3>{t("adminUsers.userDirectory")}</h3>
+              <span className="sectionMeta">
+                Showing {directoryStart}-{directoryEnd} of {users.length} account{users.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
           <div className="sectionBody stackLg">
             <div className="filtersRow">
               <input className="input" placeholder={t("adminUsers.searchPlaceholder")} value={filters.search} onChange={(e) => setFilters((c) => ({ ...c, search: e.target.value }))} />
@@ -416,71 +525,102 @@ export default function AdminUsersPage() {
                 <option value="active">{t("adminUsers.active")}</option>
                 <option value="inactive">{t("adminUsers.inactive")}</option>
               </select>
+              <select className="input inputCompact" value={directoryPageSize} onChange={(e) => setDirectoryPageSize(Number(e.target.value))} aria-label="Rows per page">
+                <option value={10}>10 rows</option>
+                <option value={25}>25 rows</option>
+                <option value={50}>50 rows</option>
+              </select>
             </div>
 
             {loadingUsers ? (
               <div className="pageStateCard">{t("adminUsers.loadingRecords")}</div>
             ) : (
-              <div className="tableWrap">
-                <table className="dataTable">
-                  <thead>
-                    <tr>
-                      <th>{t("adminUsers.fullName")}</th>
-                      <th>{t("adminUsers.email")}</th>
-                      <th>{t("adminUsers.role")}</th>
-                      <th>{t("adminUsers.status")}</th>
-                      <th>{t("adminUsers.created")}</th>
-                      <th>{t("adminUsers.actions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((account) => {
-                      const isEditing = editingId === account.id;
-                      return (
-                        <tr key={account.id}>
-                          <td>{isEditing ? <input className="input" value={editForm.fullName} onChange={(e) => setEditForm((c) => ({ ...c, fullName: e.target.value }))} /> : account.fullName}</td>
-                          <td>{account.email}</td>
-                          <td>{isEditing ? (
-                            <select className="input" value={editForm.role} onChange={(e) => setEditForm((c) => ({ ...c, role: e.target.value }))}>
-                              {[...ROLE_OPTIONS, "Admin"].map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
-                            </select>
-                          ) : t(`adminUsers.roles.${account.role}`) || account.role}</td>
-                          <td><span className={`statusPill ${account.isActive ? "statusLive" : "statusDraft"}`}>{account.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</span></td>
-                          <td>{new Date(account.createdAt).toLocaleDateString()}</td>
-                          <td>
-                            <div className="actionsCol">
-                              {isEditing ? (
-                                <>
-                                  <label className="checkboxRow">
-                                    <input type="checkbox" checked={editForm.isActive} onChange={(e) => setEditForm((c) => ({ ...c, isActive: e.target.checked }))} />
-                                    <span>{t("adminUsers.active")}</span>
-                                  </label>
-                                  <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
-                                    <button className="btn btnPrimary" type="button" onClick={() => saveEdit(account.id)}>{t("adminUsers.save")}</button>
-                                    <button className="btn" type="button" onClick={() => setEditingId(null)}>{t("common.cancel")}</button>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
-                                    <button className="btn" type="button" onClick={() => beginEdit(account)}>{t("adminUsers.edit")}</button>
-                                    <button className="btn" type="button" onClick={() => toggleStatus(account)}>
-                                      {account.isActive ? t("adminUsers.deactivate") : t("adminUsers.activate")}
-                                    </button>
-                                  </div>
-                                  <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
-                                    <input className="input" placeholder={t("adminUsers.newPassword")} value={passwordDrafts[account.id] || ""} onChange={(e) => setPasswordDrafts((c) => ({ ...c, [account.id]: e.target.value }))} />
-                                    <button className="btn" type="button" onClick={() => handleResetPassword(account.id)}>{t("adminUsers.reset")}</button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </td>
+              <div className="stackLg">
+                <div className="tableWrap adminDirectoryTableWrap">
+                  <table className="dataTable">
+                    <thead>
+                      <tr>
+                        <th>{t("adminUsers.fullName")}</th>
+                        <th>{t("adminUsers.email")}</th>
+                        <th>{t("adminUsers.role")}</th>
+                        <th>{t("adminUsers.status")}</th>
+                        <th>Source</th>
+                        <th>{t("adminUsers.created")}</th>
+                        <th>{t("adminUsers.actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.length === 0 ? (
+                        <tr>
+                          <td colSpan={7}>No users match the current filters.</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ) : visibleUsers.map((account) => {
+                        const isEditing = editingId === account.id;
+                        const smuLockedAccount = isSmuManagedAccount(account, smuManaged);
+                        return (
+                          <tr key={account.id}>
+                            <td>{isEditing ? <input className="input" value={editForm.fullName} onChange={(e) => setEditForm((c) => ({ ...c, fullName: e.target.value }))} /> : account.fullName}</td>
+                            <td>{account.email}</td>
+                            <td>{isEditing ? (
+                              <select className="input" value={editForm.role} onChange={(e) => setEditForm((c) => ({ ...c, role: e.target.value }))}>
+                                {[...ROLE_OPTIONS, "Admin"].map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
+                              </select>
+                            ) : t(`adminUsers.roles.${account.role}`) || account.role}</td>
+                            <td><span className={`statusPill ${account.isActive ? "statusLive" : "statusDraft"}`}>{account.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</span></td>
+                            <td><span className={`statusPill ${smuLockedAccount ? "statusLive" : "statusDraft"}`}>{smuLockedAccount ? "SMU sync" : "Local"}</span></td>
+                            <td>{new Date(account.createdAt).toLocaleDateString()}</td>
+                            <td>
+                              <div className="actionsCol">
+                                {smuLockedAccount ? (
+                                  <span className="small">Managed by SMU</span>
+                                ) : null}
+                                {isEditing ? (
+                                  <>
+                                    <label className="checkboxRow">
+                                      <input type="checkbox" checked={editForm.isActive} onChange={(e) => setEditForm((c) => ({ ...c, isActive: e.target.checked }))} />
+                                      <span>{t("adminUsers.active")}</span>
+                                    </label>
+                                    <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
+                                      <button className="btn btnPrimary" type="button" onClick={() => saveEdit(account.id)}>{t("adminUsers.save")}</button>
+                                      <button className="btn" type="button" onClick={() => setEditingId(null)}>{t("common.cancel")}</button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    {!smuLockedAccount ? <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
+                                      <button className="btn" type="button" onClick={() => beginEdit(account)}>{t("adminUsers.edit")}</button>
+                                      <button className="btn" type="button" onClick={() => toggleStatus(account)}>
+                                        {account.isActive ? t("adminUsers.deactivate") : t("adminUsers.activate")}
+                                      </button>
+                                    </div> : null}
+                                    {!smuLockedAccount ? <div className="row" style={{ gap: 8, justifyContent: "flex-start" }}>
+                                      <input className="input" placeholder={t("adminUsers.newPassword")} value={passwordDrafts[account.id] || ""} onChange={(e) => setPasswordDrafts((c) => ({ ...c, [account.id]: e.target.value }))} />
+                                      <button className="btn" type="button" onClick={() => handleResetPassword(account.id)}>{t("adminUsers.reset")}</button>
+                                    </div> : null}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="paginationBar">
+                  <span>
+                    Showing {directoryStart}-{directoryEnd} of {users.length}
+                  </span>
+                  <div className="paginationActions">
+                    <button className="btn" type="button" disabled={directoryPage <= 1} onClick={() => setDirectoryPage((current) => Math.max(1, current - 1))}>
+                      Previous
+                    </button>
+                    <span className="paginationCurrent">Page {directoryPage} of {directoryPageCount}</span>
+                    <button className="btn" type="button" disabled={directoryPage >= directoryPageCount} onClick={() => setDirectoryPage((current) => Math.min(directoryPageCount, current + 1))}>
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -542,4 +682,8 @@ function isStrongPassword(password) {
 
 function readError(error, fallback) {
   return error?.response?.data?.message || fallback;
+}
+
+function isSmuManagedAccount(account, smuManaged) {
+  return Boolean(smuManaged && account && ["Student", "Professor", "Assistant"].includes(account.role));
 }

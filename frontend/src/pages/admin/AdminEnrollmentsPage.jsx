@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AppShell from "../../components/AppShell";
+import SmuSourceBanner from "../../components/SmuSourceBanner";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useSmuIntegrationStatus } from "../../hooks/useSmuIntegrationStatus";
 import { listUsers } from "../../lib/usersApi";
 import {
   activateSemesterEnrollment,
@@ -45,6 +47,7 @@ const STATUS_TONE = {
 
 export default function AdminEnrollmentsPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
+  const smuStatus = useSmuIntegrationStatus();
   const [students, setStudents] = useState([]);
   const [terms, setTerms] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -72,11 +75,14 @@ export default function AdminEnrollmentsPage() {
   const [processingKey, setProcessingKey] = useState("");
   const [operationResults, setOperationResults] = useState([]);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(10);
 
   const visibleTerms = useMemo(
     () => terms.filter((term) => term.status !== "Closed" && term.status !== "Archived"),
     [terms],
   );
+  const smuManaged = smuStatus.isConfigured;
 
   const validSemesterOptions = useMemo(
     () => getSemesterOptions(filters.yearOfStudy),
@@ -91,6 +97,13 @@ export default function AdminEnrollmentsPage() {
       `${student.fullName} ${student.email}`.toLowerCase().includes(query)
     );
   }, [students, filters.search]);
+  const studentPageCount = Math.max(1, Math.ceil(filteredStudents.length / studentPageSize));
+  const visibleStudents = useMemo(() => {
+    const startIndex = (studentPage - 1) * studentPageSize;
+    return filteredStudents.slice(startIndex, startIndex + studentPageSize);
+  }, [filteredStudents, studentPage, studentPageSize]);
+  const studentStart = filteredStudents.length === 0 ? 0 : (studentPage - 1) * studentPageSize + 1;
+  const studentEnd = Math.min(filteredStudents.length, studentPage * studentPageSize);
 
   const currentTerm = useMemo(
     () => terms.find((term) => term.id === filters.termId) || null,
@@ -212,6 +225,14 @@ export default function AdminEnrollmentsPage() {
   }, [filters.semesterNo, validSemesterOptions]);
 
   useEffect(() => {
+    setStudentPage(1);
+  }, [filters.search, studentPageSize]);
+
+  useEffect(() => {
+    setStudentPage((current) => Math.min(current, studentPageCount));
+  }, [studentPageCount]);
+
+  useEffect(() => {
     if (!focusedStudentId && students.length > 0) {
       setFocusedStudentId(students[0].id);
     }
@@ -223,6 +244,10 @@ export default function AdminEnrollmentsPage() {
   }, [focusedStudentId, filters.termId, loadFocusedStudentDetails]);
 
   async function handleCreateEnrollments() {
+    if (smuManaged) {
+      setPageError("Semester enrollments are managed by SMU while integration is active.");
+      return;
+    }
     if (!filters.termId) {
       setPageError("Select a term before creating enrollments.");
       return;
@@ -291,6 +316,10 @@ export default function AdminEnrollmentsPage() {
   }
 
   async function handleActivateEnrollments() {
+    if (smuManaged) {
+      setPageError("Enrollment activation is managed by SMU while integration is active.");
+      return;
+    }
     if (selectedStudentIds.length === 0) {
       setPageError("Select at least one student before activation.");
       return;
@@ -358,6 +387,10 @@ export default function AdminEnrollmentsPage() {
   }
 
   async function handleRegularizeEnrollments() {
+    if (smuManaged) {
+      setPageError("Current semester course eligibility is managed by SMU while integration is active.");
+      return;
+    }
     if (!filters.termId) {
       setPageError("Select a term before generating course enrollments.");
       return;
@@ -493,7 +526,7 @@ export default function AdminEnrollmentsPage() {
   }
 
   function toggleSelectAllVisible() {
-    const visibleIds = filteredStudents.map((student) => student.id);
+    const visibleIds = visibleStudents.map((student) => student.id);
     const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedStudentIds.includes(id));
 
     setSelectedStudentIds((current) => {
@@ -517,7 +550,7 @@ export default function AdminEnrollmentsPage() {
 
   const focusedStudent = students.find((student) => student.id === focusedStudentId) || null;
   const allVisibleSelected =
-    filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudentIds.includes(student.id));
+    visibleStudents.length > 0 && visibleStudents.every((student) => selectedStudentIds.includes(student.id));
 
   return (
     <AppShell
@@ -536,6 +569,13 @@ export default function AdminEnrollmentsPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        <SmuSourceBanner
+          title="Enrollment eligibility comes from SMU"
+          description="Semester and course enrollments are displayed from synced data. Manual cohort creation, activation, and regularization stay available only before SMU is configured; carry-over unlock remains controlled in Online Exam."
+          isConfigured={smuStatus.isConfigured}
+          loading={smuStatus.loading}
+          error={smuStatus.error}
+        />
 
         <section className="summaryStrip">
           <article className="summaryCard">
@@ -560,9 +600,9 @@ export default function AdminEnrollmentsPage() {
           <div className="sectionHeader">
             <div>
               <h3>Cohort setup</h3>
-              <span className="sectionMeta">Choose the academic term, study year, semester, and default enrollment status.</span>
+              <span className="sectionMeta">{smuManaged ? "Review the synced cohort scope from SMU." : "Choose the academic term, study year, semester, and default enrollment status."}</span>
             </div>
-            <span className="statusPill statusDraft">Step 1</span>
+            <span className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? "SMU review" : "Step 1"}</span>
           </div>
           <div className="sectionBody stackLg">
             <div className="formGrid formGridThree">
@@ -620,6 +660,7 @@ export default function AdminEnrollmentsPage() {
                   className="input"
                   value={filters.createStatus}
                   onChange={(e) => setFilters((current) => ({ ...current, createStatus: e.target.value }))}
+                  disabled={smuManaged}
                 >
                   <option value="Pending">Pending</option>
                   <option value="Active">Active</option>
@@ -632,6 +673,7 @@ export default function AdminEnrollmentsPage() {
                   value={filters.notes}
                   onChange={(e) => setFilters((current) => ({ ...current, notes: e.target.value }))}
                   placeholder="Optional note for cohort registration batch"
+                  disabled={smuManaged}
                 />
               </div>
             </div>
@@ -641,6 +683,7 @@ export default function AdminEnrollmentsPage() {
               {currentTerm
                 ? `${currentTerm.name} | Year ${filters.yearOfStudy} | Semester ${filters.semesterNo}`
                 : "Select a term to start cohort registration."}
+              {smuManaged ? <span className="blockHint">Manual status and note inputs are locked because SMU owns cohort eligibility.</span> : null}
             </div>
           </div>
         </section>
@@ -649,7 +692,7 @@ export default function AdminEnrollmentsPage() {
           <div className="sectionHeader">
             <div>
               <h3>Student cohort selection</h3>
-              <span className="sectionMeta">Filter students, select the cohort, then run the required academic operation.</span>
+              <span className="sectionMeta">Showing {studentStart}-{studentEnd} of {filteredStudents.length} matching students.</span>
             </div>
             <span className="statusPill statusLive">{selectedStudentIds.length} selected</span>
           </div>
@@ -662,64 +705,87 @@ export default function AdminEnrollmentsPage() {
                 onChange={(e) => setFilters((current) => ({ ...current, search: e.target.value }))}
               />
               <button className="btn" type="button" onClick={toggleSelectAllVisible}>
-                {allVisibleSelected ? "Clear visible selection" : "Select visible students"}
+                {allVisibleSelected ? "Clear page selection" : "Select current page"}
               </button>
+              <select className="input inputCompact" value={studentPageSize} onChange={(e) => setStudentPageSize(Number(e.target.value))} aria-label="Students per page">
+                <option value={10}>10 rows</option>
+                <option value={25}>25 rows</option>
+                <option value={50}>50 rows</option>
+              </select>
             </div>
 
             {loadingData ? (
               <div className="pageStateCard">Loading student cohort data...</div>
             ) : (
-              <div className="tableWrap">
-                <table className="dataTable">
-                  <thead>
-                    <tr>
-                      <th>Select</th>
-                      <th>Student</th>
-                      <th>Email</th>
-                      <th>Cohort enrollment</th>
-                      <th>Action focus</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.map((student) => {
-                      const enrollment = enrollmentLookup.get(student.id);
-                      const isSelected = selectedStudentIds.includes(student.id);
-                      const isFocused = focusedStudentId === student.id;
-
-                      return (
-                        <tr key={student.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleStudentSelection(student.id)}
-                            />
-                          </td>
-                          <td>{student.fullName}</td>
-                          <td>{student.email}</td>
-                          <td>
-                            {enrollment ? (
-                              <span className={`statusPill ${STATUS_TONE[enrollment.status] || "statusDraft"}`}>
-                                {enrollment.status}
-                              </span>
-                            ) : (
-                              <span className="small">Not registered for selected cohort</span>
-                            )}
-                          </td>
-                          <td>
-                            <button
-                              className={`btn${isFocused ? " btnPrimary" : ""}`}
-                              type="button"
-                              onClick={() => setFocusedStudentId(student.id)}
-                            >
-                              {isFocused ? "Inspecting" : "Inspect"}
-                            </button>
-                          </td>
+              <div className="stackLg">
+                <div className="tableWrap adminDirectoryTableWrap">
+                  <table className="dataTable">
+                    <thead>
+                      <tr>
+                        <th>Select</th>
+                        <th>Student</th>
+                        <th>Email</th>
+                        <th>Cohort enrollment</th>
+                        <th>Action focus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleStudents.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>No students match the current search.</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ) : visibleStudents.map((student) => {
+                        const enrollment = enrollmentLookup.get(student.id);
+                        const isSelected = selectedStudentIds.includes(student.id);
+                        const isFocused = focusedStudentId === student.id;
+
+                        return (
+                          <tr key={student.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleStudentSelection(student.id)}
+                              />
+                            </td>
+                            <td>{student.fullName}</td>
+                            <td>{student.email}</td>
+                            <td>
+                              {enrollment ? (
+                                <span className={`statusPill ${STATUS_TONE[enrollment.status] || "statusDraft"}`}>
+                                  {enrollment.status}
+                                </span>
+                              ) : (
+                                <span className="small">Not registered for selected cohort</span>
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                className={`btn${isFocused ? " btnPrimary" : ""}`}
+                                type="button"
+                                onClick={() => setFocusedStudentId(student.id)}
+                              >
+                                {isFocused ? "Inspecting" : "Inspect"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="paginationBar">
+                  <span>Showing {studentStart}-{studentEnd} of {filteredStudents.length}</span>
+                  <div className="paginationActions">
+                    <button className="btn" type="button" disabled={studentPage <= 1} onClick={() => setStudentPage((current) => Math.max(1, current - 1))}>
+                      Previous
+                    </button>
+                    <span className="paginationCurrent">Page {studentPage} of {studentPageCount}</span>
+                    <button className="btn" type="button" disabled={studentPage >= studentPageCount} onClick={() => setStudentPage((current) => Math.min(studentPageCount, current + 1))}>
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -727,7 +793,7 @@ export default function AdminEnrollmentsPage() {
               <button
                 className="btn btnPrimary"
                 type="button"
-                disabled={processingKey !== "" || selectedStudentIds.length === 0}
+                disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0}
                 onClick={handleCreateEnrollments}
               >
                 {processingKey === "create" ? "Creating..." : "Create semester enrollments"}
@@ -735,7 +801,7 @@ export default function AdminEnrollmentsPage() {
               <button
                 className="btn"
                 type="button"
-                disabled={processingKey !== "" || selectedStudentIds.length === 0}
+                disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0}
                 onClick={() =>
                   setConfirmAction({
                     title: "Activate selected enrollments?",
@@ -750,7 +816,7 @@ export default function AdminEnrollmentsPage() {
               <button
                 className="btn"
                 type="button"
-                disabled={processingKey !== "" || selectedStudentIds.length === 0 || !filters.termId}
+                disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0 || !filters.termId}
                 onClick={() =>
                   setConfirmAction({
                     title: "Generate course enrollments?",
@@ -763,6 +829,11 @@ export default function AdminEnrollmentsPage() {
                 {processingKey === "regularize" ? "Generating..." : "Generate current semester courses"}
               </button>
             </div>
+            {smuManaged ? (
+              <div className="pageStateCard">
+                SMU sync owns cohort creation and current-semester course eligibility. This screen is now a review workspace; carry-over unlock remains available below because it is exam-specific.
+              </div>
+            ) : null}
           </div>
         </section>
 

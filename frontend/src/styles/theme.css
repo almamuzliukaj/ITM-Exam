@@ -18,9 +18,9 @@
 
   --shadow-xl: 0 18px 48px rgba(16, 34, 56, .09);
   --shadow-md: 0 10px 24px rgba(16, 34, 56, .065);
-  --radius-xl: 14px;
-  --radius-lg: 12px;
-  --radius-md: 10px;
+  --radius-xl: 6px;
+  --radius-lg: 5px;
+  --radius-md: 4px;
 
   --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", sans-serif;
   --font-display: "Cambria", "Palatino Linotype", "Book Antiqua", Georgia, serif;

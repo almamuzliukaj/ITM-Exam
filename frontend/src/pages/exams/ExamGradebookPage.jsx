@@ -196,9 +196,7 @@ export default function ExamGradebookPage() {
       setSuccess("");
       const result = await publishExamResults(examId, { publishAll: true, attemptIds: [] });
       setAttempts((current) =>
-        current.map((attempt) =>
-          attempt.isGraded ? { ...attempt, isPublished: true } : attempt,
-        ),
+        current.map((attempt) => ({ ...attempt, isGraded: true, isPublished: true })),
       );
       setSuccess(result?.message || "Published graded results.");
     } catch (err) {
@@ -247,7 +245,7 @@ export default function ExamGradebookPage() {
             </div>
             <div className="resourceActionGroup">
               <span className="statusPill statusDraft">{publishedCount} published</span>
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || gradedCount === 0 || !canReview}>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
                 {publishing ? "Publishing..." : "Publish graded results"}
               </button>
             </div>
@@ -285,29 +283,92 @@ export default function ExamGradebookPage() {
                 <span>Switch filters to see other gradebook queues for this exam.</span>
               </div>
             ) : (
-              <div className="gradebookReviewList">
-                {visibleAttempts.map((attempt) => (
-                  <AttemptReviewCard
-                    key={attempt.attemptId}
-                    attempt={attempt}
-                    draft={drafts[attempt.attemptId] || {}}
-                    aiReview={aiReviews[attempt.attemptId]}
-                    reviewing={reviewingId === attempt.attemptId}
-                    saving={savingId === attempt.attemptId}
-                    disabled={!canReview}
-                    onDraftChange={(nextDraft) =>
-                      setDrafts((current) => ({ ...current, [attempt.attemptId]: nextDraft }))
-                    }
-                    onAiReview={() => onAiReview(attempt)}
-                    onSaveGrade={() => onSaveGrade(attempt)}
-                  />
-                ))}
-              </div>
+              <>
+                <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} />
+                <div className="gradebookReviewList">
+                  {visibleAttempts.map((attempt) => (
+                    <AttemptReviewCard
+                      key={attempt.attemptId}
+                      attempt={attempt}
+                      draft={drafts[attempt.attemptId] || {}}
+                      aiReview={aiReviews[attempt.attemptId]}
+                      reviewing={reviewingId === attempt.attemptId}
+                      saving={savingId === attempt.attemptId}
+                      disabled={!canReview}
+                      onDraftChange={(nextDraft) =>
+                        setDrafts((current) => ({ ...current, [attempt.attemptId]: nextDraft }))
+                      }
+                      onAiReview={() => onAiReview(attempt)}
+                      onSaveGrade={() => onSaveGrade(attempt)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function GradebookAttemptTable({ attempts, drafts }) {
+  return (
+    <div className="tableWrap gradebookAttemptTableWrap">
+      <table className="dataTable gradebookAttemptTable">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Attempt</th>
+            <th>Submitted</th>
+            <th>Auto score</th>
+            <th>Manual score</th>
+            <th>Final score</th>
+            <th>Publication</th>
+            <th>Integrity</th>
+            <th>Review</th>
+          </tr>
+        </thead>
+        <tbody>
+          {attempts.map((attempt) => {
+            const draft = drafts[attempt.attemptId] || {};
+            const violations = Number(attempt.integrityViolationCount || 0);
+            return (
+              <tr key={attempt.attemptId}>
+                <td>
+                  <div className="examDirectoryTitle">
+                    <strong>{attempt.studentName || "Student"}</strong>
+                    <span>{attempt.studentEmail || "No email recorded"}</span>
+                  </div>
+                </td>
+                <td>
+                  <span className={`statusPill ${attempt.isGraded ? "statusReady" : "statusWarn"}`}>
+                    {attempt.isGraded ? "Reviewed" : "Needs review"}
+                  </span>
+                </td>
+                <td>{formatDateTime(attempt.submittedAt) || "Pending"}</td>
+                <td>{formatScore(attempt.autoScore)}</td>
+                <td>{formatScore(draft.manualScore ?? attempt.manualScore)}</td>
+                <td>{formatScore(draft.finalScore ?? attempt.finalScore)}</td>
+                <td>
+                  <ResultBadge attempt={attempt} />
+                </td>
+                <td>
+                  <span className={`statusPill ${violations > 0 ? "statusWarn" : "statusLive"}`}>
+                    {violations > 0 ? `${violations} flag${violations === 1 ? "" : "s"}` : "Clear"}
+                  </span>
+                </td>
+                <td>
+                  <a className="btn" href={`#attempt-${attempt.attemptId}`}>
+                    Review
+                  </a>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -319,7 +380,7 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
   const currentGrade = calculateGrade(currentPercentage);
 
   return (
-    <article className="gradebookReviewCard">
+    <article className="gradebookReviewCard" id={`attempt-${attempt.attemptId}`}>
       <div className="gradebookReviewHeader">
         <div className="gradebookStudentBlock">
           <span className="summaryLabel">Student attempt</span>
@@ -343,6 +404,8 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
         <ScoreTile label="Final grade" value={formatGrade(currentGrade, currentGrade >= 6)} />
         <ScoreTile label="Adjustment" value={scoreDelta} signed />
       </div>
+
+      <AttemptAnswersPanel attempt={attempt} />
 
       <IntegrityReviewPanel attempt={attempt} />
 
@@ -439,6 +502,62 @@ function AttemptTimeline({ attempt }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AttemptAnswersPanel({ attempt }) {
+  const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
+
+  return (
+    <div className="attemptAnswersPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Student answers</h3>
+          <span className="small">Review each submitted answer exactly as the student sent it.</span>
+        </div>
+      </div>
+      {answers.length === 0 ? (
+        <div className="emptyState">No submitted answers were recorded for this attempt.</div>
+      ) : (
+        <div className="attemptAnswerList">
+          {answers.map((answer, index) => (
+            <article key={answer.questionId} className="attemptAnswerCard">
+              <div className="attemptAnswerHeader">
+                <div>
+                  <span className="summaryLabel">Question {index + 1} / {answer.questionType}</span>
+                  <strong>{answer.questionText}</strong>
+                </div>
+                <span className={`statusPill ${answer.isCorrect ? "statusLive" : "statusDraft"}`}>
+                  {answer.isCorrect ? "Correct" : `${answer.points || 0} pts`}
+                </span>
+              </div>
+              {Array.isArray(answer.options) && answer.options.length > 0 ? (
+                <div className="attemptAnswerOptions">
+                  {answer.options.map((option) => (
+                    <span
+                      key={option}
+                      className={`${option === answer.response ? "selected" : ""}${option === answer.correctAnswer ? " correct" : ""}`}
+                    >
+                      {option}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="attemptAnswerResponse">
+                <span>Student response</span>
+                <p>{answer.response || "(empty answer)"}</p>
+              </div>
+              {answer.correctAnswer ? (
+                <div className="attemptAnswerExpected">
+                  <span>Expected answer</span>
+                  <p>{answer.correctAnswer}</p>
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

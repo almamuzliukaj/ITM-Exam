@@ -489,6 +489,9 @@ namespace OnlineExam.Api.Migrations
                     b.Property<Guid?>("CourseId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Difficulty")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("ExamId")
                         .HasColumnType("uuid");
 
@@ -500,6 +503,9 @@ namespace OnlineExam.Api.Migrations
 
                     b.Property<string>("Text")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Topic")
                         .HasColumnType("text");
 
                     b.Property<string>("Type")

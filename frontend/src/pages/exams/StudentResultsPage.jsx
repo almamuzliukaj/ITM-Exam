@@ -9,6 +9,9 @@ export default function StudentResultsPage() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeResultView, setActiveResultView] = useState("published");
+  const [resultPage, setResultPage] = useState(1);
+  const [resultPageSize, setResultPageSize] = useState(6);
 
   useEffect(() => {
     if (!user || user.role !== "Student") return;
@@ -45,6 +48,22 @@ export default function StudentResultsPage() {
     () => [...published].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))[0] || null,
     [published],
   );
+  const activeResults = activeResultView === "published" ? published : pending;
+  const resultPageCount = Math.max(1, Math.ceil(activeResults.length / resultPageSize));
+  const visibleResults = useMemo(() => {
+    const startIndex = (resultPage - 1) * resultPageSize;
+    return activeResults.slice(startIndex, startIndex + resultPageSize);
+  }, [activeResults, resultPage, resultPageSize]);
+  const resultStart = activeResults.length === 0 ? 0 : (resultPage - 1) * resultPageSize + 1;
+  const resultEnd = Math.min(activeResults.length, resultPage * resultPageSize);
+
+  useEffect(() => {
+    setResultPage(1);
+  }, [activeResultView, resultPageSize]);
+
+  useEffect(() => {
+    setResultPage((current) => Math.min(current, resultPageCount));
+  }, [resultPageCount]);
 
   if (userLoading) return <div className="pageState">Loading results...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
@@ -90,44 +109,49 @@ export default function StudentResultsPage() {
           </div>
         </section>
 
-        <section className="resultsLayout">
-          <article className="surfaceCard">
+        <section className="surfaceCard">
             <div className="sectionHeader">
               <div>
-                <h3>Published results</h3>
-                <span className="small">Visible to the student after staff approval.</span>
+                <h3>{activeResultView === "published" ? "Published results" : "Pending review"}</h3>
+                <span className="sectionMeta">Showing {resultStart}-{resultEnd} of {activeResults.length} result{activeResults.length === 1 ? "" : "s"}.</span>
               </div>
             </div>
-            <div className="sectionBody">
-              {loading ? (
-                <div className="pageStateCard">Loading published results...</div>
-              ) : published.length === 0 ? (
-                <div className="emptyState">
-                  <p>No published results yet.</p>
-                  <p>After grading and publication, your score and review notes will appear here.</p>
+            <div className="sectionBody stackLg">
+              <div className="adminToolbar">
+                <div className="segmentedControl" aria-label="Result view">
+                  <button className={activeResultView === "published" ? "active" : ""} type="button" onClick={() => setActiveResultView("published")}>
+                    Published
+                  </button>
+                  <button className={activeResultView === "pending" ? "active" : ""} type="button" onClick={() => setActiveResultView("pending")}>
+                    Pending
+                  </button>
                 </div>
-              ) : (
+                <div className="adminToolbarStatus">
+                  <span className="statusPill statusLive">{published.length} published</span>
+                  <span className="statusPill statusDraft">{pending.length} pending</span>
+                  <select className="input inputCompact" value={resultPageSize} onChange={(e) => setResultPageSize(Number(e.target.value))} aria-label="Results per page">
+                    <option value={6}>6 rows</option>
+                    <option value={12}>12 rows</option>
+                    <option value={24}>24 rows</option>
+                  </select>
+                </div>
+              </div>
+              {loading ? (
+                <div className="pageStateCard">Loading results...</div>
+              ) : activeResults.length === 0 ? (
+                <div className="emptyState">
+                  <p>{activeResultView === "published" ? "No published results yet." : "No pending attempts."}</p>
+                  <p>{activeResultView === "published" ? "After grading and publication, your score and review notes will appear here." : "Submitted attempts waiting for review will appear here."}</p>
+                </div>
+              ) : activeResultView === "published" ? (
                 <div className="resultCardStack">
-                  {published.map((result) => (
+                  {visibleResults.map((result) => (
                     <ResultCard key={result.attemptId} result={result} />
                   ))}
                 </div>
-              )}
-            </div>
-          </article>
-
-          <aside className="surfaceCard resultStatusPanel">
-            <div className="sectionHeader">
-              <h3>Review queue</h3>
-            </div>
-            <div className="sectionBody">
-              {loading ? (
-                <div className="pageStateCard">Checking attempts...</div>
-              ) : pending.length === 0 ? (
-                <div className="emptyState">No pending attempts.</div>
               ) : (
                 <div className="studentItemList">
-                  {pending.map((result) => (
+                  {visibleResults.map((result) => (
                     <div key={result.attemptId} className="studentItemRow">
                       <div>
                         <strong>{result.examTitle}</strong>
@@ -138,8 +162,15 @@ export default function StudentResultsPage() {
                   ))}
                 </div>
               )}
+              <div className="paginationBar">
+                <span>Showing {resultStart}-{resultEnd} of {activeResults.length}</span>
+                <div className="paginationActions">
+                  <button className="btn" type="button" disabled={resultPage <= 1} onClick={() => setResultPage((current) => Math.max(1, current - 1))}>Previous</button>
+                  <span className="paginationCurrent">Page {resultPage} of {resultPageCount}</span>
+                  <button className="btn" type="button" disabled={resultPage >= resultPageCount} onClick={() => setResultPage((current) => Math.min(resultPageCount, current + 1))}>Next</button>
+                </div>
+              </div>
             </div>
-          </aside>
         </section>
       </div>
     </AppShell>

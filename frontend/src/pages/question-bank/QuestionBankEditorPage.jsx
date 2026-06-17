@@ -34,7 +34,10 @@ const EMPTY_FORM = {
   text: "",
   type: "MCQ",
   points: 10,
+  topic: "",
+  difficulty: "Medium",
   correctAnswer: "",
+  correctAnswers: [],
   options: ["", ""],
   starterCode: starterTemplates.CSharp,
   sqlSchema: "",
@@ -82,7 +85,10 @@ export default function QuestionBankEditorPage() {
             text: extractPrompt(question.text || ""),
             type: question.type || "MCQ",
             points: Number(question.points) || 10,
+            topic: question.topic || "",
+            difficulty: question.difficulty || "Medium",
             correctAnswer: !technicalTypes.has(question.type) ? (question.correctAnswer || "") : "",
+            correctAnswers: question.type === "MCQ" ? parseCorrectAnswers(question.correctAnswer) : [],
             options: Array.isArray(question.options) && question.options.length > 0 ? question.options : ["", ""],
             starterCode: extractStarterCode(question.text || "", question.type || "MCQ"),
             sqlSchema: extractSqlSchema(question.text || ""),
@@ -131,6 +137,7 @@ export default function QuestionBankEditorPage() {
       ...current,
       type: nextType,
       correctAnswer: technicalTypes.has(nextType) ? "" : current.correctAnswer,
+      correctAnswers: nextType === "MCQ" ? current.correctAnswers : [],
       starterCode: technicalTypes.has(nextType) ? (current.starterCode || starterTemplates[nextType] || "") : current.starterCode,
       sqlSchema: nextType === "SQL" ? current.sqlSchema : "",
       expectedAnswer: technicalTypes.has(nextType) ? current.expectedAnswer : "",
@@ -149,7 +156,13 @@ export default function QuestionBankEditorPage() {
         text: buildQuestionText(form),
         type: form.type,
         points: Number(form.points) || 0,
-        correctAnswer: technicalTypes.has(form.type) ? form.expectedAnswer.trim() : form.correctAnswer.trim(),
+        topic: form.topic.trim(),
+        difficulty: form.difficulty,
+        correctAnswer: technicalTypes.has(form.type)
+          ? form.expectedAnswer.trim()
+          : form.type === "MCQ"
+            ? serializeCorrectAnswers(form.correctAnswers)
+            : form.correctAnswer.trim(),
         options: form.type === "MCQ" ? form.options : [],
       };
 
@@ -265,6 +278,31 @@ export default function QuestionBankEditorPage() {
                       disabled={saving}
                     />
                   </div>
+
+                  <div className="field">
+                    <label className="label">Topic / module</label>
+                    <input
+                      className="input"
+                      value={form.topic}
+                      onChange={(e) => setForm((current) => ({ ...current, topic: e.target.value }))}
+                      disabled={saving}
+                      placeholder="Example: Normalization, joins, arrays"
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Difficulty</label>
+                    <select
+                      className="input"
+                      value={form.difficulty}
+                      onChange={(e) => setForm((current) => ({ ...current, difficulty: e.target.value }))}
+                      disabled={saving}
+                    >
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -335,7 +373,7 @@ export default function QuestionBankEditorPage() {
                   <div className="sectionHeader sectionHeaderInline">
                     <div>
                       <h3>{t("questionBank.editor.options")}</h3>
-                      <span className="sectionMeta">Add options first, then choose the correct answer from the dropdown.</span>
+                      <span className="sectionMeta">Add options first, then select one or more correct answers.</span>
                     </div>
                     <button className="btn" type="button" onClick={addOption} disabled={saving}>
                       {t("questionBank.editor.addOption")}
@@ -344,7 +382,7 @@ export default function QuestionBankEditorPage() {
 
                   <div className="stackLg">
                     {form.options.map((option, index) => (
-                      <div className="row questionBankOptionRow" key={`${index}-${option}`}>
+                      <div className="row questionBankOptionRow" key={index}>
                         <input
                           className="input"
                           value={option}
@@ -365,23 +403,34 @@ export default function QuestionBankEditorPage() {
                   </div>
 
                   <div className="field">
-                    <label className="label">{t("questionBank.editor.correctAnswer")}</label>
-                    <select
-                      className="input"
-                      value={form.correctAnswer}
-                      onChange={(e) => setForm((current) => ({ ...current, correctAnswer: e.target.value }))}
-                      disabled={saving}
-                    >
-                      <option value="">{t("questionBank.editor.selectCorrectAnswer")}</option>
+                    <label className="label">Correct answer(s)</label>
+                    <div className="correctAnswerChecklist">
                       {form.options
                         .map((option) => option.trim())
                         .filter(Boolean)
-                        .map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                    </select>
+                        .map((option) => {
+                          const selected = form.correctAnswers.includes(option);
+                          return (
+                            <label key={option}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    correctAnswers: selected
+                                      ? current.correctAnswers.filter((answer) => answer !== option)
+                                      : [...current.correctAnswers, option],
+                                  }))
+                                }
+                                disabled={saving}
+                              />
+                              <span>{option}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                    <span className="small">Select one or more correct options.</span>
                   </div>
                 </div>
               ) : form.type === "Text" ? (
@@ -476,4 +525,26 @@ function splitTechnicalSections(text) {
   }
 
   return result;
+}
+
+function parseCorrectAnswers(correctAnswer) {
+  const value = String(correctAnswer || "").trim();
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+  } catch {
+    // Older questions store a single answer as plain text.
+  }
+
+  return [value];
+}
+
+function serializeCorrectAnswers(correctAnswers) {
+  const normalized = Array.from(new Set((correctAnswers || []).map((answer) => String(answer || "").trim()).filter(Boolean)));
+  if (normalized.length <= 1) return normalized[0] || "";
+  return JSON.stringify(normalized);
 }

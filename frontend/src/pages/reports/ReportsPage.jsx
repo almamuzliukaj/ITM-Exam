@@ -27,6 +27,8 @@ export default function ReportsPage() {
   const [integrity, setIntegrity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] = useState(10);
 
   const filters = useMemo(
     () => ({ courseOfferingId: courseOfferingId || undefined }),
@@ -85,15 +87,30 @@ export default function ReportsPage() {
     };
   }, [filters, user]);
 
-  if (userLoading) return <div className="pageState">Loading reports...</div>;
-  if (!user) return <div className="pageState">{userError || "Unable to load user profile."}</div>;
-
   const activeRows = getActiveRows(activeTab, participation, publishStatus, integrity);
   const activeColumns = getColumns(activeTab);
+  const reportPageCount = Math.max(1, Math.ceil(activeRows.length / reportPageSize));
+  const visibleRows = useMemo(() => {
+    const startIndex = (reportPage - 1) * reportPageSize;
+    return activeRows.slice(startIndex, startIndex + reportPageSize);
+  }, [activeRows, reportPage, reportPageSize]);
+  const reportStart = activeRows.length === 0 ? 0 : (reportPage - 1) * reportPageSize + 1;
+  const reportEnd = Math.min(activeRows.length, reportPage * reportPageSize);
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [activeTab, courseOfferingId, reportPageSize]);
+
+  useEffect(() => {
+    setReportPage((current) => Math.min(current, reportPageCount));
+  }, [reportPageCount]);
 
   function exportActiveCsv() {
     downloadCsv(`${activeTab}-report.csv`, activeColumns, activeRows);
   }
+
+  if (userLoading) return <div className="pageState">Loading reports...</div>;
+  if (!user) return <div className="pageState">{userError || "Unable to load user profile."}</div>;
 
   return (
     <AppShell
@@ -172,6 +189,19 @@ export default function ReportsPage() {
                 </button>
               ))}
             </div>
+            <div className="paginationBar">
+              <span>Showing {reportStart}-{reportEnd} of {activeRows.length}. Export still includes all rows.</span>
+              <div className="paginationActions">
+                <select className="input inputCompact" value={reportPageSize} onChange={(e) => setReportPageSize(Number(e.target.value))} aria-label="Report rows per page">
+                  <option value={10}>10 rows</option>
+                  <option value={25}>25 rows</option>
+                  <option value={50}>50 rows</option>
+                </select>
+                <button className="btn" type="button" disabled={reportPage <= 1} onClick={() => setReportPage((current) => Math.max(1, current - 1))}>Previous</button>
+                <span className="paginationCurrent">Page {reportPage} of {reportPageCount}</span>
+                <button className="btn" type="button" disabled={reportPage >= reportPageCount} onClick={() => setReportPage((current) => Math.min(reportPageCount, current + 1))}>Next</button>
+              </div>
+            </div>
 
             {loading ? (
               <div className="pageStateCard">Loading report data...</div>
@@ -181,7 +211,7 @@ export default function ReportsPage() {
                 <span>Try another offering or wait until exams and attempts are available.</span>
               </div>
             ) : (
-              <ReportTable columns={activeColumns} rows={activeRows} />
+              <ReportTable columns={activeColumns} rows={visibleRows} />
             )}
           </div>
         </section>

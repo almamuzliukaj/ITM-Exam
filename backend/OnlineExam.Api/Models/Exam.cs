@@ -11,8 +11,16 @@ public class Exam
     public int MaximumPoints { get; set; } = 100;
     public Guid CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public DateTime? UnpublishedAt { get; set; }
     public bool IsPublished { get; set; }
     public string Status { get; set; } = "Draft";
+    public string AssessmentType { get; set; } = "Provim";
+    public string ExamPeriod { get; set; } = "Custom";
+    public string AcademicYear { get; set; } = string.Empty;
+    public string SemesterLabel { get; set; } = string.Empty;
+    public string CohortLabel { get; set; } = string.Empty;
     public bool RequiresLockdown { get; set; }
     public string AllowedClient { get; set; } = "StandardBrowser";
     public string LockdownMode { get; set; } = "Advisory";

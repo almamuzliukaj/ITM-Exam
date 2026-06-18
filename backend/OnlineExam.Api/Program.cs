@@ -333,9 +333,55 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "MaximumPoints" integer NOT NULL DEFAULT 100;
 
+ feature/professor-assessment-workflow
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "PublishedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "UnpublishedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "AssessmentType" text NOT NULL DEFAULT 'Provim';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "ExamPeriod" text NOT NULL DEFAULT 'Custom';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "AcademicYear" text NOT NULL DEFAULT '';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "SemesterLabel" text NOT NULL DEFAULT '';
+
+            ALTER TABLE IF EXISTS "Exams"
+            ADD COLUMN IF NOT EXISTS "CohortLabel" text NOT NULL DEFAULT '';
+
+            UPDATE "Exams" AS exams
+            SET "MaximumPoints" = COALESCE(points.total_points, "MaximumPoints", 100)
+            FROM (
+                SELECT "ExamId", GREATEST(SUM("Points"), 1) AS total_points
+                FROM "Questions"
+                GROUP BY "ExamId"
+            ) AS points
+            WHERE exams."Id" = points."ExamId"
+              AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
+
+
+ main
             UPDATE "Exams"
             SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
             WHERE "Status" IS NULL OR "Status" = '';
+
+ feature/professor-assessment-workflow
+            UPDATE "Exams"
+            SET "AssessmentType" = 'Provim'
+            WHERE "AssessmentType" IS NULL OR "AssessmentType" = '';
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'Custom'
+            WHERE "ExamPeriod" IS NULL OR "ExamPeriod" = '';
 
             UPDATE "Exams" AS exams
             SET "MaximumPoints" = COALESCE(points.total_points, exams."MaximumPoints", 100)
@@ -346,6 +392,7 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ) AS points
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
+ main
 
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';

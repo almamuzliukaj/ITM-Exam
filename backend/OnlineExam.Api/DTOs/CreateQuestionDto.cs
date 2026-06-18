@@ -7,6 +7,8 @@ namespace OnlineExam.Api.DTOs
         public Guid? CourseId { get; set; }
         public List<string>? Options { get; set; }
         public string? CorrectAnswer { get; set; }
+        public string? Topic { get; set; }
+        public string? Difficulty { get; set; }
         public int Points { get; set; }
     }
 }

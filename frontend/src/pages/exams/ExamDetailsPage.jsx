@@ -275,7 +275,6 @@ export default function ExamDetailsPage() {
                 <span className="summaryLabel">{t("examDetails.questions")}</span>
                 <strong>{questions.length}</strong>
               </article>
- feature/exam-max-points-grading
               <article className="summaryCard">
                 <span className="summaryLabel">Maximum points</span>
                 <strong>{examMaximumPoints || "-"}</strong>
@@ -335,8 +334,6 @@ export default function ExamDetailsPage() {
                   </article>
                 </div>
               </div>
-
- main
             </section>
 
             {isDraft && !exam?.courseOfferingId ? (
@@ -548,6 +545,12 @@ function QuestionPreview({
 function formatQuestionType(type) {
   if (type === "CSharp") return "C#";
   return type;
+}
+
+function formatLockdownClient(value) {
+  if (value === "SafeExamBrowser") return "Safe Exam Browser";
+  if (value === "KioskClient") return "Kiosk client";
+  return "Standard browser";
 }
 
 function parseTechnicalQuestion(question) {

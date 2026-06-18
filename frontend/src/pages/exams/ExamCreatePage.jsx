@@ -123,10 +123,9 @@ export default function ExamCreatePage() {
         endsAt: toIsoOrNull(form.endsAt),
         courseOfferingId: form.courseOfferingId || null,
         isPublished: false,
-feature/exam-max-points-grading
-        requiresLockdown: form.requiresLockdown,
-        allowedClient: form.allowedClient,
-        lockdownMode: form.lockdownMode,
+        requiresLockdown: Boolean(form.requiresLockdown),
+        allowedClient: form.allowedClient || "StandardBrowser",
+        lockdownMode: form.lockdownMode || "Advisory",
       };
 
       if (isEditMode) {
@@ -136,13 +135,6 @@ feature/exam-max-points-grading
         const created = await createExam(payload);
         nav(`/exams/${created.id}`);
       }
-
-        requiresLockdown: false,
-        allowedClient: "StandardBrowser",
-        lockdownMode: "Advisory",
-      });
-      nav(`/exams/${created.id}`);
- main
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||

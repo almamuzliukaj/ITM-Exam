@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { getSmuContract, getSmuLivePreview, runSmuSync } from "../../lib/smuApi";
 
 export default function AdminSmuIntegrationPage() {
+  const { t } = useTranslation();
+  const tx = useCallback((key, options) => t(`adminSmu.${key}`, options), [t]);
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [contract, setContract] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -18,14 +21,14 @@ export default function AdminSmuIntegrationPage() {
   const previewCounts = useMemo(() => {
     if (!preview) return null;
     return [
-      { label: "Students", value: preview.students?.length || 0 },
-      { label: "Staff", value: preview.staff?.length || 0 },
-      { label: "Terms", value: preview.terms?.length || 0 },
-      { label: "Courses", value: preview.courses?.length || 0 },
-      { label: "Offerings", value: preview.offerings?.length || 0 },
-      { label: "Enrollments", value: preview.enrollments?.length || 0 },
+      { label: tx("students"), value: preview.students?.length || 0 },
+      { label: tx("staff"), value: preview.staff?.length || 0 },
+      { label: tx("terms"), value: preview.terms?.length || 0 },
+      { label: tx("courses"), value: preview.courses?.length || 0 },
+      { label: tx("offerings"), value: preview.offerings?.length || 0 },
+      { label: tx("enrollments"), value: preview.enrollments?.length || 0 },
     ];
-  }, [preview]);
+  }, [preview, tx]);
 
   const loadContract = useCallback(async () => {
     try {
@@ -33,11 +36,11 @@ export default function AdminSmuIntegrationPage() {
       setPageError("");
       setContract(await getSmuContract());
     } catch (error) {
-      setPageError(readError(error, "Failed to load SMU integration contract."));
+      setPageError(readError(error, tx("errors.loadContract")));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tx]);
 
   useEffect(() => {
     loadContract();
@@ -51,16 +54,16 @@ export default function AdminSmuIntegrationPage() {
       const data = await getSmuLivePreview();
       setPreview(data);
       setContract(data.contract || contract);
-      setPageSuccess("SMU preview loaded. Review mapped records before running a real sync.");
+      setPageSuccess(tx("previewLoaded"));
     } catch (error) {
-      setPageError(readError(error, "Live preview is unavailable. Confirm the SMU base URL and endpoints."));
+      setPageError(readError(error, tx("errors.preview")));
     } finally {
       setPreviewing(false);
     }
   }
 
   async function handleSync() {
-    const confirmed = window.confirm("Run SMU sync now? This can create or update users, terms, courses, offerings, and enrollments.");
+    const confirmed = window.confirm(tx("syncConfirm"));
     if (!confirmed) return;
 
     try {
@@ -69,16 +72,16 @@ export default function AdminSmuIntegrationPage() {
       setPageSuccess("");
       const result = await runSmuSync();
       setSyncResult(result);
-      setPageSuccess("SMU sync completed.");
+      setPageSuccess(tx("syncCompleted"));
     } catch (error) {
-      setPageError(readError(error, "SMU sync failed. Review configuration and try again."));
+      setPageError(readError(error, tx("errors.sync")));
     } finally {
       setSyncing(false);
     }
   }
 
-  if (userLoading) return <div className="pageState">Loading SMU workspace...</div>;
-  if (!user) return <div className="pageState">{userError || "Unable to load user profile."}</div>;
+  if (userLoading) return <div className="pageState">{tx("loading")}</div>;
+  if (!user) return <div className="pageState">{userError || tx("userError")}</div>;
 
   const sourceOfTruth = contract?.sourceOfTruth || [];
   const remainsInOnlineExam = contract?.remainsInOnlineExam || [];
@@ -87,13 +90,13 @@ export default function AdminSmuIntegrationPage() {
   return (
     <AppShell
       user={user}
-      badge="Administration"
-      title="SMU integration readiness"
-      subtitle="Plan and verify which academic records come from the external student management system before manual admin screens are reduced to sync views."
+      badge={tx("badge")}
+      title={tx("title")}
+      subtitle={tx("subtitle")}
       actions={
         <>
-          <Link className="btn" to="/admin/academic">Academic</Link>
-          <Link className="btn" to="/admin/enrollments">Enrollments</Link>
+          <Link className="btn" to="/admin/academic">{tx("academic")}</Link>
+          <Link className="btn" to="/admin/enrollments">{tx("enrollments")}</Link>
         </>
       }
     >
@@ -105,65 +108,65 @@ export default function AdminSmuIntegrationPage() {
           <div className="adminDashboardHeroCopy">
             <div className="adminHeroBrand">
               <img className="adminHeroBrandLogo adminHeroBrandLogoIcon" src="/app-logo.svg" alt="Online Exam" />
-              <span>SMU Integration</span>
+              <span>{tx("brand")}</span>
             </div>
-            <div className="eyebrow">Source of truth</div>
-            <h2 className="heroTitle">Academic data comes from SMU</h2>
+            <div className="eyebrow">{tx("sourceOfTruth")}</div>
+            <h2 className="heroTitle">{tx("heroTitle")}</h2>
             <p className="heroText">
-              Students, staff, terms, courses, offerings, and enrollments should be synchronized from SMU. Online Exam keeps exam authoring, attempts, grading, publishing, and integrity records.
+              {tx("heroText")}
             </p>
           </div>
           <div className="adminHeroMeta">
             <div className="adminHeroMetaRow">
-              <span>Status</span>
-              <strong>{contract?.isConfigured ? "Configured" : "Needs URL"}</strong>
+              <span>{tx("status")}</span>
+              <strong>{contract?.isConfigured ? tx("configured") : tx("needsUrl")}</strong>
             </div>
             <div className="adminHeroMetaRow">
-              <span>Endpoints</span>
+              <span>{tx("endpoints")}</span>
               <strong>{endpoints.length}</strong>
             </div>
             <div className="adminHeroMetaRow">
-              <span>Last sync</span>
-              <strong>{syncResult?.syncedAt ? formatDateTime(syncResult.syncedAt) : "Not run"}</strong>
+              <span>{tx("lastSync")}</span>
+              <strong>{syncResult?.syncedAt ? formatDateTime(syncResult.syncedAt) : tx("notRun")}</strong>
             </div>
           </div>
         </section>
 
         <section className="smuActionPanel">
           <div>
-            <span className="summaryLabel">Integration contract</span>
-            <strong>{contract?.baseUrl || "SMU base URL is not configured"}</strong>
-            <p>Use preview first when the SMU API is available. Sync should run only after the mapped record counts look correct.</p>
+            <span className="summaryLabel">{tx("integrationContract")}</span>
+            <strong>{contract?.baseUrl || tx("baseUrlMissing")}</strong>
+            <p>{tx("previewHint")}</p>
           </div>
           <div className="resourceActionGroup">
             <button className="btn" type="button" onClick={handlePreview} disabled={previewing || loading}>
-              {previewing ? "Loading preview..." : "Load live preview"}
+              {previewing ? tx("loadingPreview") : tx("loadPreview")}
             </button>
             <button className="btn btnPrimary" type="button" onClick={handleSync} disabled={syncing || loading || !contract?.isConfigured}>
-              {syncing ? "Syncing..." : "Run sync"}
+              {syncing ? tx("syncing") : tx("runSync")}
             </button>
           </div>
         </section>
 
         {loading ? (
-          <div className="pageStateCard">Loading SMU contract...</div>
+          <div className="pageStateCard">{tx("loadingContract")}</div>
         ) : (
           <>
             <section className="dashboardGrid dashboardGridWide">
-              <OwnershipPanel title="SMU owns" items={sourceOfTruth} />
-              <OwnershipPanel title="Online Exam owns" items={remainsInOnlineExam} />
+              <OwnershipPanel title={tx("smuOwns")} items={sourceOfTruth} />
+              <OwnershipPanel title={tx("onlineExamOwns")} items={remainsInOnlineExam} />
             </section>
 
             <section className="surfaceCard adminTableCard">
-              <div className="sectionHeader"><h3>Required SMU endpoints</h3></div>
+              <div className="sectionHeader"><h3>{tx("requiredEndpoints")}</h3></div>
               <div className="sectionBody">
                 <div className="tableWrap">
                   <table className="dataTable">
                     <thead>
                       <tr>
-                        <th>Entity</th>
-                        <th>Relative path</th>
-                        <th>Purpose</th>
+                        <th>{tx("entity")}</th>
+                        <th>{tx("relativePath")}</th>
+                        <th>{tx("purpose")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -195,15 +198,15 @@ export default function AdminSmuIntegrationPage() {
 
         {syncResult ? (
           <section className="surfaceCard adminTableCard">
-            <div className="sectionHeader"><h3>Last sync result</h3></div>
+            <div className="sectionHeader"><h3>{tx("lastSyncResult")}</h3></div>
             <div className="sectionBody">
               <div className="smuSyncGrid">
-                <SyncMetric label="Students" created={syncResult.studentsCreated} updated={syncResult.studentsUpdated} />
-                <SyncMetric label="Staff" created={syncResult.staffCreated} updated={syncResult.staffUpdated} />
-                <SyncMetric label="Terms" created={syncResult.termsCreated} updated={syncResult.termsUpdated} />
-                <SyncMetric label="Courses" created={syncResult.coursesCreated} updated={syncResult.coursesUpdated} />
-                <SyncMetric label="Offerings" created={syncResult.offeringsCreated} updated={syncResult.offeringsUpdated} />
-                <SyncMetric label="Enrollments" created={(syncResult.semesterEnrollmentsCreated || 0) + (syncResult.courseEnrollmentsCreated || 0)} updated={(syncResult.semesterEnrollmentsUpdated || 0) + (syncResult.courseEnrollmentsUpdated || 0)} />
+                <SyncMetric label={tx("students")} created={syncResult.studentsCreated} updated={syncResult.studentsUpdated} tx={tx} />
+                <SyncMetric label={tx("staff")} created={syncResult.staffCreated} updated={syncResult.staffUpdated} tx={tx} />
+                <SyncMetric label={tx("terms")} created={syncResult.termsCreated} updated={syncResult.termsUpdated} tx={tx} />
+                <SyncMetric label={tx("courses")} created={syncResult.coursesCreated} updated={syncResult.coursesUpdated} tx={tx} />
+                <SyncMetric label={tx("offerings")} created={syncResult.offeringsCreated} updated={syncResult.offeringsUpdated} tx={tx} />
+                <SyncMetric label={tx("enrollments")} created={(syncResult.semesterEnrollmentsCreated || 0) + (syncResult.courseEnrollmentsCreated || 0)} updated={(syncResult.semesterEnrollmentsUpdated || 0) + (syncResult.courseEnrollmentsUpdated || 0)} tx={tx} />
               </div>
               {syncResult.warnings?.length ? (
                 <div className="alert">
@@ -237,12 +240,12 @@ function OwnershipPanel({ title, items }) {
   );
 }
 
-function SyncMetric({ label, created = 0, updated = 0 }) {
+function SyncMetric({ label, created = 0, updated = 0, tx }) {
   return (
     <article className="summaryCard">
       <span className="summaryLabel">{label}</span>
       <strong>{created + updated}</strong>
-      <small>{created} created, {updated} updated</small>
+      <small>{tx("syncMetric", { created, updated })}</small>
     </article>
   );
 }

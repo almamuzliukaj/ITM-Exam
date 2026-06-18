@@ -707,20 +707,13 @@ function DirectoryTable({ title, columns, rows }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
   const visibleRows = useMemo(() => {
-    const startIndex = (page - 1) * pageSize;
+    const startIndex = (currentPage - 1) * pageSize;
     return rows.slice(startIndex, startIndex + pageSize);
-  }, [page, pageSize, rows]);
-  const start = rows.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(rows.length, page * pageSize);
-
-  useEffect(() => {
-    setPage(1);
-  }, [title, pageSize]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
+  }, [currentPage, pageSize, rows]);
+  const start = rows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const end = Math.min(rows.length, currentPage * pageSize);
 
   return (
     <section className="surfaceCard adminTableCard">
@@ -754,14 +747,22 @@ function DirectoryTable({ title, columns, rows }) {
         <div className="paginationBar">
           <span>Showing {start}-{end} of {rows.length}</span>
           <div className="paginationActions">
-            <select className="input inputCompact" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} aria-label={`${title} rows per page`}>
+            <select
+              className="input inputCompact"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              aria-label={`${title} rows per page`}
+            >
               <option value={10}>10 rows</option>
               <option value={25}>25 rows</option>
               <option value={50}>50 rows</option>
             </select>
-            <button className="btn" type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
-            <span className="paginationCurrent">Page {page} of {pageCount}</span>
-            <button className="btn" type="button" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</button>
+            <button className="btn" type="button" disabled={currentPage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
+            <span className="paginationCurrent">Page {currentPage} of {pageCount}</span>
+            <button className="btn" type="button" disabled={currentPage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</button>
           </div>
         </div>
       </div>

@@ -1353,9 +1353,14 @@ function formatQuestionType(type) {
 
 function formatLockdownClient(value) {
   if (value === "SafeExamBrowser") return "Safe Exam Browser";
+ feature/professor-assessment-workflow
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
   return value || "Standard browser";
+
+  if (value === "KioskClient") return "Kiosk client";
+  return "Standard browser";
+ main
 }
 
 function parseTechnicalQuestion(question) {

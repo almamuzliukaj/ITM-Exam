@@ -211,7 +211,7 @@ public class QuestionsController : ControllerBase
             if (userId == null)
                 return Unauthorized();
 
-            var accessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam);
+            var accessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
             if (accessError != null)
             {
                 if (accessError == StudentExamNotEligibleMessage)
@@ -503,7 +503,7 @@ public class QuestionsController : ControllerBase
         return false;
     }
 
-    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam)
+    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission = true)
     {
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return "This exam is not available for students.";
@@ -529,13 +529,16 @@ public class QuestionsController : ControllerBase
                 return null;
         }
 
-        var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
-            a.ExamId == exam.Id &&
-            a.StudentId == userId &&
-            a.Status == ExamAttemptSubmittedStatus);
+        if (blockResubmission)
+        {
+            var alreadySubmitted = await _context.ExamAttempts.AnyAsync(a =>
+                a.ExamId == exam.Id &&
+                a.StudentId == userId &&
+                a.Status == ExamAttemptSubmittedStatus);
 
-        if (alreadySubmitted)
-            return "You have already submitted this exam.";
+            if (alreadySubmitted)
+                return "You have already submitted this exam.";
+        }
 
         return null;
     }

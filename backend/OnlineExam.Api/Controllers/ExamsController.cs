@@ -68,13 +68,18 @@ public class ExamsController : ControllerBase
         "EXIT_FULLSCREEN",
         "COPY_ATTEMPT",
         "PASTE_ATTEMPT",
+        "CUT_ATTEMPT",
         "RIGHT_CLICK_ATTEMPT",
         "DEVTOOLS_ATTEMPT",
         "SHORTCUT_ATTEMPT",
         "PRINT_ATTEMPT",
         "FULLSCREEN_REQUEST_FAILED",
         "NETWORK_OFFLINE",
-        "BACK_NAVIGATION"
+        "BACK_NAVIGATION",
+        "CAMERA_UNAVAILABLE",
+        "NO_FACE_DETECTED",
+        "MULTIPLE_FACES_DETECTED",
+        "FACE_DETECTION_ERROR"
     };
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
@@ -1220,7 +1225,10 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/professor-assessment-workflow
 
+
+ main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -2321,11 +2329,16 @@ public class ExamsController : ControllerBase
             "FullscreenExit" => "EXIT_FULLSCREEN",
             "CopyAttempt" => "COPY_ATTEMPT",
             "PasteAttempt" => "PASTE_ATTEMPT",
+            "CutAttempt" => "CUT_ATTEMPT",
             "RightClickAttempt" => "RIGHT_CLICK_ATTEMPT",
             "ShortcutAttempt" => "SHORTCUT_ATTEMPT",
             "PrintAttempt" => "PRINT_ATTEMPT",
             "FullscreenRequestFailed" => "FULLSCREEN_REQUEST_FAILED",
             "NetworkOffline" => "NETWORK_OFFLINE",
+            "NoFaceDetected" => "NO_FACE_DETECTED",
+            "MultipleFacesDetected" => "MULTIPLE_FACES_DETECTED",
+            "CameraUnavailable" => "CAMERA_UNAVAILABLE",
+            "FaceDetectionError" => "FACE_DETECTION_ERROR",
             _ => trimmed.ToUpperInvariant()
         };
 
@@ -2562,6 +2575,7 @@ public class ExamsController : ControllerBase
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+ feature/professor-assessment-workflow
     private static string NormalizeAssessmentType(string? value)
     {
         var normalized = NormalizeOptionalValue(value)?.Replace(" ", "", StringComparison.OrdinalIgnoreCase);
@@ -2599,6 +2613,8 @@ public class ExamsController : ControllerBase
         return normalized?.Length > 120 ? normalized[..120] : normalized;
     }
 
+
+main
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -2959,8 +2975,27 @@ public class ExamsController : ControllerBase
 
     private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)
     {
+feature/professor-assessment-workflow
         var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
         var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
+
+        if (!requiresLockdown)
+            return null;
+
+        var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
+        var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+        var allowedModes = new[] { "Advisory", "Strict" };
+
+        if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
+            return "Invalid lockdown client.";
+
+        if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
+            return "Invalid lockdown mode.";
+
+        return null;
+    }
+ main
 
         var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);

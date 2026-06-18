@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
 import SmuSourceBanner from "../../components/SmuSourceBanner";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -46,6 +47,8 @@ const STATUS_TONE = {
 };
 
 export default function AdminEnrollmentsPage() {
+  const { t } = useTranslation();
+  const tx = useCallback((key, options) => t(`adminEnrollments.${key}`, options), [t]);
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const smuStatus = useSmuIntegrationStatus();
   const [students, setStudents] = useState([]);
@@ -158,11 +161,11 @@ export default function AdminEnrollmentsPage() {
       setCourses(Array.isArray(courseData) ? courseData : []);
       setOfferings(Array.isArray(offeringData) ? offeringData : []);
     } catch (error) {
-      setPageError(readError(error, "Failed to load enrollment data."));
+      setPageError(readError(error, tx("errors.loadData")));
     } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [tx]);
 
   const loadFocusedStudentDetails = useCallback(
     async (studentId, termId) => {
@@ -189,12 +192,12 @@ export default function AdminEnrollmentsPage() {
           carryOvers: Array.isArray(carryOverData) ? carryOverData : [],
         });
       } catch (error) {
-        setPageError(readError(error, "Failed to load focused student details."));
+        setPageError(readError(error, tx("errors.focusedDetails")));
       } finally {
         setLoadingFocusedDetails(false);
       }
     },
-    [],
+    [tx],
   );
 
   useEffect(() => {
@@ -245,16 +248,16 @@ export default function AdminEnrollmentsPage() {
 
   async function handleCreateEnrollments() {
     if (smuManaged) {
-      setPageError("Semester enrollments are managed by SMU while integration is active.");
+      setPageError(tx("errors.smuSemesterManaged"));
       return;
     }
     if (!filters.termId) {
-      setPageError("Select a term before creating enrollments.");
+      setPageError(tx("errors.selectTermCreate"));
       return;
     }
 
     if (selectedStudentIds.length === 0) {
-      setPageError("Select at least one student for cohort registration.");
+      setPageError(tx("errors.selectStudentCreate"));
       return;
     }
 
@@ -271,10 +274,10 @@ export default function AdminEnrollmentsPage() {
       if (existingEnrollment && existingEnrollment.status !== "Withdrawn") {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Create semester enrollment",
-          outcome: "Skipped",
-          message: `Existing ${existingEnrollment.status.toLowerCase()} enrollment found for selected term.`,
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionCreateEnrollment"),
+          outcome: tx("outcomeSkipped"),
+          message: tx("messages.existingEnrollment", { status: tx(`status.${existingEnrollment.status}`, { defaultValue: existingEnrollment.status }).toLowerCase() }),
         });
         continue;
       }
@@ -290,24 +293,24 @@ export default function AdminEnrollmentsPage() {
 
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Create semester enrollment",
-          outcome: "Created",
-          message: `${filters.createStatus} enrollment created.`,
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionCreateEnrollment"),
+          outcome: tx("outcomeCreated"),
+          message: tx("messages.enrollmentCreated", { status: tx(`status.${filters.createStatus}`, { defaultValue: filters.createStatus }) }),
         });
       } catch (error) {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Create semester enrollment",
-          outcome: "Failed",
-          message: readError(error, "Enrollment creation failed."),
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionCreateEnrollment"),
+          outcome: tx("outcomeFailed"),
+          message: readError(error, tx("errors.createEnrollment")),
         });
       }
     }
 
     setOperationResults(results);
-    setPageSuccess(buildBatchMessage(results, "semester enrollments"));
+    setPageSuccess(buildBatchMessage(results, tx("batchLabels.semesterEnrollments"), tx));
     setProcessingKey("");
     await loadData();
     if (focusedStudentId) {
@@ -317,11 +320,11 @@ export default function AdminEnrollmentsPage() {
 
   async function handleActivateEnrollments() {
     if (smuManaged) {
-      setPageError("Enrollment activation is managed by SMU while integration is active.");
+      setPageError(tx("errors.smuActivationManaged"));
       return;
     }
     if (selectedStudentIds.length === 0) {
-      setPageError("Select at least one student before activation.");
+      setPageError(tx("errors.selectStudentActivation"));
       return;
     }
 
@@ -338,10 +341,10 @@ export default function AdminEnrollmentsPage() {
       if (!currentEnrollment) {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Activate semester enrollment",
-          outcome: "Skipped",
-          message: "No enrollment exists for the selected cohort.",
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionActivateEnrollment"),
+          outcome: tx("outcomeSkipped"),
+          message: tx("messages.noEnrollment"),
         });
         continue;
       }
@@ -349,10 +352,10 @@ export default function AdminEnrollmentsPage() {
       if (currentEnrollment.status === "Active") {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Activate semester enrollment",
-          outcome: "Skipped",
-          message: "Enrollment is already active.",
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionActivateEnrollment"),
+          outcome: tx("outcomeSkipped"),
+          message: tx("messages.alreadyActive"),
         });
         continue;
       }
@@ -361,24 +364,24 @@ export default function AdminEnrollmentsPage() {
         await activateSemesterEnrollment(currentEnrollment.id);
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Activate semester enrollment",
-          outcome: "Activated",
-          message: "Enrollment moved to active.",
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionActivateEnrollment"),
+          outcome: tx("outcomeActivated"),
+          message: tx("messages.movedActive"),
         });
       } catch (error) {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Activate semester enrollment",
-          outcome: "Failed",
-          message: readError(error, "Activation failed."),
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionActivateEnrollment"),
+          outcome: tx("outcomeFailed"),
+          message: readError(error, tx("errors.activation")),
         });
       }
     }
 
     setOperationResults(results);
-    setPageSuccess(buildBatchMessage(results, "activation requests"));
+    setPageSuccess(buildBatchMessage(results, tx("batchLabels.activationRequests"), tx));
     setProcessingKey("");
     await loadData();
     if (focusedStudentId) {
@@ -388,16 +391,16 @@ export default function AdminEnrollmentsPage() {
 
   async function handleRegularizeEnrollments() {
     if (smuManaged) {
-      setPageError("Current semester course eligibility is managed by SMU while integration is active.");
+      setPageError(tx("errors.smuCourseManaged"));
       return;
     }
     if (!filters.termId) {
-      setPageError("Select a term before generating course enrollments.");
+      setPageError(tx("errors.selectTermGenerate"));
       return;
     }
 
     if (selectedStudentIds.length === 0) {
-      setPageError("Select at least one student before generating current semester courses.");
+      setPageError(tx("errors.selectStudentGenerate"));
       return;
     }
 
@@ -413,24 +416,24 @@ export default function AdminEnrollmentsPage() {
         const result = await regularizeStudentCourseEnrollments(studentId, filters.termId);
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Generate current semester courses",
-          outcome: "Completed",
-          message: `${result?.created ?? 0} course enrollments created.`,
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionGenerateCourses"),
+          outcome: tx("outcomeCompleted"),
+          message: tx("messages.courseEnrollmentsCreated", { count: result?.created ?? 0 }),
         });
       } catch (error) {
         results.push({
           studentId,
-          studentName: selectedStudentsMap.get(studentId)?.fullName || "Student",
-          action: "Generate current semester courses",
-          outcome: "Failed",
-          message: readError(error, "Course enrollment generation failed."),
+          studentName: selectedStudentsMap.get(studentId)?.fullName || tx("student"),
+          action: tx("actionGenerateCourses"),
+          outcome: tx("outcomeFailed"),
+          message: readError(error, tx("errors.courseGeneration")),
         });
       }
     }
 
     setOperationResults(results);
-    setPageSuccess(buildBatchMessage(results, "course regularization requests"));
+    setPageSuccess(buildBatchMessage(results, tx("batchLabels.courseRegularization"), tx));
     setProcessingKey("");
     if (focusedStudentId) {
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
@@ -439,12 +442,12 @@ export default function AdminEnrollmentsPage() {
 
   async function handleCreateCarryOver() {
     if (!focusedStudentId) {
-      setPageError("Select a student before creating a carry-over record.");
+      setPageError(tx("errors.selectStudentCarryCreate"));
       return;
     }
 
     if (!carryOverForm.courseId || !carryOverForm.originTermId) {
-      setPageError("Select the failed course and origin term before creating carry-over.");
+      setPageError(tx("errors.selectCarryCourseTerm"));
       return;
     }
 
@@ -458,10 +461,10 @@ export default function AdminEnrollmentsPage() {
         originSemesterNo: Number(carryOverForm.originSemesterNo),
         reason: carryOverForm.reason,
       });
-      setPageSuccess("Carry-over record created for the focused student.");
+      setPageSuccess(tx("messages.carryOverCreated"));
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
     } catch (error) {
-      setPageError(readError(error, "Carry-over creation failed."));
+      setPageError(readError(error, tx("errors.carryCreate")));
     } finally {
       setProcessingKey("");
     }
@@ -469,7 +472,7 @@ export default function AdminEnrollmentsPage() {
 
   async function handleAssignCarryOver(carryOverId) {
     if (!unlockOfferingId) {
-      setPageError("Select a target offering before unlocking this carry-over.");
+      setPageError(tx("errors.selectTargetOffering"));
       return;
     }
 
@@ -478,10 +481,10 @@ export default function AdminEnrollmentsPage() {
       setPageError("");
       setPageSuccess("");
       await assignCarryOverOffering(carryOverId, { courseOfferingId: unlockOfferingId });
-      setPageSuccess("Carry-over unlocked into the selected offering and exam eligibility was created.");
+      setPageSuccess(tx("messages.carryOverUnlocked"));
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
     } catch (error) {
-      setPageError(readError(error, "Carry-over unlock failed."));
+      setPageError(readError(error, tx("errors.carryUnlock")));
     } finally {
       setProcessingKey("");
     }
@@ -493,10 +496,10 @@ export default function AdminEnrollmentsPage() {
       setPageError("");
       setPageSuccess("");
       await closeCarryOver(carryOverId, unlockOfferingId ? { courseOfferingId: unlockOfferingId } : {});
-      setPageSuccess("Carry-over record closed.");
+      setPageSuccess(tx("messages.carryOverClosed"));
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
     } catch (error) {
-      setPageError(readError(error, "Carry-over close failed."));
+      setPageError(readError(error, tx("errors.carryClose")));
     } finally {
       setProcessingKey("");
     }
@@ -508,10 +511,10 @@ export default function AdminEnrollmentsPage() {
       setPageError("");
       setPageSuccess("");
       await cancelCarryOver(carryOverId);
-      setPageSuccess("Carry-over record cancelled.");
+      setPageSuccess(tx("messages.carryOverCancelled"));
       await loadFocusedStudentDetails(focusedStudentId, filters.termId);
     } catch (error) {
-      setPageError(readError(error, "Carry-over cancellation failed."));
+      setPageError(readError(error, tx("errors.carryCancel")));
     } finally {
       setProcessingKey("");
     }
@@ -545,8 +548,8 @@ export default function AdminEnrollmentsPage() {
     await nextAction.onConfirm();
   }
 
-  if (userLoading) return <div className="pageState">Loading enrollment workspace...</div>;
-  if (!user) return <div className="pageState">{userError || "Unable to load user profile."}</div>;
+  if (userLoading) return <div className="pageState">{tx("loading")}</div>;
+  if (!user) return <div className="pageState">{userError || tx("userError")}</div>;
 
   const focusedStudent = students.find((student) => student.id === focusedStudentId) || null;
   const allVisibleSelected =
@@ -555,14 +558,14 @@ export default function AdminEnrollmentsPage() {
   return (
     <AppShell
       user={user}
-      badge="Administration"
-      title="Enrollment control"
-      subtitle="Register current-semester cohorts, activate semester status, and generate eligible course enrollments for selected students."
+      badge={tx("badge")}
+      title={tx("title")}
+      subtitle={tx("subtitle")}
       actions={
         <>
-          <Link className="btn" to="/admin/academic">Academic setup</Link>
-          <Link className="btn" to="/admin/users">User management</Link>
-          <Link className="btn" to="/dashboard">Back to overview</Link>
+          <Link className="btn" to="/admin/academic">{tx("academicSetup")}</Link>
+          <Link className="btn" to="/admin/users">{tx("userManagement")}</Link>
+          <Link className="btn" to="/dashboard">{tx("backToOverview")}</Link>
         </>
       }
     >
@@ -570,8 +573,8 @@ export default function AdminEnrollmentsPage() {
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
         <SmuSourceBanner
-          title="Enrollment eligibility comes from SMU"
-          description="Semester and course enrollments are displayed from synced data. Manual cohort creation, activation, and regularization stay available only before SMU is configured; carry-over unlock remains controlled in Online Exam."
+          title={tx("smuTitle")}
+          description={tx("smuDescription")}
           isConfigured={smuStatus.isConfigured}
           loading={smuStatus.loading}
           error={smuStatus.error}
@@ -579,19 +582,19 @@ export default function AdminEnrollmentsPage() {
 
         <section className="summaryStrip">
           <article className="summaryCard">
-            <span className="summaryLabel">Selected students</span>
+            <span className="summaryLabel">{tx("selectedStudents")}</span>
             <strong>{selectedStudentIds.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Current cohort enrollments</span>
+            <span className="summaryLabel">{tx("currentCohortEnrollments")}</span>
             <strong>{matchingSemesterEnrollments.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Active in selected cohort</span>
+            <span className="summaryLabel">{tx("activeInCohort")}</span>
             <strong>{activeEnrollmentsCount}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Pending in selected cohort</span>
+            <span className="summaryLabel">{tx("pendingInCohort")}</span>
             <strong>{pendingEnrollmentsCount}</strong>
           </article>
         </section>
@@ -599,21 +602,21 @@ export default function AdminEnrollmentsPage() {
         <section className="surfaceCard">
           <div className="sectionHeader">
             <div>
-              <h3>Cohort setup</h3>
-              <span className="sectionMeta">{smuManaged ? "Review the synced cohort scope from SMU." : "Choose the academic term, study year, semester, and default enrollment status."}</span>
+              <h3>{tx("cohortSetup")}</h3>
+              <span className="sectionMeta">{smuManaged ? tx("cohortSetupSynced") : tx("cohortSetupManual")}</span>
             </div>
-            <span className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? "SMU review" : "Step 1"}</span>
+            <span className={`statusPill ${smuManaged ? "statusLive" : "statusDraft"}`}>{smuManaged ? tx("smuReview") : tx("step1")}</span>
           </div>
           <div className="sectionBody stackLg">
             <div className="formGrid formGridThree">
               <div className="field">
-                <label className="label">Term</label>
+                <label className="label">{tx("term")}</label>
                 <select
                   className="input"
                   value={filters.termId}
                   onChange={(e) => setFilters((current) => ({ ...current, termId: e.target.value }))}
                 >
-                  <option value="">Select term</option>
+                  <option value="">{tx("selectTerm")}</option>
                   {visibleTerms.map((term) => (
                     <option key={term.id} value={term.id}>
                       {term.code} - {term.name}
@@ -622,7 +625,7 @@ export default function AdminEnrollmentsPage() {
                 </select>
               </div>
               <div className="field">
-                <label className="label">Year of study</label>
+                <label className="label">{tx("yearOfStudy")}</label>
                 <select
                   className="input"
                   value={filters.yearOfStudy}
@@ -630,13 +633,13 @@ export default function AdminEnrollmentsPage() {
                     setFilters((current) => ({ ...current, yearOfStudy: Number(e.target.value) }))
                   }
                 >
-                  <option value={1}>Year 1</option>
-                  <option value={2}>Year 2</option>
-                  <option value={3}>Year 3</option>
+                  <option value={1}>{tx("year", { count: 1 })}</option>
+                  <option value={2}>{tx("year", { count: 2 })}</option>
+                  <option value={3}>{tx("year", { count: 3 })}</option>
                 </select>
               </div>
               <div className="field">
-                <label className="label">Semester number</label>
+                <label className="label">{tx("semesterNumber")}</label>
                 <select
                   className="input"
                   value={filters.semesterNo}
@@ -646,7 +649,7 @@ export default function AdminEnrollmentsPage() {
                 >
                   {validSemesterOptions.map((semester) => (
                     <option key={semester} value={semester}>
-                      Semester {semester}
+                      {tx("semester", { count: semester })}
                     </option>
                   ))}
                 </select>
@@ -655,35 +658,35 @@ export default function AdminEnrollmentsPage() {
 
             <div className="threeColGrid">
               <div className="field">
-                <label className="label">Create enrollment status</label>
+                <label className="label">{tx("createStatus")}</label>
                 <select
                   className="input"
                   value={filters.createStatus}
                   onChange={(e) => setFilters((current) => ({ ...current, createStatus: e.target.value }))}
                   disabled={smuManaged}
                 >
-                  <option value="Pending">Pending</option>
-                  <option value="Active">Active</option>
+                  <option value="Pending">{tx("status.Pending")}</option>
+                  <option value="Active">{tx("status.Active")}</option>
                 </select>
               </div>
               <div className="field" style={{ gridColumn: "span 2" }}>
-                <label className="label">Admin notes</label>
+                <label className="label">{tx("adminNotes")}</label>
                 <input
                   className="input"
                   value={filters.notes}
                   onChange={(e) => setFilters((current) => ({ ...current, notes: e.target.value }))}
-                  placeholder="Optional note for cohort registration batch"
+                  placeholder={tx("notesPlaceholder")}
                   disabled={smuManaged}
                 />
               </div>
             </div>
 
             <div className="pageStateCard">
-              <strong>Current cohort target:</strong>{" "}
+              <strong>{tx("currentCohortTarget")}</strong>{" "}
               {currentTerm
-                ? `${currentTerm.name} | Year ${filters.yearOfStudy} | Semester ${filters.semesterNo}`
-                : "Select a term to start cohort registration."}
-              {smuManaged ? <span className="blockHint">Manual status and note inputs are locked because SMU owns cohort eligibility.</span> : null}
+                ? `${currentTerm.name} | ${tx("year", { count: filters.yearOfStudy })} | ${tx("semester", { count: filters.semesterNo })}`
+                : tx("selectTermToStart")}
+              {smuManaged ? <span className="blockHint">{tx("smuLocksInputs")}</span> : null}
             </div>
           </div>
         </section>
@@ -691,48 +694,48 @@ export default function AdminEnrollmentsPage() {
         <section className="surfaceCard">
           <div className="sectionHeader">
             <div>
-              <h3>Student cohort selection</h3>
-              <span className="sectionMeta">Showing {studentStart}-{studentEnd} of {filteredStudents.length} matching students.</span>
+              <h3>{tx("studentCohortSelection")}</h3>
+              <span className="sectionMeta">{tx("showingStudents", { start: studentStart, end: studentEnd, count: filteredStudents.length })}</span>
             </div>
-            <span className="statusPill statusLive">{selectedStudentIds.length} selected</span>
+            <span className="statusPill statusLive">{tx("selectedCount", { count: selectedStudentIds.length })}</span>
           </div>
           <div className="sectionBody stackLg">
             <div className="filtersRow">
               <input
                 className="input"
-                placeholder="Search active students by name or email"
+                placeholder={tx("searchStudents")}
                 value={filters.search}
                 onChange={(e) => setFilters((current) => ({ ...current, search: e.target.value }))}
               />
               <button className="btn" type="button" onClick={toggleSelectAllVisible}>
-                {allVisibleSelected ? "Clear page selection" : "Select current page"}
+                {allVisibleSelected ? tx("clearPageSelection") : tx("selectCurrentPage")}
               </button>
-              <select className="input inputCompact" value={studentPageSize} onChange={(e) => setStudentPageSize(Number(e.target.value))} aria-label="Students per page">
-                <option value={10}>10 rows</option>
-                <option value={25}>25 rows</option>
-                <option value={50}>50 rows</option>
+              <select className="input inputCompact" value={studentPageSize} onChange={(e) => setStudentPageSize(Number(e.target.value))} aria-label={tx("studentsPerPage")}>
+                <option value={10}>{tx("rows", { count: 10 })}</option>
+                <option value={25}>{tx("rows", { count: 25 })}</option>
+                <option value={50}>{tx("rows", { count: 50 })}</option>
               </select>
             </div>
 
             {loadingData ? (
-              <div className="pageStateCard">Loading student cohort data...</div>
+              <div className="pageStateCard">{tx("loadingStudents")}</div>
             ) : (
               <div className="stackLg">
                 <div className="tableWrap adminDirectoryTableWrap">
                   <table className="dataTable">
                     <thead>
                       <tr>
-                        <th>Select</th>
-                        <th>Student</th>
-                        <th>Email</th>
-                        <th>Cohort enrollment</th>
-                        <th>Action focus</th>
+                        <th>{tx("select")}</th>
+                        <th>{tx("student")}</th>
+                        <th>{tx("email")}</th>
+                        <th>{tx("cohortEnrollment")}</th>
+                        <th>{tx("actionFocus")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {visibleStudents.length === 0 ? (
                         <tr>
-                          <td colSpan={5}>No students match the current search.</td>
+                          <td colSpan={5}>{tx("noStudents")}</td>
                         </tr>
                       ) : visibleStudents.map((student) => {
                         const enrollment = enrollmentLookup.get(student.id);
@@ -753,10 +756,10 @@ export default function AdminEnrollmentsPage() {
                             <td>
                               {enrollment ? (
                                 <span className={`statusPill ${STATUS_TONE[enrollment.status] || "statusDraft"}`}>
-                                  {enrollment.status}
+                                  {tx(`status.${enrollment.status}`, { defaultValue: enrollment.status })}
                                 </span>
                               ) : (
-                                <span className="small">Not registered for selected cohort</span>
+                                <span className="small">{tx("notRegistered")}</span>
                               )}
                             </td>
                             <td>
@@ -765,7 +768,7 @@ export default function AdminEnrollmentsPage() {
                                 type="button"
                                 onClick={() => setFocusedStudentId(student.id)}
                               >
-                                {isFocused ? "Inspecting" : "Inspect"}
+                                {isFocused ? tx("inspecting") : tx("inspect")}
                               </button>
                             </td>
                           </tr>
@@ -775,14 +778,14 @@ export default function AdminEnrollmentsPage() {
                   </table>
                 </div>
                 <div className="paginationBar">
-                  <span>Showing {studentStart}-{studentEnd} of {filteredStudents.length}</span>
+                  <span>{tx("showingStudents", { start: studentStart, end: studentEnd, count: filteredStudents.length })}</span>
                   <div className="paginationActions">
                     <button className="btn" type="button" disabled={studentPage <= 1} onClick={() => setStudentPage((current) => Math.max(1, current - 1))}>
-                      Previous
+                      {tx("previous")}
                     </button>
-                    <span className="paginationCurrent">Page {studentPage} of {studentPageCount}</span>
+                    <span className="paginationCurrent">{tx("pageOf", { page: studentPage, count: studentPageCount })}</span>
                     <button className="btn" type="button" disabled={studentPage >= studentPageCount} onClick={() => setStudentPage((current) => Math.min(studentPageCount, current + 1))}>
-                      Next
+                      {tx("next")}
                     </button>
                   </div>
                 </div>
@@ -796,7 +799,7 @@ export default function AdminEnrollmentsPage() {
                 disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0}
                 onClick={handleCreateEnrollments}
               >
-                {processingKey === "create" ? "Creating..." : "Create semester enrollments"}
+                {processingKey === "create" ? tx("creating") : tx("createEnrollments")}
               </button>
               <button
                 className="btn"
@@ -804,14 +807,14 @@ export default function AdminEnrollmentsPage() {
                 disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0}
                 onClick={() =>
                   setConfirmAction({
-                    title: "Activate selected enrollments?",
-                    text: `This will move ${selectedStudentIds.length} selected student enrollment(s) to active where an enrollment exists.`,
-                    confirmLabel: "Activate enrollments",
+                    title: tx("activateTitle"),
+                    text: tx("activateText", { count: selectedStudentIds.length }),
+                    confirmLabel: tx("activateEnrollments"),
                     onConfirm: handleActivateEnrollments,
                   })
                 }
               >
-                {processingKey === "activate" ? "Activating..." : "Activate selected enrollments"}
+                {processingKey === "activate" ? tx("activating") : tx("activateEnrollments")}
               </button>
               <button
                 className="btn"
@@ -819,19 +822,19 @@ export default function AdminEnrollmentsPage() {
                 disabled={smuManaged || processingKey !== "" || selectedStudentIds.length === 0 || !filters.termId}
                 onClick={() =>
                   setConfirmAction({
-                    title: "Generate course enrollments?",
-                    text: `This will generate current semester course enrollments for ${selectedStudentIds.length} selected student(s).`,
-                    confirmLabel: "Generate courses",
+                    title: tx("generateTitle"),
+                    text: tx("generateText", { count: selectedStudentIds.length }),
+                    confirmLabel: tx("generateCourses"),
                     onConfirm: handleRegularizeEnrollments,
                   })
                 }
               >
-                {processingKey === "regularize" ? "Generating..." : "Generate current semester courses"}
+                {processingKey === "regularize" ? tx("generating") : tx("generateCurrentCourses")}
               </button>
             </div>
             {smuManaged ? (
               <div className="pageStateCard">
-                SMU sync owns cohort creation and current-semester course eligibility. This screen is now a review workspace; carry-over unlock remains available below because it is exam-specific.
+                {tx("smuOwnsCohort")}
               </div>
             ) : null}
           </div>
@@ -841,15 +844,15 @@ export default function AdminEnrollmentsPage() {
           <article className="surfaceCard">
             <div className="sectionHeader">
               <div>
-                <h3>Focused student view</h3>
-                <span className="sectionMeta">Inspect semester and course eligibility for the selected student.</span>
+                <h3>{tx("focusedStudentView")}</h3>
+                <span className="sectionMeta">{tx("focusedStudentMeta")}</span>
               </div>
             </div>
             <div className="sectionBody stackLg">
               {!focusedStudent ? (
-                <div className="pageStateCard">Select a student to inspect enrollment details.</div>
+                <div className="pageStateCard">{tx("selectStudentDetails")}</div>
               ) : loadingFocusedDetails ? (
-                <div className="pageStateCard">Loading student enrollment details...</div>
+                <div className="pageStateCard">{tx("loadingStudentDetails")}</div>
               ) : (
                 <>
                   <div className="pageStateCard">
@@ -861,16 +864,16 @@ export default function AdminEnrollmentsPage() {
                     <table className="dataTable">
                       <thead>
                         <tr>
-                          <th>Semester enrollments</th>
-                          <th>Term</th>
-                          <th>Year / Semester</th>
-                          <th>Status</th>
+                          <th>{tx("semesterEnrollments")}</th>
+                          <th>{tx("term")}</th>
+                          <th>{tx("yearSemester")}</th>
+                          <th>{tx("statusLabel")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {focusedDetails.semesterEnrollments.length === 0 ? (
                           <tr>
-                            <td colSpan={4}>No semester enrollments found.</td>
+                            <td colSpan={4}>{tx("noSemesterEnrollments")}</td>
                           </tr>
                         ) : (
                           focusedDetails.semesterEnrollments.map((enrollment) => (
@@ -880,7 +883,7 @@ export default function AdminEnrollmentsPage() {
                               <td>{enrollment.yearOfStudy} / {enrollment.semesterNo}</td>
                               <td>
                                 <span className={`statusPill ${STATUS_TONE[enrollment.status] || "statusDraft"}`}>
-                                  {enrollment.status}
+                                  {tx(`status.${enrollment.status}`, { defaultValue: enrollment.status })}
                                 </span>
                               </td>
                             </tr>
@@ -894,28 +897,28 @@ export default function AdminEnrollmentsPage() {
                     <table className="dataTable">
                       <thead>
                         <tr>
-                          <th>Current course enrollments</th>
-                          <th>Offering</th>
-                          <th>Status</th>
-                          <th>Eligible for exam</th>
+                          <th>{tx("currentCourseEnrollments")}</th>
+                          <th>{tx("offering")}</th>
+                          <th>{tx("statusLabel")}</th>
+                          <th>{tx("eligibleForExam")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {focusedDetails.courseEnrollments.length === 0 ? (
                           <tr>
-                            <td colSpan={4}>No course enrollments found for the selected term.</td>
+                            <td colSpan={4}>{tx("noCourseEnrollments")}</td>
                           </tr>
                         ) : (
                           focusedDetails.courseEnrollments.map((enrollment) => (
                             <tr key={enrollment.id}>
-                              <td>{enrollment.courseOffering?.course?.name || "Offering"}</td>
+                              <td>{enrollment.courseOffering?.course?.name || tx("offering")}</td>
                               <td>{enrollment.courseOffering?.term?.code || "-"} | {enrollment.courseOffering?.sectionCode || "-"}</td>
                               <td>
                                 <span className={`statusPill ${STATUS_TONE[enrollment.status] || "statusDraft"}`}>
-                                  {enrollment.status}
+                                  {tx(`status.${enrollment.status}`, { defaultValue: enrollment.status })}
                                 </span>
                               </td>
-                              <td>{enrollment.eligibleForExam ? "Yes" : "No"}</td>
+                              <td>{enrollment.eligibleForExam ? tx("yes") : tx("no")}</td>
                             </tr>
                           ))
                         )}
@@ -930,25 +933,25 @@ export default function AdminEnrollmentsPage() {
           <article className="surfaceCard">
             <div className="sectionHeader">
               <div>
-                <h3>Carry-over visibility</h3>
-                <span className="sectionMeta">Create, unlock, close, or cancel carry-over records with clear status feedback.</span>
+                <h3>{tx("carryOverVisibility")}</h3>
+                <span className="sectionMeta">{tx("carryOverMeta")}</span>
               </div>
             </div>
             <div className="sectionBody stackLg">
               <div className="pageStateCard">
-                <strong>Controlled unlock flow:</strong> create a carry-over from a previous semester, then assign it to an active offering to create exam eligibility.
+                <strong>{tx("controlledUnlock")}</strong> {tx("controlledUnlockText")}
               </div>
 
               <div className="formGrid formGridTwo">
                 <div className="field">
-                  <label className="label">Failed / carried course</label>
+                  <label className="label">{tx("failedCourse")}</label>
                   <select
                     className="input"
                     value={carryOverForm.courseId}
                     onChange={(e) => setCarryOverForm((current) => ({ ...current, courseId: e.target.value }))}
                     disabled={!focusedStudent || processingKey !== ""}
                   >
-                    <option value="">Select course</option>
+                    <option value="">{tx("selectCourse")}</option>
                     {courses.map((course) => (
                       <option key={course.id} value={course.id}>
                         {course.code} - {course.name}
@@ -958,14 +961,14 @@ export default function AdminEnrollmentsPage() {
                 </div>
 
                 <div className="field">
-                  <label className="label">Origin term</label>
+                  <label className="label">{tx("originTerm")}</label>
                   <select
                     className="input"
                     value={carryOverForm.originTermId}
                     onChange={(e) => setCarryOverForm((current) => ({ ...current, originTermId: e.target.value }))}
                     disabled={!focusedStudent || processingKey !== ""}
                   >
-                    <option value="">Select term</option>
+                    <option value="">{tx("selectTerm")}</option>
                     {terms.map((term) => (
                       <option key={term.id} value={term.id}>
                         {term.code} - {term.name}
@@ -975,7 +978,7 @@ export default function AdminEnrollmentsPage() {
                 </div>
 
                 <div className="field">
-                  <label className="label">Origin semester</label>
+                  <label className="label">{tx("originSemester")}</label>
                   <select
                     className="input"
                     value={carryOverForm.originSemesterNo}
@@ -983,36 +986,36 @@ export default function AdminEnrollmentsPage() {
                     disabled={!focusedStudent || processingKey !== ""}
                   >
                     {[1, 2, 3, 4, 5, 6].map((semester) => (
-                      <option key={semester} value={semester}>Semester {semester}</option>
+                      <option key={semester} value={semester}>{tx("semester", { count: semester })}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="field">
-                  <label className="label">Reason</label>
+                  <label className="label">{tx("reason")}</label>
                   <select
                     className="input"
                     value={carryOverForm.reason}
                     onChange={(e) => setCarryOverForm((current) => ({ ...current, reason: e.target.value }))}
                     disabled={!focusedStudent || processingKey !== ""}
                   >
-                    <option value="Failed">Failed</option>
-                    <option value="Absent">Absent</option>
-                    <option value="Deferred">Deferred</option>
-                    <option value="NotCompleted">Not completed</option>
+                    <option value="Failed">{tx("reasonFailed")}</option>
+                    <option value="Absent">{tx("reasonAbsent")}</option>
+                    <option value="Deferred">{tx("reasonDeferred")}</option>
+                    <option value="NotCompleted">{tx("reasonNotCompleted")}</option>
                   </select>
                 </div>
               </div>
 
               <div className="field">
-                <label className="label">Target offering for unlock</label>
+                <label className="label">{tx("targetOffering")}</label>
                 <select
                   className="input"
                   value={unlockOfferingId}
                   onChange={(e) => setUnlockOfferingId(e.target.value)}
                   disabled={!focusedStudent || processingKey !== ""}
                 >
-                  <option value="">Select offering when assigning carry-over</option>
+                  <option value="">{tx("selectOfferingUnlock")}</option>
                   {offerings.map((offering) => (
                     <option key={offering.id} value={offering.id}>
                       {formatOfferingLabel(offering)}
@@ -1028,40 +1031,40 @@ export default function AdminEnrollmentsPage() {
                   onClick={handleCreateCarryOver}
                   disabled={!focusedStudent || processingKey !== ""}
                 >
-                  {processingKey === "create-carry-over" ? "Creating..." : "Create carry-over"}
+                  {processingKey === "create-carry-over" ? tx("creating") : tx("createCarryOver")}
                 </button>
               </div>
 
               {!focusedStudent ? (
-                <div className="pageStateCard">Select a student to review carry-over history.</div>
+                <div className="pageStateCard">{tx("selectStudentCarryOver")}</div>
               ) : loadingFocusedDetails ? (
-                <div className="pageStateCard">Loading carry-over records...</div>
+                <div className="pageStateCard">{tx("loadingCarryOver")}</div>
               ) : (
                 <div className="tableWrap">
                   <table className="dataTable">
                     <thead>
                       <tr>
-                        <th>Course</th>
-                        <th>Origin term</th>
-                        <th>Origin semester</th>
-                        <th>Status</th>
-                        <th>Unlock actions</th>
+                        <th>{tx("course")}</th>
+                        <th>{tx("originTerm")}</th>
+                        <th>{tx("originSemester")}</th>
+                        <th>{tx("statusLabel")}</th>
+                        <th>{tx("unlockActions")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {focusedDetails.carryOvers.length === 0 ? (
                         <tr>
-                          <td colSpan={5}>No carry-over records for the selected student.</td>
+                          <td colSpan={5}>{tx("noCarryOver")}</td>
                         </tr>
                       ) : (
                         focusedDetails.carryOvers.map((carryOver) => (
                           <tr key={carryOver.id}>
-                            <td>{carryOver.course?.name || "Course"}</td>
+                            <td>{carryOver.course?.name || tx("course")}</td>
                             <td>{carryOver.originTerm?.code || "-"}</td>
                             <td>{carryOver.originSemesterNo}</td>
                             <td>
                               <span className={`statusPill ${STATUS_TONE[carryOver.status] || "statusDraft"}`}>
-                                {carryOver.status}
+                                {tx(`status.${carryOver.status}`, { defaultValue: carryOver.status })}
                               </span>
                             </td>
                             <td>
@@ -1073,7 +1076,7 @@ export default function AdminEnrollmentsPage() {
                                     onClick={() => handleAssignCarryOver(carryOver.id)}
                                     disabled={processingKey !== ""}
                                   >
-                                    {processingKey === `assign-${carryOver.id}` ? "Unlocking..." : "Unlock"}
+                                    {processingKey === `assign-${carryOver.id}` ? tx("unlocking") : tx("unlock")}
                                   </button>
                                 ) : null}
                                 {carryOver.status !== "Closed" && carryOver.status !== "Cancelled" ? (
@@ -1082,15 +1085,15 @@ export default function AdminEnrollmentsPage() {
                                     type="button"
                                     onClick={() =>
                                       setConfirmAction({
-                                        title: "Close carry-over record?",
-                                        text: "This marks the carry-over as closed and may finalize its offering connection.",
-                                        confirmLabel: "Close record",
+                                        title: tx("closeCarryOverTitle"),
+                                        text: tx("closeCarryOverText"),
+                                        confirmLabel: tx("closeRecord"),
                                         onConfirm: () => handleCloseCarryOver(carryOver.id),
                                       })
                                     }
                                     disabled={processingKey !== ""}
                                   >
-                                    {processingKey === `close-${carryOver.id}` ? "Closing..." : "Close"}
+                                    {processingKey === `close-${carryOver.id}` ? tx("closing") : tx("close")}
                                   </button>
                                 ) : null}
                                 {carryOver.status === "Open" ? (
@@ -1099,15 +1102,15 @@ export default function AdminEnrollmentsPage() {
                                     type="button"
                                     onClick={() =>
                                       setConfirmAction({
-                                        title: "Cancel carry-over record?",
-                                        text: "This cancels the open carry-over record for the focused student.",
-                                        confirmLabel: "Cancel record",
+                                        title: tx("cancelCarryOverTitle"),
+                                        text: tx("cancelCarryOverText"),
+                                        confirmLabel: tx("cancelRecord"),
                                         onConfirm: () => handleCancelCarryOver(carryOver.id),
                                       })
                                     }
                                     disabled={processingKey !== ""}
                                   >
-                                    {processingKey === `cancel-${carryOver.id}` ? "Cancelling..." : "Cancel"}
+                                    {processingKey === `cancel-${carryOver.id}` ? tx("cancelling") : tx("cancel")}
                                   </button>
                                 ) : null}
                               </div>
@@ -1126,24 +1129,24 @@ export default function AdminEnrollmentsPage() {
         <section className="surfaceCard">
           <div className="sectionHeader">
             <div>
-              <h3>Batch operation results</h3>
-              <span className="sectionMeta">Review the latest create, activate, or regularization operation.</span>
+              <h3>{tx("batchResults")}</h3>
+              <span className="sectionMeta">{tx("batchResultsMeta")}</span>
             </div>
           </div>
           <div className="sectionBody">
             {operationResults.length === 0 ? (
               <div className="pageStateCard">
-                Use the cohort actions above to create, activate, or regularize student registrations.
+                {tx("batchResultsEmpty")}
               </div>
             ) : (
               <div className="tableWrap">
                 <table className="dataTable">
                   <thead>
                     <tr>
-                      <th>Student</th>
-                      <th>Action</th>
-                      <th>Outcome</th>
-                      <th>Message</th>
+                      <th>{tx("student")}</th>
+                      <th>{tx("action")}</th>
+                      <th>{tx("outcome")}</th>
+                      <th>{tx("message")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1167,6 +1170,8 @@ export default function AdminEnrollmentsPage() {
             title={confirmAction.title}
             text={confirmAction.text}
             confirmLabel={confirmAction.confirmLabel}
+            cancelLabel={tx("cancel")}
+            summaryLabel={tx("confirmationRequired")}
             onCancel={() => setConfirmAction(null)}
             onConfirm={runConfirmedAction}
           />
@@ -1176,16 +1181,16 @@ export default function AdminEnrollmentsPage() {
   );
 }
 
-function ConfirmDialog({ title, text, confirmLabel, onCancel, onConfirm }) {
+function ConfirmDialog({ title, text, confirmLabel, cancelLabel, summaryLabel, onCancel, onConfirm }) {
   return (
     <div className="modalBackdrop" role="presentation">
       <div className="modalCard confirmationDialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
-        <span className="summaryLabel">Confirmation required</span>
+        <span className="summaryLabel">{summaryLabel}</span>
         <h3 id="confirm-dialog-title">{title}</h3>
         <p>{text}</p>
         <div className="formActionsBar">
           <button className="btn" type="button" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </button>
           <button className="btn btnPrimary" type="button" onClick={onConfirm}>
             {confirmLabel}
@@ -1208,12 +1213,19 @@ function readError(error, fallback) {
   return error?.response?.data?.message || fallback;
 }
 
-function buildBatchMessage(results, label) {
-  const successCount = results.filter((item) => ["Created", "Activated", "Completed"].includes(item.outcome)).length;
-  const failedCount = results.filter((item) => item.outcome === "Failed").length;
-  const skippedCount = results.filter((item) => item.outcome === "Skipped").length;
+function buildBatchMessage(results, label, tx) {
+  const successWords = new Set([tx("outcomeCreated"), tx("outcomeActivated"), tx("outcomeCompleted")]);
+  const successCount = results.filter((item) => successWords.has(item.outcome)).length;
+  const failedCount = results.filter((item) => item.outcome === tx("outcomeFailed")).length;
+  const skippedCount = results.filter((item) => item.outcome === tx("outcomeSkipped")).length;
 
-  return `Processed ${results.length} ${label}: ${successCount} successful, ${failedCount} failed, ${skippedCount} skipped.`;
+  return tx("processedSummary", {
+    total: results.length,
+    label,
+    success: successCount,
+    failed: failedCount,
+    skipped: skippedCount,
+  });
 }
 
 function formatOfferingLabel(offering) {

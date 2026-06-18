@@ -68,13 +68,18 @@ public class ExamsController : ControllerBase
         "EXIT_FULLSCREEN",
         "COPY_ATTEMPT",
         "PASTE_ATTEMPT",
+        "CUT_ATTEMPT",
         "RIGHT_CLICK_ATTEMPT",
         "DEVTOOLS_ATTEMPT",
         "SHORTCUT_ATTEMPT",
         "PRINT_ATTEMPT",
         "FULLSCREEN_REQUEST_FAILED",
         "NETWORK_OFFLINE",
-        "BACK_NAVIGATION"
+        "BACK_NAVIGATION",
+        "CAMERA_UNAVAILABLE",
+        "NO_FACE_DETECTED",
+        "MULTIPLE_FACES_DETECTED",
+        "FACE_DETECTION_ERROR"
     };
     private readonly AppDbContext _context;
     private readonly IAuditLogService _auditLogService;
@@ -1034,7 +1039,6 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
- feature/exam-max-points-grading
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -1075,9 +1079,7 @@ public class ExamsController : ControllerBase
             })
             .ToList();
 
-        foreach (var attempt in mappedAttempts)
-
-        var attemptIds = attempts.Select(x => x.AttemptId).ToList();
+        var attemptIds = mappedAttempts.Select(x => x.AttemptId).ToList();
         var integrityByAttempt = attemptIds.Count == 0
             ? new Dictionary<Guid, List<ExamIntegrityEventDto>>()
             : await _context.ExamIntegrityEvents
@@ -1096,8 +1098,7 @@ public class ExamsController : ControllerBase
             .ToListAsync();
         var answersByAttempt = answerRows.ToDictionary(x => x.Id, x => BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson)));
 
-        foreach (var attempt in attempts)
-main
+        foreach (var attempt in mappedAttempts)
         {
             attempt.Answers = answersByAttempt.TryGetValue(attempt.AttemptId, out var answers) ? answers : [];
 
@@ -1999,11 +2000,16 @@ main
             "FullscreenExit" => "EXIT_FULLSCREEN",
             "CopyAttempt" => "COPY_ATTEMPT",
             "PasteAttempt" => "PASTE_ATTEMPT",
+            "CutAttempt" => "CUT_ATTEMPT",
             "RightClickAttempt" => "RIGHT_CLICK_ATTEMPT",
             "ShortcutAttempt" => "SHORTCUT_ATTEMPT",
             "PrintAttempt" => "PRINT_ATTEMPT",
             "FullscreenRequestFailed" => "FULLSCREEN_REQUEST_FAILED",
             "NetworkOffline" => "NETWORK_OFFLINE",
+            "NoFaceDetected" => "NO_FACE_DETECTED",
+            "MultipleFacesDetected" => "MULTIPLE_FACES_DETECTED",
+            "CameraUnavailable" => "CAMERA_UNAVAILABLE",
+            "FaceDetectionError" => "FACE_DETECTION_ERROR",
             _ => trimmed.ToUpperInvariant()
         };
 
@@ -2240,7 +2246,6 @@ main
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
- feature/exam-max-points-grading
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -2600,6 +2605,23 @@ main
     }
 
     private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)
+    {
+        if (!requiresLockdown)
+            return null;
+
+        var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
+        var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+        var allowedModes = new[] { "Advisory", "Strict" };
+
+        if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
+            return "Invalid lockdown client.";
+
+        if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
+            return "Invalid lockdown mode.";
+
+        return null;
+    }
 
     private static bool IsCorrectMcqResponse(string? correctAnswer, string? response)
 

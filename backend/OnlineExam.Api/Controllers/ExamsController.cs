@@ -97,6 +97,9 @@ public class ExamsController : ControllerBase
 
         IQueryable<Exam> query = _context.Exams
             .Include(x => x.CourseOffering)
+                .ThenInclude(x => x!.Course)
+            .Include(x => x.CourseOffering)
+                .ThenInclude(x => x!.Term)
             .Where(x => !x.Description.StartsWith(QuestionBankMarker));
 
         var normalizedPublicationState = NormalizePublicationState(publicationState);
@@ -207,6 +210,10 @@ public class ExamsController : ControllerBase
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? DateTime.UtcNow;
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
+        var assessmentType = NormalizeAssessmentType(dto.AssessmentType);
+        var examPeriod = NormalizeExamPeriod(dto.ExamPeriod);
+        if (User.IsInRole("Assistant") && assessmentType == "Provim")
+            return BadRequest(new { message = "Assistants can create only kollokfium assessments." });
 
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
@@ -250,6 +257,14 @@ public class ExamsController : ControllerBase
             LockdownMode = "Advisory",
             CreatedByUserId = userId.Value,
             CreatedAt = DateTime.UtcNow,
+            UpdatedAt = null,
+            PublishedAt = null,
+            UnpublishedAt = null,
+            AssessmentType = assessmentType,
+            ExamPeriod = examPeriod,
+            AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty,
+            SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty,
+            CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty,
             CourseOfferingId = dto.CourseOfferingId,
             MaximumPoints = dto.MaximumPoints
         };
@@ -262,6 +277,11 @@ public class ExamsController : ControllerBase
             exam.CourseOfferingId,
             exam.Status,
             exam.MaximumPoints,
+            exam.AssessmentType,
+            exam.ExamPeriod,
+            exam.AcademicYear,
+            exam.SemesterLabel,
+            exam.CohortLabel,
             exam.RequiresLockdown,
             exam.AllowedClient,
             exam.LockdownMode
@@ -300,6 +320,10 @@ public class ExamsController : ControllerBase
         var durationMinutes = dto.DurationMinutes > 0 ? dto.DurationMinutes : 60;
         var startsAt = dto.StartsAt?.ToUniversalTime() ?? exam.StartsAt;
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
+        var assessmentType = NormalizeAssessmentType(dto.AssessmentType);
+        var examPeriod = NormalizeExamPeriod(dto.ExamPeriod);
+        if (User.IsInRole("Assistant") && assessmentType == "Provim")
+            return BadRequest(new { message = "Assistants can manage only kollokfium assessments." });
 
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
@@ -331,6 +355,14 @@ public class ExamsController : ControllerBase
         exam.DurationMinutes = durationMinutes;
         exam.IsPublished = false;
         exam.Status = "Draft";
+        exam.UpdatedAt = DateTime.UtcNow;
+        exam.PublishedAt = null;
+        exam.UnpublishedAt = exam.UnpublishedAt ?? DateTime.UtcNow;
+        exam.AssessmentType = assessmentType;
+        exam.ExamPeriod = examPeriod;
+        exam.AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty;
+        exam.SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty;
+        exam.CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty;
         exam.MaximumPoints = dto.MaximumPoints;
         exam.CourseOfferingId = dto.CourseOfferingId;
         exam.RequiresLockdown = false;
@@ -344,6 +376,11 @@ public class ExamsController : ControllerBase
             exam.CourseOfferingId,
             exam.Status,
             exam.MaximumPoints,
+            exam.AssessmentType,
+            exam.ExamPeriod,
+            exam.AcademicYear,
+            exam.SemesterLabel,
+            exam.CohortLabel,
             exam.RequiresLockdown,
             exam.AllowedClient,
             exam.LockdownMode
@@ -686,6 +723,111 @@ public class ExamsController : ControllerBase
         return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
     }
 
+    [HttpPost("{examId:guid}/attempt/questions/{questionId:guid}/run")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<TechnicalRunResultDto>> RunTechnicalAnswer(
+        Guid examId,
+        Guid questionId,
+        [FromBody] RunTechnicalAnswerDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        if (dto.QuestionId != Guid.Empty && dto.QuestionId != questionId)
+            return BadRequest(new { message = "QuestionId in body does not match route." });
+
+        var exam = await _context.Exams
+            .Include(e => e.Questions)
+            .FirstOrDefaultAsync(e => e.Id == examId);
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        if (sessionAccessError != null)
+        {
+            if (sessionAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = sessionAccessError });
+        }
+
+        await EnsureExamHasQuestionsFromBankAsync(exam);
+
+        var question = exam.Questions.FirstOrDefault(x => x.Id == questionId);
+        if (question == null)
+            return NotFound(new { message = "Question not found in this exam." });
+
+        if (!IsTechnicalQuestion(question))
+            return BadRequest(new { message = "Run is available only for SQL and C# questions." });
+
+        var now = DateTime.UtcNow;
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "Submitted attempts cannot be executed again." });
+
+        var response = dto.Response?.Trim() ?? string.Empty;
+        var answers = attempt == null ? new List<AnswerDto>() : ParseAttemptAnswers(attempt.AnswersJson);
+        var existingAnswer = answers.FirstOrDefault(x => x.QuestionId == questionId);
+        if (existingAnswer == null)
+        {
+            answers.Add(new AnswerDto { QuestionId = questionId, Response = response });
+        }
+        else
+        {
+            existingAnswer.Response = response;
+        }
+
+        if (attempt == null)
+        {
+            attempt = new ExamAttempt
+            {
+                Id = Guid.NewGuid(),
+                ExamId = examId,
+                StudentId = userId.Value,
+                Status = ExamAttemptInProgressStatus,
+                StartedAt = now,
+                LastSavedAt = now,
+                SubmittedAt = null,
+                AnswersJson = JsonSerializer.Serialize(answers),
+                AutoScore = 0,
+                ManualScore = 0,
+                FinalScore = 0,
+                RequiresManualGrading = false,
+                IsGraded = false,
+                IsPublished = false,
+                IntegrityViolationCount = 0,
+                IntegrityPolicyAction = IntegrityPolicyActionNone
+            };
+
+            _context.ExamAttempts.Add(attempt);
+        }
+        else
+        {
+            attempt.Status = ExamAttemptInProgressStatus;
+            attempt.LastSavedAt = now;
+            attempt.AnswersJson = JsonSerializer.Serialize(answers);
+        }
+
+        await _context.SaveChangesAsync();
+
+        var runResult = BuildTechnicalRunResult(question, response);
+        await _auditLogService.LogAsync("ExamAttempt.TechnicalAnswerRun", "ExamAttempt", attempt.Id, new
+        {
+            attempt.ExamId,
+            attempt.StudentId,
+            questionId,
+            question.Type,
+            runResult.Status,
+            runResult.ExecutedAt,
+            dto.ClientSessionId
+        }, "ExamDelivery");
+
+        return Ok(runResult);
+    }
+
     [HttpPost("{examId:guid}/attempt/integrity-events")]
     [Authorize(Roles = "Student")]
     public async Task<ActionResult<ExamIntegrityEventResultDto>> RecordIntegrityEvent(
@@ -991,16 +1133,60 @@ public class ExamsController : ControllerBase
 
         exam.Status = "Published";
         exam.IsPublished = true;
+        exam.PublishedAt = DateTime.UtcNow;
+        exam.UnpublishedAt = null;
+        exam.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Published", "Exam", exam.Id, new
         {
             exam.CourseOfferingId,
+            exam.AssessmentType,
+            exam.ExamPeriod,
+            exam.PublishedAt,
             exam.RequiresLockdown,
             exam.AllowedClient,
             exam.LockdownMode
         }, "ExamAuthoring");
 
         return Ok(new { message = "Exam published!", examId = id });
+    }
+
+    [HttpPost("{id:guid}/unpublish")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> UnpublishExam(Guid id)
+    {
+        var exam = await _context.Exams.FindAsync(id);
+        if (exam == null)
+            return NotFound();
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!exam.IsPublished && exam.Status == "Draft")
+            return BadRequest(new { message = "This assessment is already in draft state." });
+
+        var hasAttempts = await _context.ExamAttempts.AnyAsync(x => x.ExamId == id);
+        if (hasAttempts)
+            return BadRequest(new { message = "This assessment cannot be unpublished because attempts already exist." });
+
+        exam.Status = "Draft";
+        exam.IsPublished = false;
+        exam.UnpublishedAt = DateTime.UtcNow;
+        exam.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("Exam.Unpublished", "Exam", exam.Id, new
+        {
+            exam.CourseOfferingId,
+            exam.AssessmentType,
+            exam.ExamPeriod,
+            exam.UnpublishedAt
+        }, "ExamAuthoring");
+
+        return Ok(new { message = "Assessment returned to draft.", examId = id });
     }
 
     [HttpGet("{id:guid}/gradebook")]
@@ -1034,7 +1220,7 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
- feature/exam-max-points-grading
+
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -1075,9 +1261,7 @@ public class ExamsController : ControllerBase
             })
             .ToList();
 
-        foreach (var attempt in mappedAttempts)
-
-        var attemptIds = attempts.Select(x => x.AttemptId).ToList();
+        var attemptIds = mappedAttempts.Select(x => x.AttemptId).ToList();
         var integrityByAttempt = attemptIds.Count == 0
             ? new Dictionary<Guid, List<ExamIntegrityEventDto>>()
             : await _context.ExamIntegrityEvents
@@ -1096,8 +1280,7 @@ public class ExamsController : ControllerBase
             .ToListAsync();
         var answersByAttempt = answerRows.ToDictionary(x => x.Id, x => BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson)));
 
-        foreach (var attempt in attempts)
-main
+        foreach (var attempt in mappedAttempts)
         {
             attempt.Answers = answersByAttempt.TryGetValue(attempt.AttemptId, out var answers) ? answers : [];
 
@@ -1646,6 +1829,73 @@ main
         });
     }
 
+    [HttpPost("{examId:guid}/questions/from-bank")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> AddSelectedQuestionsFromBank(Guid examId, [FromBody] AddSelectedExamQuestionsDto dto)
+    {
+        var requestedIds = dto.QuestionBankQuestionIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (requestedIds.Count == 0)
+            return BadRequest(new { message = "Select at least one question from the question bank." });
+
+        var exam = await _context.Exams
+            .Include(x => x.Questions)
+            .FirstOrDefaultAsync(x => x.Id == examId);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before changing questions." });
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before adding question bank questions." });
+
+        var bankExam = await FindQuestionBankContainerAsync(exam.CourseOfferingId.Value);
+        if (bankExam == null)
+            return BadRequest(new { message = "No question bank exists for this course offering yet." });
+
+        var selectedBankQuestions = await BuildQuestionBankCandidateQuery(bankExam.Id, null)
+            .Where(question => requestedIds.Contains(question.Id))
+            .ToListAsync();
+
+        if (selectedBankQuestions.Count == 0)
+            return BadRequest(new { message = "None of the selected questions were found in this course question bank." });
+
+        var createdQuestions = selectedBankQuestions
+            .Where(candidate => !exam.Questions.Any(existing => IsSameQuestionContent(existing, candidate)))
+            .Select(candidate => CloneQuestionForExam(candidate, exam.Id))
+            .ToList();
+
+        if (createdQuestions.Count == 0)
+            return BadRequest(new { message = "The selected questions are already included in this exam." });
+
+        _context.Questions.AddRange(createdQuestions);
+        await _context.SaveChangesAsync();
+
+        await _auditLogService.LogAsync("ExamQuestions.AddedFromBank", "Exam", exam.Id, new
+        {
+            AddedQuestionCount = createdQuestions.Count,
+            RequestedQuestionCount = requestedIds.Count,
+            exam.CourseOfferingId
+        }, "ExamAuthoring");
+
+        return Ok(new
+        {
+            Questions = createdQuestions.Select(MapToExamQuestionResponse).ToList(),
+            Message = $"Added {createdQuestions.Count} selected question(s) to the exam."
+        });
+    }
+
     [HttpPost("{examId:guid}/questions/{questionId:guid}/replace")]
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> ReplaceExamQuestion(Guid examId, Guid questionId, [FromBody] ReplaceExamQuestionDto? dto = null)
@@ -1662,6 +1912,9 @@ main
 
         if (!await CanManageExamAsync(exam))
             return Forbid();
+
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before replacing questions." });
 
         if (!exam.CourseOfferingId.HasValue)
             return BadRequest(new { message = "Exam must be linked to a course offering before replacing questions." });
@@ -1698,6 +1951,73 @@ main
         existingQuestion.CourseId = selectedReplacement.CourseId;
 
         await _context.SaveChangesAsync();
+
+        return Ok(MapToExamQuestionResponse(existingQuestion));
+    }
+
+    [HttpPost("{examId:guid}/questions/{questionId:guid}/replace-with-bank-question")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> ReplaceExamQuestionWithSelectedBankQuestion(Guid examId, Guid questionId, [FromBody] ReplaceWithBankQuestionDto dto)
+    {
+        if (dto.QuestionBankQuestionId == Guid.Empty)
+            return BadRequest(new { message = "Select a replacement question from the question bank." });
+
+        var exam = await _context.Exams
+            .Include(x => x.Questions)
+            .FirstOrDefaultAsync(x => x.Id == examId);
+
+        if (exam == null)
+            return NotFound(new { message = "Exam not found." });
+
+        if (exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound();
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before replacing questions." });
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before replacing questions." });
+
+        var existingQuestion = exam.Questions.FirstOrDefault(x => x.Id == questionId);
+        if (existingQuestion == null)
+            return NotFound(new { message = "Question not found in this exam." });
+
+        var bankExam = await FindQuestionBankContainerAsync(exam.CourseOfferingId.Value);
+        if (bankExam == null)
+            return BadRequest(new { message = "No question bank exists for this course offering yet." });
+
+        var selectedReplacement = await BuildQuestionBankCandidateQuery(bankExam.Id, null)
+            .FirstOrDefaultAsync(candidate => candidate.Id == dto.QuestionBankQuestionId);
+
+        if (selectedReplacement == null)
+            return BadRequest(new { message = "The selected replacement question does not belong to this course question bank." });
+
+        if (IsSameQuestionContent(existingQuestion, selectedReplacement))
+            return BadRequest(new { message = "Choose a different question as the replacement." });
+
+        if (exam.Questions.Any(question => question.Id != existingQuestion.Id && IsSameQuestionContent(question, selectedReplacement)))
+            return BadRequest(new { message = "The selected replacement question is already included in this exam." });
+
+        existingQuestion.Text = selectedReplacement.Text;
+        existingQuestion.Type = selectedReplacement.Type;
+        existingQuestion.CorrectAnswer = selectedReplacement.CorrectAnswer;
+        existingQuestion.Topic = selectedReplacement.Topic;
+        existingQuestion.Difficulty = selectedReplacement.Difficulty;
+        existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.Points = selectedReplacement.Points;
+        existingQuestion.CourseId = selectedReplacement.CourseId;
+
+        await _context.SaveChangesAsync();
+
+        await _auditLogService.LogAsync("ExamQuestion.ReplacedWithBankQuestion", "Question", existingQuestion.Id, new
+        {
+            ExamId = exam.Id,
+            ReplacementQuestionBankQuestionId = selectedReplacement.Id,
+            exam.CourseOfferingId
+        }, "ExamAuthoring");
 
         return Ok(MapToExamQuestionResponse(existingQuestion));
     }
@@ -1812,6 +2132,8 @@ main
             Text = question.Text,
             Type = question.Type,
             CorrectAnswer = question.CorrectAnswer,
+            Topic = question.Topic,
+            Difficulty = question.Difficulty,
             CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points
@@ -2240,7 +2562,43 @@ main
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
- feature/exam-max-points-grading
+    private static string NormalizeAssessmentType(string? value)
+    {
+        var normalized = NormalizeOptionalValue(value)?.Replace(" ", "", StringComparison.OrdinalIgnoreCase);
+        return normalized switch
+        {
+            "Colloquium1" or "Kollokfium1" or "Midterm1" => "Kollokfium1",
+            "Colloquium2" or "Kollokfium2" or "Midterm2" => "Kollokfium2",
+            "Practice" or "PracticeExam" or "Ushtrime" => "Practice",
+            "Final" or "FinalExam" or "Exam" or "Provim" => "Provim",
+            _ => "Provim"
+        };
+    }
+
+    private static string NormalizeExamPeriod(string? value)
+    {
+        var normalized = NormalizeOptionalValue(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "Custom";
+
+        return normalized.ToLowerInvariant() switch
+        {
+            "january" or "janar" or "afati i janarit" => "AfatiJanarit",
+            "april" or "prill" or "afati i prillit" => "AfatiPrillit",
+            "june" or "qershor" or "afati i qershorit" => "AfatiQershorit",
+            "september" or "shtator" or "afati i shtatorit" => "AfatiShtatorit",
+            "october" or "tetor" or "afati i tetorit" => "AfatiTetorit",
+            "semester" or "during semester" or "gjate semestrit" => "GjateSemestrit",
+            _ => "Custom"
+        };
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        var normalized = NormalizeOptionalValue(value);
+        return normalized?.Length > 120 ? normalized[..120] : normalized;
+    }
+
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -2600,9 +2958,27 @@ main
     }
 
     private static string? ValidateLockdownConfiguration(bool requiresLockdown, string? allowedClient, string? lockdownMode)
+    {
+        var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
+        var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
+
+        var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);
+        if (!validClient)
+            return "AllowedClient must be StandardBrowser or SafeExamBrowser.";
+
+        var validMode = string.Equals(normalizedMode, "Advisory", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalizedMode, "Strict", StringComparison.OrdinalIgnoreCase);
+        if (!validMode)
+            return "LockdownMode must be Advisory or Strict.";
+
+        if (requiresLockdown && string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
+            return "A lockdown exam must require SafeExamBrowser.";
+
+        return null;
+    }
 
     private static bool IsCorrectMcqResponse(string? correctAnswer, string? response)
-
     {
         var correctAnswers = GetCorrectAnswers(correctAnswer);
         var submittedAnswers = GetCorrectAnswers(response);
@@ -2698,6 +3074,160 @@ main
                 IsCorrect = isCorrect
             };
         }).ToList();
+    }
+
+    private static TechnicalRunResultDto BuildTechnicalRunResult(Question question, string response)
+    {
+        var questionType = question.Type;
+        var executedAt = DateTime.UtcNow;
+
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            return new TechnicalRunResultDto
+            {
+                Status = "Error",
+                Errors = "Write a solution before running this technical answer.",
+                Notes = "Run validates the current draft only. Final grading still happens after submission.",
+                ExecutedAt = executedAt,
+                TestResults =
+                [
+                    new TechnicalRunTestResultDto
+                    {
+                        Name = "Draft content",
+                        Passed = false,
+                        Message = "No SQL query or C# code was provided.",
+                        Visibility = "Public"
+                    }
+                ]
+            };
+        }
+
+        if (string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase))
+            return BuildSqlRunPreview(response, executedAt);
+
+        if (string.Equals(questionType, "CSharp", StringComparison.OrdinalIgnoreCase))
+            return BuildCSharpRunPreview(response, executedAt);
+
+        return new TechnicalRunResultDto
+        {
+            Status = "NotSupported",
+            Errors = "This question type does not support technical execution.",
+            ExecutedAt = executedAt
+        };
+    }
+
+    private static TechnicalRunResultDto BuildSqlRunPreview(string response, DateTime executedAt)
+    {
+        var normalized = response.Trim();
+        var lowered = normalized.ToLowerInvariant();
+        var hasSelect = Regex.IsMatch(lowered, @"\bselect\b");
+        var hasFrom = Regex.IsMatch(lowered, @"\bfrom\b");
+        var hasDestructiveStatement = Regex.IsMatch(lowered, @"\b(drop|truncate|alter|delete|update|insert)\b");
+        var hasSemicolon = normalized.EndsWith(";", StringComparison.Ordinal);
+        var passedPreview = hasSelect && hasFrom && !hasDestructiveStatement;
+
+        return new TechnicalRunResultDto
+        {
+            Status = passedPreview ? "NotSupported" : "Error",
+            Output = passedPreview
+                ? "SQL structure preview passed. Real result rows require an isolated SQL runner with a controlled dataset."
+                : string.Empty,
+            Errors = passedPreview
+                ? string.Empty
+                : "The SQL draft needs review before it can be executed.",
+            Notes = "The main API does not execute arbitrary SQL. A sandboxed SQL runner can later use this same response contract for real datasets.",
+            ExecutedAt = executedAt,
+            TestResults =
+            [
+                new TechnicalRunTestResultDto
+                {
+                    Name = "SELECT clause",
+                    Passed = hasSelect,
+                    Message = hasSelect ? "Query includes SELECT." : "Add a SELECT clause.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "FROM clause",
+                    Passed = hasFrom,
+                    Message = hasFrom ? "Query includes FROM." : "Add a FROM clause or dataset reference.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Read-only safety",
+                    Passed = !hasDestructiveStatement,
+                    Message = hasDestructiveStatement ? "Destructive SQL statements are not allowed in exam preview." : "No destructive statement detected.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Statement ending",
+                    Passed = hasSemicolon,
+                    Message = hasSemicolon ? "Statement ends with semicolon." : "A semicolon is recommended for clarity.",
+                    Visibility = "Public"
+                }
+            ]
+        };
+    }
+
+    private static TechnicalRunResultDto BuildCSharpRunPreview(string response, DateTime executedAt)
+    {
+        var hasClassOrMethod = Regex.IsMatch(response, @"\b(class|static|void|int|string|bool|double|public|private)\b", RegexOptions.IgnoreCase);
+        var balancedBraces = response.Count(c => c == '{') == response.Count(c => c == '}');
+        var hasConsoleOutput = Regex.IsMatch(response, @"Console\.(WriteLine|Write)\s*\(", RegexOptions.IgnoreCase);
+        var hasPlaceholder = response.Contains("Write your solution here", StringComparison.OrdinalIgnoreCase);
+        var passedPreview = hasClassOrMethod && balancedBraces && !hasPlaceholder;
+
+        return new TechnicalRunResultDto
+        {
+            Status = passedPreview ? "NotSupported" : "Error",
+            Output = passedPreview
+                ? "C# structure preview passed. Real compilation and test execution require a sandboxed code runner."
+                : string.Empty,
+            Errors = passedPreview
+                ? string.Empty
+                : "The C# draft needs review before it can be compiled.",
+            Notes = "The main API does not compile or execute arbitrary C# code. A containerized runner should be attached before real execution is enabled.",
+            ExecutedAt = executedAt,
+            TestResults =
+            [
+                new TechnicalRunTestResultDto
+                {
+                    Name = "C# structure",
+                    Passed = hasClassOrMethod,
+                    Message = hasClassOrMethod ? "C# keywords or method structure detected." : "Add a class, method, or valid C# structure.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Brace balance",
+                    Passed = balancedBraces,
+                    Message = balancedBraces ? "Opening and closing braces are balanced." : "Check missing or extra braces.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Starter placeholder",
+                    Passed = !hasPlaceholder,
+                    Message = hasPlaceholder ? "Replace the starter placeholder with your solution." : "Starter placeholder was replaced.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Output check",
+                    Passed = hasConsoleOutput,
+                    Message = hasConsoleOutput ? "Console output is present." : "Console output is optional unless the prompt asks for it.",
+                    Visibility = "Public"
+                }
+            ]
+        };
+    }
+
+    private static bool IsTechnicalQuestion(Question question)
+    {
+        return string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildQuestionBankDescription(Guid offeringId)

@@ -66,6 +66,8 @@ public class QuestionsController : ControllerBase
             Text = question.Text,
             Type = question.Type,
             CorrectAnswer = User.IsInRole("Student") ? null : question.CorrectAnswer,
+            Topic = User.IsInRole("Student") ? null : question.Topic,
+            Difficulty = User.IsInRole("Student") ? null : question.Difficulty,
             CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
             Points = question.Points
@@ -86,6 +88,9 @@ public class QuestionsController : ControllerBase
         if (!await CanAuthorExamAsync(exam))
             return Forbid();
 
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before adding questions." });
+
         var options = NormalizeOptions(dto.Options);
         var question = new Question
         {
@@ -95,6 +100,8 @@ public class QuestionsController : ControllerBase
             CourseId = dto.CourseId,
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
             CorrectAnswer = dto.CorrectAnswer,
+            Topic = NormalizeOptionalValue(dto.Topic),
+            Difficulty = NormalizeDifficulty(dto.Difficulty),
             Points = dto.Points,
             ExamId = examId
         };
@@ -136,12 +143,17 @@ public class QuestionsController : ControllerBase
         if (!await CanAuthorExamAsync(exam))
             return Forbid();
 
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before editing questions." });
+
         var options = NormalizeOptions(dto.Options);
         existing.Text = dto.Text;
         existing.Type = dto.Type;
         existing.CourseId = dto.CourseId;
         existing.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
         existing.CorrectAnswer = dto.CorrectAnswer;
+        existing.Topic = NormalizeOptionalValue(dto.Topic);
+        existing.Difficulty = NormalizeDifficulty(dto.Difficulty);
         existing.Points = dto.Points;
 
         await _context.SaveChangesAsync();
@@ -171,6 +183,9 @@ public class QuestionsController : ControllerBase
 
         if (!await CanAuthorExamAsync(exam))
             return Forbid();
+
+        if (exam.IsPublished || exam.Status == "Published")
+            return BadRequest(new { message = "Published exams cannot be modified. Return the exam to draft before removing questions." });
 
         _context.Questions.Remove(existing);
         await _context.SaveChangesAsync();
@@ -226,6 +241,8 @@ public class QuestionsController : ControllerBase
             Text = q.Text,
             Type = q.Type,
             CorrectAnswer = includeCorrectAnswer ? q.CorrectAnswer : null,
+            Topic = includeCorrectAnswer ? q.Topic : null,
+            Difficulty = includeCorrectAnswer ? q.Difficulty : null,
             CorrectAnswerCount = GetCorrectAnswers(q.CorrectAnswer).Count,
             Options = ParseOptions(q.OptionsJson),
             Points = q.Points

@@ -6,6 +6,23 @@ import { canCreateExams } from "../../lib/permissions";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+const assessmentTypes = [
+  { value: "Provim", label: "Provim" },
+  { value: "Kollokfium1", label: "Kollokfium 1" },
+  { value: "Kollokfium2", label: "Kollokfium 2" },
+  { value: "Practice", label: "Ushtrime / practice" },
+];
+
+const examPeriods = [
+  { value: "AfatiJanarit", label: "Afati i Janarit" },
+  { value: "AfatiPrillit", label: "Afati i Prillit" },
+  { value: "AfatiQershorit", label: "Afati i Qershorit" },
+  { value: "AfatiShtatorit", label: "Afati i Shtatorit" },
+  { value: "AfatiTetorit", label: "Afati i Tetorit" },
+];
+
+const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
+
 export default function ExamsListPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
@@ -14,8 +31,14 @@ export default function ExamsListPage() {
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
   const [examStatusFilter, setExamStatusFilter] = useState("all");
+  const [filters, setFilters] = useState({
+    search: "",
+    assessmentType: "",
+    examPeriod: "",
+    academicYear: "",
+  });
   const [examPage, setExamPage] = useState(1);
-  const [examPageSize, setExamPageSize] = useState(6);
+  const [examPageSize, setExamPageSize] = useState(10);
 
   useEffect(() => {
     let active = true;
@@ -41,11 +64,29 @@ export default function ExamsListPage() {
   const canCreate = canCreateExams(user?.role);
   const isStudent = user?.role === "Student";
   const filteredExams = useMemo(() => {
-    if (examStatusFilter === "published") return exams.filter((exam) => exam.isPublished);
-    if (examStatusFilter === "draft") return exams.filter((exam) => !exam.isPublished);
-    if (examStatusFilter === "lockdown") return exams.filter((exam) => exam.requiresLockdown);
-    return exams;
-  }, [examStatusFilter, exams]);
+    const search = filters.search.trim().toLowerCase();
+    return exams.filter((exam) => {
+      if (examStatusFilter === "published" && !exam.isPublished) return false;
+      if (examStatusFilter === "draft" && exam.isPublished) return false;
+      if (examStatusFilter === "lockdown" && !exam.requiresLockdown) return false;
+      if (filters.assessmentType && normalizeAssessmentTypeForUi(exam.assessmentType) !== filters.assessmentType) return false;
+      if (filters.examPeriod && normalizeExamPeriodForUi(exam.examPeriod) !== filters.examPeriod) return false;
+      if (filters.academicYear && exam.academicYear !== filters.academicYear) return false;
+
+      if (!search) return true;
+      const haystack = [
+        exam.title,
+        exam.description,
+        exam.assessmentType,
+        exam.examPeriod,
+        exam.academicYear,
+        exam.semesterLabel,
+        exam.cohortLabel,
+        formatExamOffering(exam),
+      ].join(" ").toLowerCase();
+      return haystack.includes(search);
+    });
+  }, [examStatusFilter, exams, filters]);
   const examPageCount = Math.max(1, Math.ceil(filteredExams.length / examPageSize));
   const visibleExams = useMemo(() => {
     const startIndex = (examPage - 1) * examPageSize;
@@ -57,7 +98,7 @@ export default function ExamsListPage() {
 
   useEffect(() => {
     setExamPage(1);
-  }, [examStatusFilter, examPageSize]);
+  }, [examStatusFilter, examPageSize, filters]);
 
   useEffect(() => {
     setExamPage((current) => Math.min(current, examPageCount));
@@ -120,21 +161,67 @@ export default function ExamsListPage() {
         {error ? <div className="alert">{error}</div> : null}
 
         <section className="surfaceCard listControlPanel">
-          <div className="sectionBody">
-            <div className="adminToolbar">
-              <div className="segmentedControl" aria-label="Exam status filter">
-                <button className={examStatusFilter === "all" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("all")}>All</button>
-                <button className={examStatusFilter === "published" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("published")}>{t("examsList.published")}</button>
-                {!isStudent ? <button className={examStatusFilter === "draft" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("draft")}>{t("examsList.draft")}</button> : null}
-                <button className={examStatusFilter === "lockdown" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("lockdown")}>Lockdown</button>
+          <div className="sectionHeader">
+            <div>
+              <h3>Assessment directory</h3>
+              <span className="sectionMeta">Search and filter assessments by academic type, period, status, and publish history.</span>
+            </div>
+            <div className="adminToolbarStatus">
+              <span className="small">Showing {examStart}-{examEnd} of {filteredExams.length}</span>
+              <select className="input inputCompact" value={examPageSize} onChange={(e) => setExamPageSize(Number(e.target.value))} aria-label="Exams per page">
+                <option value={10}>{isStudent ? "10 cards" : "10 rows"}</option>
+                <option value={25}>{isStudent ? "25 cards" : "25 rows"}</option>
+                <option value={50}>{isStudent ? "50 cards" : "50 rows"}</option>
+              </select>
+            </div>
+          </div>
+          <div className="sectionBody stackLg">
+            <div className="segmentedControl" aria-label="Exam status filter">
+              <button className={examStatusFilter === "all" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("all")}>All</button>
+              <button className={examStatusFilter === "published" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("published")}>{t("examsList.published")}</button>
+              {!isStudent ? <button className={examStatusFilter === "draft" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("draft")}>{t("examsList.draft")}</button> : null}
+              <button className={examStatusFilter === "lockdown" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("lockdown")}>Lockdown</button>
+            </div>
+
+            <div className="assessmentFiltersGrid">
+              <div className="field fieldSpanWide">
+                <label className="label">Search</label>
+                <input
+                  className="input"
+                  value={filters.search}
+                  onChange={(e) => setFilters((current) => ({ ...current, search: e.target.value }))}
+                  placeholder="Search by title, course, cohort, semester..."
+                />
               </div>
-              <div className="adminToolbarStatus">
-                <span className="small">Showing {examStart}-{examEnd} of {filteredExams.length}</span>
-                <select className="input inputCompact" value={examPageSize} onChange={(e) => setExamPageSize(Number(e.target.value))} aria-label="Exams per page">
-                  <option value={6}>{isStudent ? "6 cards" : "6 rows"}</option>
-                  <option value={12}>{isStudent ? "12 cards" : "12 rows"}</option>
-                  <option value={24}>{isStudent ? "24 cards" : "24 rows"}</option>
+              <div className="field">
+                <label className="label">Assessment category</label>
+                <select className="input" value={filters.assessmentType} onChange={(e) => setFilters((current) => ({ ...current, assessmentType: e.target.value }))}>
+                  <option value="">All categories</option>
+                  {assessmentTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
+              </div>
+              <div className="field">
+                <label className="label">Official exam period</label>
+                <select className="input" value={filters.examPeriod} onChange={(e) => setFilters((current) => ({ ...current, examPeriod: e.target.value }))}>
+                  <option value="">All official periods</option>
+                  {examPeriods.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label className="label">Academic year</label>
+                <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
+                  <option value="">All academic years</option>
+                  {academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </div>
+              <div className="field assessmentFilterReset">
+                <label className="label">Filters</label>
+                <button className="btn" type="button" onClick={() => {
+                  setExamStatusFilter("all");
+                  setFilters({ search: "", assessmentType: "", examPeriod: "", academicYear: "" });
+                }}>
+                  Reset
+                </button>
               </div>
             </div>
           </div>
@@ -212,8 +299,10 @@ export default function ExamsListPage() {
                     <thead>
                       <tr>
                         <th>Exam</th>
+                        <th>Category / official period</th>
+                        <th>Schedule</th>
+                        <th>Created / published</th>
                         <th>Status</th>
-                        <th>Duration</th>
                         <th>Security</th>
                         <th>Next action</th>
                       </tr>
@@ -224,7 +313,25 @@ export default function ExamsListPage() {
                           <td>
                             <div className="examDirectoryTitle">
                               <strong>{exam.title}</strong>
-                              <span>{exam.description || t("examsList.noDescription")}</span>
+                              <span>{[exam.academicYear, exam.semesterLabel, exam.cohortLabel].filter(Boolean).join(" / ") || exam.description || t("examsList.noDescription")}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="examDirectoryMeta">
+                              <strong>{formatAssessmentType(exam.assessmentType)}</strong>
+                              <span>{normalizeAssessmentTypeForUi(exam.assessmentType) === "Provim" ? formatExamPeriod(exam.examPeriod) : "Gjate semestrit"}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="examDirectoryMeta">
+                              <strong>{formatDateTime(exam.startsAt)}</strong>
+                              <span>{exam.durationMinutes || 60} min</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="examDirectoryMeta">
+                              <strong>{formatDateTime(exam.createdAt)}</strong>
+                              <span>{exam.publishedAt ? `Published ${formatDateTime(exam.publishedAt)}` : "Not published"}</span>
                             </div>
                           </td>
                           <td>
@@ -232,7 +339,6 @@ export default function ExamsListPage() {
                               {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
                             </span>
                           </td>
-                          <td>{exam.durationMinutes || 60} min</td>
                           <td>
                             {exam.requiresLockdown ? (
                               <span className="statusPill statusWarn">Lockdown</span>
@@ -314,4 +420,40 @@ function groupExamsByOffering(exams) {
   }
 
   return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+}
+
+function formatAssessmentType(value) {
+  return assessmentTypes.find((type) => type.value === normalizeAssessmentTypeForUi(value))?.label || "Provim";
+}
+
+function formatExamPeriod(value) {
+  return examPeriods.find((period) => period.value === normalizeExamPeriodForUi(value))?.label || "Afati i Janarit";
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function normalizeAssessmentTypeForUi(value) {
+  if (value === "FinalExam" || value === "RetakeExam") return "Provim";
+  if (value === "Colloquium1") return "Kollokfium1";
+  if (value === "Colloquium2") return "Kollokfium2";
+  if (value === "PracticeExam") return "Practice";
+  return value || "Provim";
+}
+
+function normalizeExamPeriodForUi(value) {
+  const map = {
+    January: "AfatiJanarit",
+    June: "AfatiQershorit",
+    September: "AfatiShtatorit",
+    DuringSemester: "AfatiJanarit",
+  };
+  return map[value] || value || "AfatiJanarit";
 }

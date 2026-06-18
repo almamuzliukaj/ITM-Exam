@@ -25,6 +25,7 @@ export default function ExamGradebookPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [reviewFilter, setReviewFilter] = useState("all");
+  const [selectedAttemptId, setSelectedAttemptId] = useState("");
   const canReview = canManageExams(user?.role);
 
   useEffect(() => {
@@ -118,6 +119,10 @@ export default function ExamGradebookPage() {
   const visibleAttempts = useMemo(
     () => attempts.filter((attempt) => matchesReviewFilter(attempt, reviewFilter)),
     [attempts, reviewFilter],
+  );
+  const selectedAttempt = useMemo(
+    () => attempts.find((attempt) => attempt.attemptId === selectedAttemptId) || null,
+    [attempts, selectedAttemptId],
   );
 
   if (userLoading) {
@@ -284,25 +289,23 @@ export default function ExamGradebookPage() {
               </div>
             ) : (
               <>
-                <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} />
-                <div className="gradebookReviewList">
-                  {visibleAttempts.map((attempt) => (
-                    <AttemptReviewCard
-                      key={attempt.attemptId}
-                      attempt={attempt}
-                      draft={drafts[attempt.attemptId] || {}}
-                      aiReview={aiReviews[attempt.attemptId]}
-                      reviewing={reviewingId === attempt.attemptId}
-                      saving={savingId === attempt.attemptId}
-                      disabled={!canReview}
-                      onDraftChange={(nextDraft) =>
-                        setDrafts((current) => ({ ...current, [attempt.attemptId]: nextDraft }))
-                      }
-                      onAiReview={() => onAiReview(attempt)}
-                      onSaveGrade={() => onSaveGrade(attempt)}
-                    />
-                  ))}
-                </div>
+                <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} onReview={(attempt) => setSelectedAttemptId(attempt.attemptId)} />
+                {selectedAttempt ? (
+                  <AttemptReviewModal
+                    attempt={selectedAttempt}
+                    draft={drafts[selectedAttempt.attemptId] || {}}
+                    aiReview={aiReviews[selectedAttempt.attemptId]}
+                    reviewing={reviewingId === selectedAttempt.attemptId}
+                    saving={savingId === selectedAttempt.attemptId}
+                    disabled={!canReview}
+                    onClose={() => setSelectedAttemptId("")}
+                    onDraftChange={(nextDraft) =>
+                      setDrafts((current) => ({ ...current, [selectedAttempt.attemptId]: nextDraft }))
+                    }
+                    onAiReview={() => onAiReview(selectedAttempt)}
+                    onSaveGrade={() => onSaveGrade(selectedAttempt)}
+                  />
+                ) : null}
               </>
             )}
           </div>
@@ -312,7 +315,7 @@ export default function ExamGradebookPage() {
   );
 }
 
-function GradebookAttemptTable({ attempts, drafts }) {
+function GradebookAttemptTable({ attempts, drafts, onReview }) {
   return (
     <div className="tableWrap gradebookAttemptTableWrap">
       <table className="dataTable gradebookAttemptTable">
@@ -321,6 +324,7 @@ function GradebookAttemptTable({ attempts, drafts }) {
             <th>Student</th>
             <th>Attempt</th>
             <th>Submitted</th>
+            <th>Duration used</th>
             <th>Auto score</th>
             <th>Manual score</th>
             <th>Final score</th>
@@ -347,6 +351,7 @@ function GradebookAttemptTable({ attempts, drafts }) {
                   </span>
                 </td>
                 <td>{formatDateTime(attempt.submittedAt) || "Pending"}</td>
+                <td>{formatAttemptDuration(attempt.startedAt, attempt.submittedAt)}</td>
                 <td>{formatScore(attempt.autoScore)}</td>
                 <td>{formatScore(draft.manualScore ?? attempt.manualScore)}</td>
                 <td>{formatScore(draft.finalScore ?? attempt.finalScore)}</td>
@@ -359,9 +364,9 @@ function GradebookAttemptTable({ attempts, drafts }) {
                   </span>
                 </td>
                 <td>
-                  <a className="btn" href={`#attempt-${attempt.attemptId}`}>
+                  <button className="btn" type="button" onClick={() => onReview(attempt)}>
                     Review
-                  </a>
+                  </button>
                 </td>
               </tr>
             );
@@ -372,7 +377,7 @@ function GradebookAttemptTable({ attempts, drafts }) {
   );
 }
 
-function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabled, onDraftChange, onAiReview, onSaveGrade }) {
+function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disabled, onClose, onDraftChange, onAiReview, onSaveGrade }) {
   const violationCount = Number(attempt.integrityViolationCount || 0);
   const currentFinalScore = Number(draft.finalScore ?? attempt.finalScore ?? 0);
   const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
@@ -380,84 +385,87 @@ function AttemptReviewCard({ attempt, draft, aiReview, reviewing, saving, disabl
   const currentGrade = calculateGrade(currentPercentage);
 
   return (
-    <article className="gradebookReviewCard" id={`attempt-${attempt.attemptId}`}>
-      <div className="gradebookReviewHeader">
-        <div className="gradebookStudentBlock">
-          <span className="summaryLabel">Student attempt</span>
-          <h4>{attempt.studentName || "Student"}</h4>
-          <p>{attempt.studentEmail || "No email recorded"}</p>
+    <div className="modalBackdrop" role="dialog" aria-modal="true">
+      <article className="modalCard gradebookReviewModal" id={`attempt-${attempt.attemptId}`}>
+        <div className="gradebookReviewHeader">
+          <div className="gradebookStudentBlock">
+            <span className="summaryLabel">Student attempt review</span>
+            <h4>{attempt.studentName || "Student"}</h4>
+            <p>{attempt.studentEmail || "No email recorded"}</p>
+          </div>
+          <div className="gradebookBadgeRow">
+            <ResultBadge attempt={attempt} />
+            <ViolationBadge count={violationCount} policy={attempt.integrityPolicyAction} />
+            <button className="btn" type="button" onClick={onClose} disabled={saving || reviewing}>Close</button>
+          </div>
         </div>
-        <div className="gradebookBadgeRow">
-          <ResultBadge attempt={attempt} />
-          <ViolationBadge count={violationCount} policy={attempt.integrityPolicyAction} />
+
+        <AttemptTimeline attempt={attempt} />
+
+        <div className="gradebookScoreStrip">
+          <ScoreTile label="Auto score" value={attempt.autoScore} />
+          <ScoreTile label="AI/manual score" value={draft.manualScore ?? attempt.manualScore} />
+          <ScoreTile label="Final score" value={currentFinalScore} strong />
+          <ScoreTile label="Exam max points" value={attempt.examMaxPoints} />
+          <ScoreTile label="Score percentage" value={`${currentPercentage.toFixed(2)}%`} />
+          <ScoreTile label="Final grade" value={formatGrade(currentGrade, currentGrade >= 6)} />
+          <ScoreTile label="Adjustment" value={scoreDelta} signed />
         </div>
-      </div>
 
-      <AttemptTimeline attempt={attempt} />
+        <AttemptAnswersPanel attempt={attempt} />
 
-      <div className="gradebookScoreStrip">
-        <ScoreTile label="Auto score" value={attempt.autoScore} />
-        <ScoreTile label="AI/manual score" value={draft.manualScore ?? attempt.manualScore} />
-        <ScoreTile label="Final score" value={currentFinalScore} strong />
-        <ScoreTile label="Exam max points" value={attempt.examMaxPoints} />
-        <ScoreTile label="Score percentage" value={`${currentPercentage.toFixed(2)}%`} />
-        <ScoreTile label="Final grade" value={formatGrade(currentGrade, currentGrade >= 6)} />
-        <ScoreTile label="Adjustment" value={scoreDelta} signed />
-      </div>
+        <IntegrityReviewPanel attempt={attempt} />
 
-      <AttemptAnswersPanel attempt={attempt} />
+        <div className="formGrid formGridTwo gradebookScoreGrid">
+          <div className="field">
+            <label className="label">Manual score</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.25"
+              value={draft.manualScore ?? ""}
+              onChange={(e) => onDraftChange({ ...draft, manualScore: e.target.value })}
+              disabled={disabled || saving}
+            />
+          </div>
+          <div className="field">
+            <label className="label">Final score</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.25"
+              value={draft.finalScore ?? ""}
+              onChange={(e) => onDraftChange({ ...draft, finalScore: e.target.value })}
+              disabled={disabled || saving}
+            />
+          </div>
+        </div>
 
-      <IntegrityReviewPanel attempt={attempt} />
-
-      <div className="formGrid formGridTwo gradebookScoreGrid">
-        <div className="field">
-          <label className="label">Manual score</label>
-          <input
-            className="input"
-            type="number"
-            min="0"
-            step="0.25"
-            value={draft.manualScore ?? ""}
-            onChange={(e) => onDraftChange({ ...draft, manualScore: e.target.value })}
+        <div className="field gradebookNotesField">
+          <label className="label">Human review notes</label>
+          <textarea
+            className="input textareaCompact"
+            value={draft.notes ?? ""}
+            onChange={(e) => onDraftChange({ ...draft, notes: e.target.value })}
             disabled={disabled || saving}
+            placeholder="Record why the final score was accepted or adjusted."
           />
         </div>
-        <div className="field">
-          <label className="label">Final score</label>
-          <input
-            className="input"
-            type="number"
-            min="0"
-            step="0.25"
-            value={draft.finalScore ?? ""}
-            onChange={(e) => onDraftChange({ ...draft, finalScore: e.target.value })}
-            disabled={disabled || saving}
-          />
+
+        {aiReview ? <AiReviewPanel review={aiReview} /> : null}
+
+        <div className="resourceActionGroup gradebookActions">
+          <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
+            {reviewing ? "Reviewing..." : "Re-run AI review"}
+          </button>
+          <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
+            {saving ? "Saving..." : "Save human grade"}
+          </button>
         </div>
-      </div>
-
-      <div className="field gradebookNotesField">
-        <label className="label">Human review notes</label>
-        <textarea
-          className="input textareaCompact"
-          value={draft.notes ?? ""}
-          onChange={(e) => onDraftChange({ ...draft, notes: e.target.value })}
-          disabled={disabled || saving}
-          placeholder="Record why the final score was accepted or adjusted."
-        />
-      </div>
-
-      {aiReview ? <AiReviewPanel review={aiReview} /> : null}
-
-      <div className="resourceActionGroup gradebookActions">
-        <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
-          {reviewing ? "Reviewing..." : "Re-run AI review"}
-        </button>
-        <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
-          {saving ? "Saving..." : "Save human grade"}
-        </button>
-      </div>
-    </article>
+      </article>
+    </div>
   );
 }
 
@@ -544,14 +552,18 @@ function AttemptAnswersPanel({ attempt }) {
                   ))}
                 </div>
               ) : null}
-              <div className="attemptAnswerResponse">
+              <div className={`attemptAnswerResponse${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
                 <span>Student response</span>
-                <p>{answer.response || "(empty answer)"}</p>
+                {isTechnicalAnswer(answer) ? (
+                  <pre>{answer.response || "(empty answer)"}</pre>
+                ) : (
+                  <p>{answer.response || "(empty answer)"}</p>
+                )}
               </div>
               {answer.correctAnswer ? (
-                <div className="attemptAnswerExpected">
+                <div className={`attemptAnswerExpected${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
                   <span>Expected answer</span>
-                  <p>{answer.correctAnswer}</p>
+                  {isTechnicalAnswer(answer) ? <pre>{answer.correctAnswer}</pre> : <p>{answer.correctAnswer}</p>}
                 </div>
               ) : null}
             </article>
@@ -560,6 +572,10 @@ function AttemptAnswersPanel({ attempt }) {
       )}
     </div>
   );
+}
+
+function isTechnicalAnswer(answer) {
+  return answer.questionType === "SQL" || answer.questionType === "CSharp";
 }
 
 function IntegrityReviewPanel({ attempt }) {

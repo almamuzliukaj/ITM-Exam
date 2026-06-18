@@ -1,7 +1,8 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamLockdownReadiness, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamLockdownReadiness, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt } from "../../lib/examsApi";
+import Editor from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -24,6 +25,8 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
+  const [technicalRunResults, setTechnicalRunResults] = useState({});
+  const [runningQuestionId, setRunningQuestionId] = useState("");
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -115,6 +118,10 @@ export default function StudentExamSessionPage() {
           setFlaggedQuestions(restored.flaggedQuestions);
           setDraftRestored(true);
         }
+        if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
+          setTechnicalRunResults(restored.technicalRunResults);
+          setDraftRestored(true);
+        }
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
       } finally {
@@ -148,6 +155,7 @@ export default function StudentExamSessionPage() {
       localStorage.setItem(storageKey, JSON.stringify({
         answers,
         flaggedQuestions,
+        technicalRunResults,
         savedAt: nextSavedAt,
         ...sessionTiming,
       }));
@@ -156,7 +164,7 @@ export default function StudentExamSessionPage() {
     } catch {
       setSaveState("error");
     }
-  }, [answers, flaggedQuestions, result, sessionTiming, storageKey]);
+  }, [answers, flaggedQuestions, result, sessionTiming, storageKey, technicalRunResults]);
 
   useEffect(() => {
     if (!storageKey || loading || result || !sessionTiming) return;
@@ -164,7 +172,7 @@ export default function StudentExamSessionPage() {
     setSaveState("saving");
     const timeout = window.setTimeout(() => persistDraft("saved"), 650);
     return () => window.clearTimeout(timeout);
-  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey]);
+  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey, technicalRunResults]);
 
   useEffect(() => {
     if (!storageKey || loading || result || !sessionTiming) return;
@@ -434,10 +442,49 @@ export default function StudentExamSessionPage() {
     localStorage.removeItem(storageKey);
     setAnswers({});
     setFlaggedQuestions({});
+    setTechnicalRunResults({});
     setLoadedDraftAt("");
     setSavedAt("");
     setDraftRestored(false);
     setSaveState("idle");
+  }
+
+  async function runTechnicalAnswer(question) {
+    if (!examId || !question?.id || interactionLocked) return;
+
+    try {
+      setRunningQuestionId(question.id);
+      setError("");
+      const response = String(answers[question.id] || "");
+      const runResult = await runTechnicalExamAnswer(examId, question.id, {
+        attemptId: attemptId || null,
+        questionId: question.id,
+        response,
+        clientSessionId: clientSessionIdRef.current,
+      });
+
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: runResult,
+      }));
+      setSavedAt(runResult?.executedAt || new Date().toISOString());
+      setSaveState("saved");
+    } catch (err) {
+      const message = getApiMessage(err, "Technical answer could not be run.");
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: {
+          status: "Error",
+          errors: message,
+          output: "",
+          notes: "Run failed before the answer could be evaluated.",
+          executedAt: new Date().toISOString(),
+          testResults: [],
+        },
+      }));
+    } finally {
+      setRunningQuestionId("");
+    }
   }
 
   return (
@@ -600,9 +647,12 @@ export default function StudentExamSessionPage() {
                       index={index}
                       question={question}
                       value={answers[question.id] || ""}
+                      runResult={technicalRunResults[question.id]}
+                      running={runningQuestionId === question.id}
                       flagged={Boolean(flaggedQuestions[question.id])}
                       disabled={interactionLocked}
                       onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
+                      onRun={() => runTechnicalAnswer(question)}
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -757,7 +807,7 @@ function LockdownReadinessPanel({ readiness }) {
   );
 }
 
-function QuestionAnswerCard({ index, question, value, flagged, disabled, onChange, onToggleFlag }) {
+function QuestionAnswerCard({ index, question, value, runResult, running, flagged, disabled, onChange, onRun, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
@@ -824,17 +874,124 @@ function QuestionAnswerCard({ index, question, value, flagged, disabled, onChang
             ))}
             {isMultiAnswerMcq ? <span className="small">Select all correct answers.</span> : null}
           </div>
+        ) : isTechnical ? (
+          <TechnicalAnswerWorkspace
+            question={question}
+            value={value}
+            starterCode={parsed.code}
+            runResult={runResult}
+            running={running}
+            disabled={disabled}
+            onChange={onChange}
+            onRun={onRun}
+          />
         ) : (
           <textarea
-            className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
+            className="input textarea"
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+            placeholder="Type your answer here..."
             disabled={disabled}
           />
         )}
       </div>
     </article>
+  );
+}
+
+function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, running, disabled, onChange, onRun }) {
+  const language = question.type === "SQL" ? "sql" : "csharp";
+  const lastRunLabel = runResult?.executedAt ? formatSavedAt(runResult.executedAt) : "Not run yet";
+  const status = runResult?.status || "NotRun";
+  const statusClass = status === "Error" ? "statusWarn" : status === "Passed" ? "statusLive" : "statusDraft";
+
+  function useStarterCode() {
+    if (value || !starterCode) return;
+    onChange(starterCode);
+  }
+
+  return (
+    <div className="technicalAnswerWorkspace">
+      <div className="technicalAnswerToolbar">
+        <div>
+          <span className="summaryLabel">{question.type === "SQL" ? "SQL workspace" : "C# workspace"}</span>
+          <strong>{question.type === "SQL" ? "Write and preview your query" : "Write and preview your solution"}</strong>
+        </div>
+        <div className="technicalAnswerActions">
+          {starterCode && !value ? (
+            <button className="btn btnCompact" type="button" onClick={useStarterCode} disabled={disabled || running}>
+              Use starter
+            </button>
+          ) : null}
+          <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={disabled || running}>
+            {running ? "Running..." : "Run preview"}
+          </button>
+        </div>
+      </div>
+
+      <div className="technicalEditorShell">
+        <Editor
+          height="320px"
+          language={language}
+          theme="vs-dark"
+          value={value}
+          onChange={(nextValue) => onChange(nextValue || "")}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: "on",
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            readOnly: disabled,
+            tabSize: 2,
+            automaticLayout: true,
+          }}
+        />
+      </div>
+
+      <div className="technicalRunPanel">
+        <div className="technicalRunHeader">
+          <div>
+            <span className="summaryLabel">Run status</span>
+            <strong>{formatRunStatus(status)}</strong>
+            <small>Last run: {lastRunLabel}</small>
+          </div>
+          <span className={`statusPill ${statusClass}`}>{formatRunStatus(status)}</span>
+        </div>
+
+        {runResult?.output ? (
+          <div className="technicalRunBlock">
+            <span>Output</span>
+            <pre>{runResult.output}</pre>
+          </div>
+        ) : null}
+
+        {runResult?.errors ? (
+          <div className="technicalRunBlock technicalRunError">
+            <span>Errors</span>
+            <pre>{runResult.errors}</pre>
+          </div>
+        ) : null}
+
+        {Array.isArray(runResult?.testResults) && runResult.testResults.length > 0 ? (
+          <div className="technicalTestGrid">
+            {runResult.testResults.map((test) => (
+              <article key={test.name} className={test.passed ? "technicalTestPassed" : "technicalTestFailed"}>
+                <span>{test.passed ? "Passed" : "Check"}</span>
+                <strong>{test.name}</strong>
+                <small>{test.message}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="technicalRunEmpty">
+            Run preview checks structure and saves the current draft. Final submission remains controlled by the exam submit button.
+          </div>
+        )}
+
+        {runResult?.notes ? <p className="technicalRunNotes">{runResult.notes}</p> : null}
+      </div>
+    </div>
   );
 }
 
@@ -1096,6 +1253,14 @@ function getApiMessage(err, fallback) {
 function formatQuestionType(type) {
   if (type === "CSharp") return "C#";
   return type || "Answer";
+}
+
+function formatRunStatus(status) {
+  if (status === "Passed") return "Passed";
+  if (status === "Failed") return "Failed";
+  if (status === "Error") return "Error";
+  if (status === "NotSupported") return "Preview only";
+  return "Not run";
 }
 
 function isAnswerFilled(answer) {

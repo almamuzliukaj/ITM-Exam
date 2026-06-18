@@ -6,6 +6,23 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+const assessmentTypes = [
+  { value: "Provim", label: "Provim", professorOnly: true },
+  { value: "Kollokfium1", label: "Kollokfium 1" },
+  { value: "Kollokfium2", label: "Kollokfium 2" },
+  { value: "Practice", label: "Ushtrime / practice" },
+];
+
+const examPeriods = [
+  { value: "AfatiJanarit", label: "Afati i Janarit" },
+  { value: "AfatiPrillit", label: "Afati i Prillit" },
+  { value: "AfatiQershorit", label: "Afati i Qershorit" },
+  { value: "AfatiShtatorit", label: "Afati i Shtatorit" },
+  { value: "AfatiTetorit", label: "Afati i Tetorit" },
+];
+
+const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
+
 export default function ExamCreatePage() {
   const { t } = useTranslation();
   const nav = useNavigate();
@@ -19,7 +36,16 @@ export default function ExamCreatePage() {
     startsAt: "",
     endsAt: "",
     courseOfferingId: "",
+    assessmentType: "Provim",
+    examPeriod: "AfatiJanarit",
+    academicYear: "",
+    semesterLabel: "",
+    cohortLabel: "",
+    requiresLockdown: false,
+    allowedClient: "StandardBrowser",
+    lockdownMode: "Advisory",
   });
+  const [titleTouched, setTitleTouched] = useState(Boolean(examId));
   const [offerings, setOfferings] = useState([]);
   const [offeringsLoading, setOfferingsLoading] = useState(true);
   const [examLoading, setExamLoading] = useState(Boolean(examId));
@@ -30,11 +56,12 @@ export default function ExamCreatePage() {
     () =>
       Boolean(form.title.trim()) &&
       Boolean(form.courseOfferingId) &&
+      Boolean(form.academicYear.trim()) &&
       Number(form.maximumPoints) > 0 &&
       !saving &&
       !offeringsLoading &&
       !examLoading,
-    [examLoading, form.courseOfferingId, form.maximumPoints, form.title, offeringsLoading, saving],
+    [examLoading, form.academicYear, form.courseOfferingId, form.maximumPoints, form.title, offeringsLoading, saving],
   );
 
   useEffect(() => {
@@ -90,6 +117,11 @@ export default function ExamCreatePage() {
           startsAt: toDateTimeLocalValue(exam?.startsAt),
           endsAt: toDateTimeLocalValue(exam?.endsAt),
           courseOfferingId: exam?.courseOfferingId || "",
+          assessmentType: normalizeAssessmentTypeForUi(exam?.assessmentType),
+          examPeriod: normalizeExamPeriodForUi(exam?.examPeriod),
+          academicYear: exam?.academicYear || "",
+          semesterLabel: exam?.semesterLabel || "",
+          cohortLabel: exam?.cohortLabel || "",
           requiresLockdown: Boolean(exam?.requiresLockdown),
           allowedClient: exam?.allowedClient || "StandardBrowser",
           lockdownMode: exam?.lockdownMode || "Advisory",
@@ -108,6 +140,36 @@ export default function ExamCreatePage() {
     };
   }, [examId]);
 
+  const selectedOffering = useMemo(
+    () => offerings.find((offering) => offering.id === form.courseOfferingId) || null,
+    [form.courseOfferingId, offerings],
+  );
+  const allowedAssessmentTypes = useMemo(
+    () => assessmentTypes.filter((type) => user?.role === "Professor" || !type.professorOnly),
+    [user?.role],
+  );
+
+  useEffect(() => {
+    if (!user || allowedAssessmentTypes.some((type) => type.value === form.assessmentType)) return;
+    setForm((current) => ({
+      ...current,
+      assessmentType: allowedAssessmentTypes[0]?.value || "Kollokfium1",
+    }));
+  }, [allowedAssessmentTypes, form.assessmentType, user]);
+
+  useEffect(() => {
+    if (isEditMode || titleTouched || !selectedOffering) return;
+
+    const suggested = buildAssessmentTitle(selectedOffering, form.assessmentType, form.examPeriod);
+    setForm((current) => ({
+      ...current,
+      title: current.title.trim() ? current.title : suggested,
+      academicYear: current.academicYear || selectedOffering.term?.academicYearLabel || "",
+      semesterLabel: current.semesterLabel || formatSemesterLabel(selectedOffering),
+      cohortLabel: current.cohortLabel || formatCohortLabel(selectedOffering),
+    }));
+  }, [form.assessmentType, form.examPeriod, isEditMode, selectedOffering, titleTouched]);
+
   async function saveExam(e) {
     e.preventDefault();
     setError("");
@@ -122,27 +184,30 @@ export default function ExamCreatePage() {
         startsAt: toIsoOrNull(form.startsAt),
         endsAt: toIsoOrNull(form.endsAt),
         courseOfferingId: form.courseOfferingId || null,
+        assessmentType: form.assessmentType,
+        examPeriod: form.examPeriod,
+        academicYear: form.academicYear,
+        semesterLabel: form.semesterLabel,
+        cohortLabel: form.cohortLabel,
         isPublished: false,
-feature/exam-max-points-grading
-        requiresLockdown: form.requiresLockdown,
-        allowedClient: form.allowedClient,
-        lockdownMode: form.lockdownMode,
+        requiresLockdown: Boolean(form.requiresLockdown),
+        allowedClient: form.allowedClient || "StandardBrowser",
+        lockdownMode: form.lockdownMode || "Advisory",
       };
 
       if (isEditMode) {
         const updated = await updateExam(examId, payload);
-        nav(`/exams/${updated.id}`);
+        const nextId = getEntityId(updated) || examId;
+        nav(`/exams/${nextId}`);
       } else {
         const created = await createExam(payload);
-        nav(`/exams/${created.id}`);
+        const nextId = getEntityId(created);
+        if (!nextId) {
+          setError("Exam was saved, but the response did not include an exam id. Return to exams and refresh the list.");
+          return;
+        }
+        nav(`/exams/${nextId}`);
       }
-
-        requiresLockdown: false,
-        allowedClient: "StandardBrowser",
-        lockdownMode: "Advisory",
-      });
-      nav(`/exams/${created.id}`);
- main
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -225,9 +290,74 @@ feature/exam-max-points-grading
                     <input
                       className="input"
                       value={form.title}
-                      onChange={(e) => setForm({ ...form, title: e.target.value })}
-                      placeholder="Algorithms Midterm"
+                      onChange={(e) => {
+                        setTitleTouched(true);
+                        setForm({ ...form, title: e.target.value });
+                      }}
+                      placeholder="Generated from course and assessment type"
                       required
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Assessment category</label>
+                    <select
+                      className="input"
+                      value={form.assessmentType}
+                      onChange={(e) => setForm({ ...form, assessmentType: e.target.value })}
+                    >
+                      {allowedAssessmentTypes.map((type) => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                    {user?.role === "Assistant" ? <span className="fieldHint">Assistants can create only kollokfium assessments.</span> : null}
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Official exam period</label>
+                    <select
+                      className="input"
+                      value={form.examPeriod}
+                      onChange={(e) => setForm({ ...form, examPeriod: e.target.value })}
+                      disabled={form.assessmentType !== "Provim"}
+                    >
+                      {examPeriods.map((period) => (
+                        <option key={period.value} value={period.value}>{period.label}</option>
+                      ))}
+                    </select>
+                    {form.assessmentType !== "Provim" ? <span className="fieldHint">Kollokfiumet ruhen si vleresime gjate semestrit.</span> : null}
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Academic year</label>
+                    <select
+                      className="input"
+                      value={form.academicYear}
+                      onChange={(e) => setForm({ ...form, academicYear: e.target.value })}
+                      required
+                    >
+                      <option value="">Select academic year</option>
+                      {academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Semester</label>
+                    <input
+                      className="input"
+                      value={form.semesterLabel}
+                      onChange={(e) => setForm({ ...form, semesterLabel: e.target.value })}
+                      placeholder="Semester 1"
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="label">Generation / cohort</label>
+                    <input
+                      className="input"
+                      value={form.cohortLabel}
+                      onChange={(e) => setForm({ ...form, cohortLabel: e.target.value })}
+                      placeholder="Year 2 / 2025 cohort"
                     />
                   </div>
 
@@ -315,6 +445,54 @@ function formatOfferingOption(offering) {
   return `${courseTitle} / ${term} / ${section}`;
 }
 
+function buildAssessmentTitle(offering, assessmentType, examPeriod) {
+  const courseCode = offering.course?.code?.trim();
+  const courseName = offering.course?.name?.trim();
+  const courseTitle = [courseCode, courseName].filter(Boolean).join(" - ") || "Course";
+  const typeLabel = formatAssessmentType(assessmentType);
+  const periodLabel = assessmentType === "Provim" ? formatExamPeriod(examPeriod) : "";
+  const year = offering.term?.academicYearLabel || offering.term?.code || "";
+  return [courseTitle, typeLabel, periodLabel, year].filter(Boolean).join(" - ");
+}
+
+function formatAssessmentType(value) {
+  return assessmentTypes.find((type) => type.value === value)?.label || "Provim";
+}
+
+function formatExamPeriod(value) {
+  return examPeriods.find((period) => period.value === value)?.label || "Afati i Janarit";
+}
+
+function normalizeAssessmentTypeForUi(value) {
+  if (value === "FinalExam" || value === "RetakeExam") return "Provim";
+  if (value === "Colloquium1") return "Kollokfium1";
+  if (value === "Colloquium2") return "Kollokfium2";
+  if (value === "PracticeExam") return "Practice";
+  return value || "Provim";
+}
+
+function normalizeExamPeriodForUi(value) {
+  const map = {
+    January: "AfatiJanarit",
+    June: "AfatiQershorit",
+    September: "AfatiShtatorit",
+    DuringSemester: "AfatiJanarit",
+  };
+  return map[value] || value || "AfatiJanarit";
+}
+
+function formatSemesterLabel(offering) {
+  if (offering.semesterNo) return `Semester ${offering.semesterNo}`;
+  if (offering.term?.season) return offering.term.season;
+  return "";
+}
+
+function formatCohortLabel(offering) {
+  const year = offering.yearOfStudy ? `Year ${offering.yearOfStudy}` : "";
+  const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "";
+  return [year, section].filter(Boolean).join(" / ");
+}
+
 function toDateTimeLocalValue(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -327,4 +505,8 @@ function toIsoOrNull(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function getEntityId(entity) {
+  return entity?.id || entity?.Id || entity?.examId || entity?.ExamId || "";
 }

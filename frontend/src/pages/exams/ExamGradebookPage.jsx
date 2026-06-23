@@ -299,14 +299,10 @@ export default function ExamGradebookPage() {
             </div>
             <div className="resourceActionGroup">
               <span className="statusPill statusDraft">{publishedCount} published</span>
- feature/alma-student-code-workspace
               <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
                 Export CSV
               </button>
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
-
               <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
- main
                 {publishing ? "Publishing..." : "Publish graded results"}
               </button>
             </div>
@@ -834,27 +830,17 @@ function formatDateTime(value) {
 }
 
 function formatAttemptDuration(startedAt, submittedAt) {
- feature/albiona-exam-metadata-validation
-  const start = Date.parse(startedAt || "");
-  const end = Date.parse(submittedAt || "");
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
-
-  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes} min`;
-
   if (!startedAt || !submittedAt) return "-";
-  const started = new Date(startedAt);
-  const submitted = new Date(submittedAt);
-  if (Number.isNaN(started.getTime()) || Number.isNaN(submitted.getTime())) return "-";
+  const start = new Date(startedAt);
+  const end = new Date(submittedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-";
 
-  const totalMinutes = Math.max(0, Math.round((submitted.getTime() - started.getTime()) / 60000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours <= 0) return `${minutes} min`;
- main
-  return `${hours}h ${minutes}m`;
+  const totalSeconds = Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  if (seconds === 0) return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
 }
 
 function formatDisplayValue(value) {

@@ -28,7 +28,6 @@ export default function StudentExamSessionPage() {
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [, setSavedAt] = useState("");
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
@@ -38,6 +37,7 @@ export default function StudentExamSessionPage() {
   const [networkOnline, setNetworkOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [savedAt, setSavedAt] = useState("");
   const submittedRef = useRef(false);
   const autoSubmitAttemptedRef = useRef(false);
   const clientSessionIdRef = useRef(createClientSessionId());
@@ -749,7 +749,7 @@ export default function StudentExamSessionPage() {
             <section className="secureExamNotice">
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
               <span className="secureNoticeItem">{networkOnline ? "Online" : "Connection lost"}</span>
-              <span className="secureNoticeItem">{formatSaveState(saveState)}</span>
+              <span className="secureNoticeItem">{savedAt ? `${formatSaveState(saveState)} ${formatSavedAt(savedAt)}` : formatSaveState(saveState)}</span>
               <strong>{answeredCount}/{questions.length} answered</strong>
             </section>
 
@@ -772,7 +772,7 @@ export default function StudentExamSessionPage() {
                       running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       runResult={technicalRunResults[activeQuestion.id] || null}
-                      disabled={submitting}
+                      disabled={submitting || interactionLocked}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
                       onRun={() => runTechnicalAnswer(activeQuestion)}
                       onToggleFlag={() =>
@@ -1469,79 +1469,6 @@ function parseTechnicalQuestion(question) {
   }
 
   return result;
-}
-
-function buildTechnicalRunResult(type, answer, parsed) {
-  const code = String(answer || "").trim();
-  if (!code) {
-    return {
-      status: "error",
-      message: "No answer to run. Write your solution first.",
-      ranAt: new Date().toISOString(),
-    };
-  }
-
-  if (type === "SQL") {
-    return buildSqlRunResult(code, parsed);
-  }
-
-  return buildCSharpRunResult(code);
-}
-
-function buildSqlRunResult(sql, parsed) {
-  const normalized = sql.replace(/\s+/g, " ").trim();
-  const forbiddenPattern = /\b(drop|delete|truncate|alter|update|insert|create|grant|revoke|exec|execute)\b/i;
-
-  if (forbiddenPattern.test(normalized)) {
-    return {
-      status: "error",
-      message: "Unsafe SQL command detected. Use read-only SELECT queries for this assessment.",
-      ranAt: new Date().toISOString(),
-    };
-  }
-
-  if (!/^(select|with)\b/i.test(normalized)) {
-    return {
-      status: "error",
-      message: "SQL answers should start with SELECT or WITH so the query remains read-only.",
-      ranAt: new Date().toISOString(),
-    };
-  }
-
-  const schemaHint = parsed?.schema ? " Schema context was detected and used for the structural check." : "";
-  return {
-    status: "success",
-    message: `Query structure looks safe for review. Simulated result: read-only query accepted.${schemaHint}`,
-    ranAt: new Date().toISOString(),
-  };
-}
-
-function buildCSharpRunResult(code) {
-  const hasEntryPoint = /\b(static\s+void\s+Main|static\s+async\s+Task\s+Main|class\s+\w+)/i.test(code);
-  const hasOutput = /Console\.(WriteLine|Write)\s*\(/.test(code);
-  const hasDangerousIo = /\b(File|Directory|Process|Environment)\s*\./.test(code);
-
-  if (hasDangerousIo) {
-    return {
-      status: "error",
-      message: "Restricted API usage detected. Avoid file system, process, or environment access in exam answers.",
-      ranAt: new Date().toISOString(),
-    };
-  }
-
-  if (!hasEntryPoint && !hasOutput) {
-    return {
-      status: "warning",
-      message: "The answer was saved, but the checker did not find a clear class/Main method or Console output.",
-      ranAt: new Date().toISOString(),
-    };
-  }
-
-  return {
-    status: "success",
-    message: "C# structure looks ready for manual grading. This safe checker validates format only and does not execute code.",
-    ranAt: new Date().toISOString(),
-  };
 }
 
 function formatRunStatus(status) {

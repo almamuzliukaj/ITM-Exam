@@ -10,6 +10,7 @@ public class ExamAttempt
     public DateTime? LastSavedAt { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public string AnswersJson { get; set; } = null!;
+    public string? QuestionScoresJson { get; set; }
     public double AutoScore { get; set; }
     public double ManualScore { get; set; }
     public double FinalScore { get; set; }

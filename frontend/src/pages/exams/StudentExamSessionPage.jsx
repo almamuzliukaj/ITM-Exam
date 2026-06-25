@@ -24,6 +24,7 @@ export default function StudentExamSessionPage() {
   const [showSubmitReview, setShowSubmitReview] = useState(false);
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
+  const [autoSubmitNotice, setAutoSubmitNotice] = useState(null);
   const [attemptId, setAttemptId] = useState("");
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
@@ -40,6 +41,7 @@ export default function StudentExamSessionPage() {
   const [savedAt, setSavedAt] = useState("");
   const submittedRef = useRef(false);
   const autoSubmitAttemptedRef = useRef(false);
+  const autoSubmitSummaryRef = useRef(null);
   const clientSessionIdRef = useRef(createClientSessionId());
   const lastViolationRef = useRef({ key: "", at: 0 });
   const violationCount = integrityEvents.length;
@@ -156,6 +158,8 @@ export default function StudentExamSessionPage() {
     setShowSubmitReview(false);
     setShowFinalWarning(false);
     setAutoActionCountdown(null);
+    setAutoSubmitNotice(null);
+    autoSubmitSummaryRef.current = null;
     submittedRef.current = false;
     autoSubmitAttemptedRef.current = false;
   }, [isLiveSession]);
@@ -429,7 +433,10 @@ export default function StudentExamSessionPage() {
       setIntegrityEvents([]);
       setIntegrityPolicy(null);
       setShowSubmitReview(false);
-      setResult({ ...submission, reason });
+      setShowFinalWarning(false);
+      setAutoActionCountdown(null);
+      setAutoSubmitNotice(null);
+      setResult({ ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null });
     } catch (err) {
       submittedRef.current = false;
       setError(getApiMessage(err, "Failed to submit the exam."));
@@ -438,6 +445,13 @@ export default function StudentExamSessionPage() {
     }
   }, [answers, examId, storageKey]);
 
+  const runIntegrityAutoSubmit = useCallback(() => {
+    if (autoSubmitAttemptedRef.current || submittedRef.current) return;
+    autoSubmitAttemptedRef.current = true;
+    persistDraft("saved");
+    submit("integrity-policy");
+  }, [persistDraft, submit]);
+
   useEffect(() => {
     if (!shouldShowFinalWarning || result || loading) return;
     setShowFinalWarning(true);
@@ -445,28 +459,34 @@ export default function StudentExamSessionPage() {
 
   useEffect(() => {
     if (!shouldAutoSubmit || result || submitting || loading) {
-      if (!shouldAutoSubmit) setAutoActionCountdown(null);
+      if (!shouldAutoSubmit) {
+        setAutoActionCountdown(null);
+        setAutoSubmitNotice(null);
+        autoSubmitSummaryRef.current = null;
+      }
       return;
     }
 
     setShowSubmitReview(false);
     setShowFinalWarning(false);
-    setAutoActionCountdown(null);
-
-    if (!autoSubmitAttemptedRef.current) {
-      autoSubmitAttemptedRef.current = true;
-      persistDraft("saved");
-      submit("integrity-policy");
-    }
-  }, [loading, persistDraft, result, shouldAutoSubmit, submit, submitting]);
+    const latestEvent = integrityEvents[0];
+    const notice = {
+      violationCount: effectiveViolationCount,
+      threshold: autoActionThreshold,
+      latestType: latestEvent?.type || latestEvent?.eventType || "INTEGRITY_POLICY",
+      latestMessage: latestEvent?.message || "The exam integrity policy threshold was reached.",
+      timestamp: latestEvent?.timestamp || new Date().toISOString(),
+    };
+    autoSubmitSummaryRef.current = notice;
+    setAutoSubmitNotice(notice);
+    setAutoActionCountdown((current) => (current == null ? 6 : current));
+  }, [autoActionThreshold, effectiveViolationCount, integrityEvents, loading, result, shouldAutoSubmit, submitting]);
 
   useEffect(() => {
     if (autoActionCountdown == null || result || submitting) return;
 
-    if (autoActionCountdown <= 0 && !autoSubmitAttemptedRef.current) {
-      autoSubmitAttemptedRef.current = true;
-      persistDraft("saved");
-      submit("integrity-policy");
+    if (autoActionCountdown <= 0) {
+      runIntegrityAutoSubmit();
       return;
     }
 
@@ -475,7 +495,7 @@ export default function StudentExamSessionPage() {
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [autoActionCountdown, persistDraft, result, submit, submitting]);
+  }, [autoActionCountdown, result, runIntegrityAutoSubmit, submitting]);
 
   useEffect(() => {
     if (!loading && exam && questions.length > 0 && sessionTiming && timeRemaining === 0 && !result && !submitting) {
@@ -732,6 +752,15 @@ export default function StudentExamSessionPage() {
             finalWarningThreshold={finalWarningThreshold}
             autoActionThreshold={autoActionThreshold}
             onClose={() => setShowFinalWarning(false)}
+          />
+        ) : null}
+
+        {autoSubmitNotice && autoActionCountdown != null && !result ? (
+          <AutoSubmitNoticeModal
+            notice={autoSubmitNotice}
+            countdown={autoActionCountdown}
+            submitting={submitting}
+            onSubmitNow={runIntegrityAutoSubmit}
           />
         ) : null}
 
@@ -1179,6 +1208,34 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
   );
 }
 
+function AutoSubmitNoticeModal({ notice, countdown, submitting, onSubmitNow }) {
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="auto-submit-title">
+      <section className="modalCard integrityModal autoSubmitModal">
+        <span className="summaryLabel">Integrity policy action</span>
+        <h3 id="auto-submit-title">Exam will be submitted automatically</h3>
+        <p>
+          The session reached {notice.violationCount}/{notice.threshold} integrity warnings. Your current answers are saved and the attempt will be submitted for staff review.
+        </p>
+        <div className="autoSubmitCountdown" aria-live="assertive">
+          <span>Auto-submit in</span>
+          <strong>{Math.max(0, countdown)}s</strong>
+        </div>
+        <div className="autoSubmitDetails">
+          <span>Latest event</span>
+          <strong>{formatIntegrityType(notice.latestType)}</strong>
+          <small>{notice.latestMessage}</small>
+        </div>
+        <div className="heroActions">
+          <button className="btn btnPrimary" type="button" onClick={onSubmitNow} disabled={submitting}>
+            {submitting ? "Submitting..." : "Submit now"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeChange, onVerify }) {
   const verified = Boolean(accessStatus?.hasAccess);
 
@@ -1274,6 +1331,14 @@ function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
           </article>
         </div>
         <div className="pageStateCard examResultNotice">
+          {result.reason === "integrity-policy" && result.integritySummary ? (
+            <div className="submissionIntegrityNotice">
+              <strong>Auto-submitted by integrity policy</strong>
+              <span>
+                {result.integritySummary.violationCount}/{result.integritySummary.threshold} warnings reached. Latest event: {formatIntegrityType(result.integritySummary.latestType)}.
+              </span>
+            </div>
+          ) : null}
           Your submission is saved. Scores and feedback become visible only after staff review and result publication.
         </div>
         <div className="heroActions examDoneActions">
@@ -1472,9 +1537,11 @@ function parseTechnicalQuestion(question) {
 }
 
 function formatRunStatus(status) {
-  if (status === "success") return "Check passed";
-  if (status === "warning") return "Needs review";
-  if (status === "error") return "Check failed";
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "passed" || normalized === "success") return "Check passed";
+  if (normalized === "warning" || normalized === "needsreview") return "Needs review";
+  if (normalized === "failed" || normalized === "error") return "Check failed";
+  if (normalized === "running") return "Running";
   return "Not run yet";
 }
 
@@ -1499,6 +1566,31 @@ function getIntegrityEventMessage(eventType) {
     NetworkOffline: "Network connection was lost during the exam.",
   };
   return messages[eventType] || "Integrity warning was recorded.";
+}
+
+function formatIntegrityType(eventType) {
+  const labels = {
+    TabHidden: "Tab switch",
+    TAB_SWITCH: "Tab switch",
+    WindowBlur: "Window focus lost",
+    WINDOW_BLUR: "Window focus lost",
+    FullscreenExit: "Fullscreen exited",
+    EXIT_FULLSCREEN: "Fullscreen exited",
+    CopyAttempt: "Copy attempt",
+    COPY_ATTEMPT: "Copy attempt",
+    PasteAttempt: "Paste attempt",
+    PASTE_ATTEMPT: "Paste attempt",
+    RightClickAttempt: "Right click",
+    RIGHT_CLICK_ATTEMPT: "Right click",
+    ShortcutAttempt: "Restricted shortcut",
+    DEVTOOLS_ATTEMPT: "Restricted shortcut",
+    PrintAttempt: "Print attempt",
+    PRINT_ATTEMPT: "Print attempt",
+    FullscreenRequestFailed: "Fullscreen failed",
+    NetworkOffline: "Network offline",
+    INTEGRITY_POLICY: "Integrity policy",
+  };
+  return labels[eventType] || String(eventType || "Integrity event").replace(/[_-]+/g, " ");
 }
 
 function formatPolicyAction(action) {

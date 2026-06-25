@@ -181,7 +181,7 @@ namespace OnlineExam.Api.Controllers
                 return validationError;
 
             user.FullName = dto.FullName.Trim();
-            user.Role = dto.Role.Trim();
+            user.Role = NormalizeRole(dto.Role);
             user.IsActive = dto.IsActive;
 
             await _context.SaveChangesAsync();
@@ -267,6 +267,9 @@ namespace OnlineExam.Api.Controllers
         private static bool IsRoleAllowed(string? role) =>
             AllowedRoles.Contains(role?.Trim(), StringComparer.OrdinalIgnoreCase);
 
+        private static string NormalizeRole(string? role) =>
+            AllowedRoles.FirstOrDefault(allowed => string.Equals(allowed, role?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? role?.Trim() ?? string.Empty;
+
         private static bool IsValidPassword(string? password)
         {
             if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
@@ -288,7 +291,7 @@ namespace OnlineExam.Api.Controllers
                 Id = Guid.NewGuid(),
                 Email = email,
                 FullName = fullName.Trim(),
-                Role = role.Trim(),
+                Role = NormalizeRole(role),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
                 IsActive = isActive,
                 CreatedAt = DateTime.UtcNow
@@ -303,7 +306,7 @@ namespace OnlineExam.Api.Controllers
             if (!string.IsNullOrWhiteSpace(dto.DefaultPassword))
                 return dto.DefaultPassword.Trim();
 
-            return dto.GeneratePasswords ? $"Temp{Guid.NewGuid():N}"[..12] : string.Empty;
+            return dto.GeneratePasswords ? $"Temp1{Guid.NewGuid():N}"[..12] : string.Empty;
         }
 
         private static UserResponseDto ToResponse(User user)

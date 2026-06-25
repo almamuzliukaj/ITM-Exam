@@ -75,6 +75,11 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
+export async function getExamIntegritySummary(examId) {
+  const response = await api.get(`/api/exams/${examId}/integrity-summary`);
+  return response.data;
+}
+
 export async function getExamLockdownReadiness(examId) {
   const response = await api.get(`/api/exams/${examId}/lockdown-readiness`);
   return response.data;

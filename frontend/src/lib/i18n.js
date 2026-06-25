@@ -49,6 +49,7 @@ const resources = {
         presets: {
           admin: "Admin demo",
           professor: "Professor demo",
+          assistant: "Assistant demo",
           student: "Student demo"
         },
         features: {
@@ -771,6 +772,7 @@ const resources = {
         presets: {
           admin: "Demo admin",
           professor: "Demo profesor",
+          assistant: "Demo asistent",
           student: "Demo student"
         },
         features: {

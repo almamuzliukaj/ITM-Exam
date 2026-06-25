@@ -744,6 +744,11 @@
   line-height: 1.5;
 }
 
+.publishNoticeWarning{
+  border-color: #f0c878;
+  background: #fff8eb;
+}
+
 .statusPill{
   display: inline-flex;
   align-items: center;
@@ -3676,6 +3681,57 @@ input[type="radio"]{
   gap: 16px;
 }
 
+.generationPanel .sectionHeader{
+  align-items: center;
+}
+
+.generationSummaryGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.generationSummaryGrid article{
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.generationSummaryGrid strong,
+.generationSummaryGrid small{
+  display: block;
+}
+
+.generationSummaryGrid strong{
+  margin-top: 8px;
+  color: var(--heading);
+  font-size: 18px;
+}
+
+.generationSummaryGrid small{
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.generationControls{
+  display: grid;
+  grid-template-columns: minmax(160px, .65fr) minmax(160px, .75fr) minmax(180px, .8fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.generationQuickPick .segmentedControl{
+  min-height: 42px;
+}
+
+.generationSubmitField .btn{
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .sectionHeaderInline{
   padding: 0;
   border: 0;
@@ -4300,6 +4356,208 @@ input[type="radio"]{
   line-height: 1.45;
 }
 
+.monitorHero{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  gap: 18px;
+  align-items: center;
+  padding: 22px 24px;
+  border: 1px solid #cfdbea;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffffff, #f6f9fd);
+  box-shadow: var(--shadow);
+}
+
+.monitorHero h2{
+  margin: 4px 0 8px;
+  color: var(--heading);
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.monitorHero p{
+  max-width: 860px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.monitorHeartbeat{
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  color: var(--heading);
+}
+
+.monitorHeartbeat strong{
+  font-size: 22px;
+}
+
+.monitorHeartbeat small{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.monitorLiveDot,
+.monitorPausedDot{
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+}
+
+.monitorLiveDot{
+  background: #17a05d;
+  box-shadow: 0 0 0 8px rgba(23,160,93,.12);
+}
+
+.monitorPausedDot{
+  background: #9aa8bb;
+  box-shadow: 0 0 0 8px rgba(148,163,184,.16);
+}
+
+.monitorMetricGrid{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.monitorMetric{
+  min-height: 104px;
+  padding: 18px;
+  border: 1px solid #d7e2ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.monitorMetric span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.monitorMetric strong{
+  display: block;
+  margin-top: 12px;
+  color: var(--heading);
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.monitorMetric-live{
+  border-color: rgba(23,160,93,.28);
+  background: #f6fcf8;
+}
+
+.monitorMetric-warn{
+  border-color: rgba(180,83,9,.3);
+  background: #fffaf3;
+}
+
+.monitorMetric-danger{
+  border-color: rgba(185,28,28,.28);
+  background: #fff7f7;
+}
+
+.monitorMetric-clear{
+  border-color: rgba(23,99,61,.22);
+}
+
+.monitorLayout{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.monitorRosterCard,
+.monitorEventsCard{
+  overflow: hidden;
+}
+
+.monitorTableWrap{
+  overflow-x: auto;
+}
+
+.monitorTable th,
+.monitorTable td{
+  vertical-align: top;
+}
+
+.monitorTable td:first-child strong,
+.monitorTable td:first-child span{
+  display: block;
+}
+
+.monitorTable td:first-child span{
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitorFlaggedRow{
+  background: #fffaf3;
+}
+
+.monitorViolationCount{
+  display: inline-flex;
+  min-width: 52px;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef5ff;
+  color: #0d4f96;
+  font-weight: 900;
+}
+
+.monitorViolationCount.danger{
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.monitorEventList{
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitorEventList li{
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #dbe6f2;
+  border-left: 4px solid #155aa8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.monitorEventList li.monitorNewEvent{
+  border-left-color: #b42318;
+  background: #fff8f8;
+  box-shadow: 0 0 0 3px rgba(185,28,28,.06);
+}
+
+.monitorEventList strong,
+.monitorEventList span,
+.monitorEventList small{
+  display: block;
+}
+
+.monitorEventList span{
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.monitorEventList small{
+  color: var(--muted);
+  font-weight: 700;
+}
+
 @media (max-width: 1180px){
   .heroPanel,
   .dashboardGrid,
@@ -4318,6 +4576,8 @@ input[type="radio"]{
   .gradebookToolbar,
   .attemptTimeline,
   .gradebookScoreStrip,
+  .generationSummaryGrid,
+  .generationControls,
   .examRulesGrid,
   .adminDashboardHero,
   .adminMetricGrid,
@@ -4345,6 +4605,19 @@ input[type="radio"]{
 
   .secureExamTitle{
     text-align: left;
+  }
+
+  .monitorHero,
+  .monitorLayout{
+    grid-template-columns: 1fr;
+  }
+
+  .monitorHeartbeat{
+    justify-items: start;
+  }
+
+  .monitorMetricGrid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .secureTimerTile{
@@ -4433,6 +4706,22 @@ input[type="radio"]{
 
   .secureExamTitle strong{
     font-size: 28px;
+  }
+
+  .monitorMetricGrid{
+    grid-template-columns: 1fr;
+  }
+
+  .monitorHero{
+    padding: 18px;
+  }
+
+  .monitorHero h2{
+    font-size: 24px;
+  }
+
+  .monitorTable{
+    min-width: 760px;
   }
 
   .secureExamWorkspace{

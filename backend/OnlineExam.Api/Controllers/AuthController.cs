@@ -25,7 +25,8 @@ namespace OnlineExam.Api.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequestDto dto)
         {
-            var user = _db.Users.FirstOrDefault(u => u.Email == dto.Email);
+            var normalizedEmail = dto.Email?.Trim().ToLowerInvariant() ?? string.Empty;
+            var user = _db.Users.FirstOrDefault(u => u.Email.ToLower() == normalizedEmail);
 
             if (user == null || !user.IsActive)
                 return Unauthorized(new { message = "Invalid credentials." });

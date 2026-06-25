@@ -4,6 +4,7 @@ public class GenerateRandomExamQuestionsDto
 {
     public int NumberOfQuestions { get; set; }
     public string? Type { get; set; }
+    public bool ReplaceExisting { get; set; } = true;
 }
 
 public class ReplaceExamQuestionDto
@@ -38,6 +39,9 @@ public class ExamQuestionResponseDto
 public class GenerateRandomExamQuestionsResponseDto
 {
     public List<ExamQuestionResponseDto> Questions { get; set; } = [];
+    public int RequestedQuestionCount { get; set; }
+    public int CreatedQuestionCount { get; set; }
+    public int ReplacedQuestionCount { get; set; }
     public int TargetPoints { get; set; }
     public int TotalPoints { get; set; }
     public int Difference { get; set; }

@@ -1627,12 +1627,7 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
- feature/alma-question-generation-ux
 
-
-feature/albiona-exam-metadata-validation
- main
- main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -3069,7 +3064,6 @@ feature/albiona-exam-metadata-validation
         var normalized = NormalizeOptionalValue(value);
         return normalized?.Length > 120 ? normalized[..120] : normalized;
     }
-feature/albiona-exam-metadata-validation
 
     private static string BuildExamTitle(string? requestedTitle, CourseOffering offering, string assessmentType, string examPeriod)
     {
@@ -3128,8 +3122,6 @@ feature/albiona-exam-metadata-validation
         if (!string.IsNullOrWhiteSpace(sectionCode))
             parts.Add($"Section {sectionCode}");
 
- feature/alma-question-generation-ux
-
         if (parts.Count > 0)
             return string.Join(" / ", parts);
 
@@ -3163,8 +3155,7 @@ feature/albiona-exam-metadata-validation
             _ => null
         };
     }
-main
-main
+
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -3528,24 +3519,10 @@ main
         var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
         var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
 
-feature/albiona-exam-metadata-validation
         if (!requiresLockdown)
             return null;
 
- feature/alma-question-generation-ux
         var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient", "InstitutionalKiosk" };
-
-        var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
-                          string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);
-        if (!validClient)
-            return "AllowedClient must be StandardBrowser or SafeExamBrowser.";
-
-        var validMode = string.Equals(normalizedMode, "Advisory", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(normalizedMode, "Strict", StringComparison.OrdinalIgnoreCase);
-        if (!validMode)
-            return "LockdownMode must be Advisory or Strict.";
-        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
- main
         var allowedModes = new[] { "Advisory", "Strict" };
 
         if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
@@ -3553,13 +3530,9 @@ feature/albiona-exam-metadata-validation
 
         if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
             return "Invalid lockdown mode.";
- feature/alma-question-generation-ux
-
-     main
 
         if (requiresLockdown && string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
             return "A lockdown exam must require SafeExamBrowser or KioskClient.";
- main
 
         return null;
     }

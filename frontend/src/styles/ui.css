@@ -281,18 +281,26 @@
 
 .mainPanel{
   min-width: 0;
-  padding: 26px 32px 34px;
+  padding: 136px 32px 34px;
   font-size: 15px;
 }
 
 .topbar{
+  position: fixed;
+  top: 0;
+  left: 304px;
+  right: 0;
+  z-index: 80;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 26px;
-  padding: 0 0 20px;
+  margin: 0;
+  padding: 20px 32px 18px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 97%, white);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, .04);
 }
 
 .topbarIntro{
@@ -311,6 +319,7 @@
   align-items: flex-start;
   gap: 16px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .topbarActions{
@@ -4996,8 +5005,19 @@ input[type="radio"]{
     padding: 16px;
   }
 
+  .mainPanel{
+    padding-top: 174px;
+  }
+
   .contentArea{
     gap: 16px;
+  }
+
+  .topbar{
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 16px;
   }
 
   .topbar,
@@ -5273,14 +5293,13 @@ body{
 }
 
 .mainPanel{
-  padding: 20px 26px 28px;
+  padding: 118px 26px 28px;
   font-size: 14px;
 }
 
 .topbar{
   gap: 18px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  padding: 16px 26px 14px;
 }
 
 .contentArea,

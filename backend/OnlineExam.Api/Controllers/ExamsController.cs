@@ -1049,6 +1049,7 @@ public class ExamsController : ControllerBase
         }
 
         var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var activeCode = requiresCode ? await GetActiveExamAccessCodeAsync(exam.Id) : null;
         var access = await _context.ExamStudentAccesses
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId.Value);
@@ -1057,11 +1058,14 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = requiresCode,
+            HasActiveCode = activeCode != null,
             HasAccess = hasAccess,
             AccessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified,
+            ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
-            Message = hasAccess ? "Access confirmed." : "Enter the exam access code provided by the professor."
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+            Message = BuildAccessStatusMessage(requiresCode, activeCode != null, hasAccess)
         });
     }
 
@@ -1091,17 +1095,33 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "Entry code is required." });
 
         var now = DateTime.UtcNow;
-        var activeCode = await _context.ExamAccessCodes
-            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
-            .OrderByDescending(x => x.GeneratedAt)
-            .FirstOrDefaultAsync();
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        if (!requiresCode)
+            return BadRequest(new { message = "Entry code is not enabled for this exam yet." });
 
-        if (activeCode == null || activeCode.ExpiresAt <= now)
+        var activeCode = await GetActiveExamAccessCodeAsync(exam.Id, now);
+        if (activeCode == null)
+        {
+            await _auditLogService.LogAsync("ExamAccess.CodeExpired", "Exam", exam.Id, new
+            {
+                examId = exam.Id,
+                studentId = userId.Value
+            }, "ExamDelivery");
+
             return BadRequest(new { message = "This entry code has expired. Please ask the professor for a new code." });
+        }
 
         var codeHash = HashAccessCode(submittedCode);
         if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(activeCode.CodeHash), Encoding.UTF8.GetBytes(codeHash)))
+        {
+            await _auditLogService.LogAsync("ExamAccess.CodeRejected", "Exam", exam.Id, new
+            {
+                examId = exam.Id,
+                studentId = userId.Value
+            }, "ExamDelivery");
+
             return BadRequest(new { message = "The entry code is not valid for this exam." });
+        }
 
         var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
         access.AccessStatus = StudentAccessStatusCodeVerified;
@@ -1119,10 +1139,13 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = true,
+            HasActiveCode = true,
             HasAccess = true,
             AccessStatus = access.AccessStatus,
+            ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = "Access confirmed. You can start the exam."
         });
     }
@@ -1224,13 +1247,19 @@ public class ExamsController : ControllerBase
             access.ApprovalReason
         }, "ExamDelivery");
 
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var activeCode = requiresCode ? await GetActiveExamAccessCodeAsync(exam.Id) : null;
+
         return Ok(new ExamAccessStatusDto
         {
-            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            RequiresCode = requiresCode,
+            HasActiveCode = activeCode != null,
             HasAccess = true,
             AccessStatus = access.AccessStatus,
+            ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = "Student access approved."
         });
     }
@@ -1271,10 +1300,7 @@ public class ExamsController : ControllerBase
             .GroupBy(x => x.StudentId)
             .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
             .ToDictionaryAsync(x => x.StudentId);
-        var activeCode = await _context.ExamAccessCodes
-            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null && x.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(x => x.GeneratedAt)
-            .FirstOrDefaultAsync();
+        var activeCode = await GetActiveExamAccessCodeAsync(exam.Id);
 
         var rows = students.Select(item =>
         {
@@ -1385,6 +1411,16 @@ public class ExamsController : ControllerBase
         return await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == examId);
     }
 
+    private async Task<ExamAccessCode?> GetActiveExamAccessCodeAsync(Guid examId, DateTime? at = null)
+    {
+        var now = at ?? DateTime.UtcNow;
+        return await _context.ExamAccessCodes
+            .AsNoTracking()
+            .Where(x => x.ExamId == examId && x.IsActive && x.RevokedAt == null && x.ExpiresAt > now)
+            .OrderByDescending(x => x.GeneratedAt)
+            .FirstOrDefaultAsync();
+    }
+
     private async Task<ExamStudentAccess> GetOrCreateStudentAccessAsync(Guid examId, Guid studentId)
     {
         var access = await _context.ExamStudentAccesses
@@ -1407,6 +1443,19 @@ public class ExamsController : ControllerBase
     private static bool IsStudentAccessGranted(ExamStudentAccess? access)
     {
         return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
+    }
+
+    private static string BuildAccessStatusMessage(bool requiresCode, bool hasActiveCode, bool hasAccess)
+    {
+        if (hasAccess)
+            return "Access confirmed.";
+
+        if (!requiresCode)
+            return "This exam does not require an entry code yet.";
+
+        return hasActiveCode
+            ? "Enter the exam access code provided by the professor."
+            : "A new entry code is required. Please ask the professor to generate one.";
     }
 
     private async Task MarkStudentAccessStartedAsync(Guid examId, Guid studentId, DateTime now)
@@ -1630,10 +1679,7 @@ public class ExamsController : ControllerBase
             })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
- feature/alma-attempt-review-export
 
-
- main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);

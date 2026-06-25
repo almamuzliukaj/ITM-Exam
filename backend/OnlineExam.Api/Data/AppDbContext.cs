@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
 
         var adminCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6811);
         var professorCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6819);
+        var assistantCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6820);
         var studentCreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6822);
 
         modelBuilder.Entity<User>().HasData(
@@ -51,6 +52,16 @@ public class AppDbContext : DbContext
                 Role = "Professor",
                 IsActive = true,
                 CreatedAt = professorCreatedAt
+            },
+            new User
+            {
+                Id = Guid.Parse("d4c36f34-d494-42f7-9af6-77cf635b2d22"),
+                FullName = "Assistant",
+                Email = "assistant@onlineexam.com",
+                PasswordHash = "Password123!",
+                Role = "Assistant",
+                IsActive = true,
+                CreatedAt = assistantCreatedAt
             },
             new User
             {

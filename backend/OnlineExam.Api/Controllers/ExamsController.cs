@@ -2215,6 +2215,9 @@ public class ExamsController : ControllerBase
         if (!await CanManageExamAsync(exam))
             return Forbid();
 
+        if (exam.IsPublished)
+            return BadRequest(new { message = "Question generation is available only while the exam is still a draft." });
+
         if (!exam.CourseOfferingId.HasValue)
             return BadRequest(new { message = "Exam must be linked to a course offering before generating questions." });
 
@@ -2224,15 +2227,20 @@ public class ExamsController : ControllerBase
 
         var candidates = await BuildQuestionBankCandidateQuery(bankExam.Id, dto.Type).ToListAsync();
 
+        var existingQuestions = exam.Questions.ToList();
+        var replaceExisting = dto.ReplaceExisting;
         var availableCandidates = candidates
-            .Where(candidate => !exam.Questions.Any(existing => IsSameQuestionContent(existing, candidate)))
+            .Where(candidate => replaceExisting || !existingQuestions.Any(existing => IsSameQuestionContent(existing, candidate)))
             .OrderBy(_ => Guid.NewGuid())
             .ToList();
 
         if (availableCandidates.Count == 0)
             return BadRequest(new { message = "No matching question bank entries are available for this request." });
 
-        var currentTotalPoints = exam.Questions.Sum(question => question.Points);
+        if (availableCandidates.Count < dto.NumberOfQuestions)
+            return BadRequest(new { message = $"Only {availableCandidates.Count} matching question bank entries are available. Lower the count or add more questions to the bank." });
+
+        var currentTotalPoints = replaceExisting ? 0 : existingQuestions.Sum(question => question.Points);
         var targetPoints = Math.Max(exam.MaximumPoints - currentTotalPoints, 0);
         if (targetPoints <= 0)
             return BadRequest(new { message = "This exam already meets or exceeds its maximum points. Adjust existing question points before generating more questions." });
@@ -2240,6 +2248,11 @@ public class ExamsController : ControllerBase
         var selectedCandidates = SelectBestQuestionSubset(availableCandidates, targetPoints, dto.NumberOfQuestions);
         if (selectedCandidates.Count == 0)
             return BadRequest(new { message = "No valid question combination could be created for the remaining exam points." });
+
+        if (replaceExisting && existingQuestions.Count > 0)
+        {
+            _context.Questions.RemoveRange(existingQuestions);
+        }
 
         var createdQuestions = selectedCandidates
             .Select(candidate => CloneQuestionForExam(candidate, exam.Id))
@@ -2254,6 +2267,9 @@ public class ExamsController : ControllerBase
         return Ok(new GenerateRandomExamQuestionsResponseDto
         {
             Questions = createdQuestions.Select(MapToExamQuestionResponse).ToList(),
+            RequestedQuestionCount = dto.NumberOfQuestions,
+            CreatedQuestionCount = createdQuestions.Count,
+            ReplacedQuestionCount = replaceExisting ? existingQuestions.Count : 0,
             TargetPoints = targetPoints,
             TotalPoints = createdPoints,
             Difference = difference,
@@ -3317,12 +3333,12 @@ public class ExamsController : ControllerBase
         return currentQuestionTotal > 0 ? currentQuestionTotal : 100;
     }
 
-    private static List<Question> SelectBestQuestionSubset(IReadOnlyList<Question> candidates, int targetPoints, int maxQuestions)
+    private static List<Question> SelectBestQuestionSubset(IReadOnlyList<Question> candidates, int targetPoints, int requestedQuestions)
     {
-        var cappedMaxQuestions = Math.Max(1, maxQuestions);
-        var states = new Dictionary<int, SubsetSelectionState>
+        var requiredQuestionCount = Math.Max(1, requestedQuestions);
+        var states = new Dictionary<(int TotalPoints, int Count), SubsetSelectionState>
         {
-            [0] = new(0, [])
+            [(0, 0)] = new(0, [])
         };
 
         foreach (var candidate in candidates)
@@ -3331,24 +3347,24 @@ public class ExamsController : ControllerBase
             foreach (var state in snapshot)
             {
                 var nextCount = state.Count + 1;
-                if (nextCount > cappedMaxQuestions)
+                if (nextCount > requiredQuestionCount)
                     continue;
 
                 var nextPoints = state.TotalPoints + candidate.Points;
                 var nextQuestions = new List<Question>(state.Questions) { candidate };
+                var nextKey = (nextPoints, nextCount);
 
-                if (!states.TryGetValue(nextPoints, out var existingState) || nextCount < existingState.Count)
+                if (!states.ContainsKey(nextKey))
                 {
-                    states[nextPoints] = new SubsetSelectionState(nextPoints, nextQuestions);
+                    states[nextKey] = new SubsetSelectionState(nextPoints, nextQuestions);
                 }
             }
         }
 
         var best = states.Values
-            .Where(state => state.Count > 0)
+            .Where(state => state.Count == requiredQuestionCount)
             .OrderBy(state => Math.Abs(state.TotalPoints - targetPoints))
             .ThenBy(state => state.TotalPoints > targetPoints ? 1 : 0)
-            .ThenBy(state => state.Count)
             .FirstOrDefault();
 
         return best?.Questions ?? [];
@@ -3360,9 +3376,9 @@ public class ExamsController : ControllerBase
             return $"Generated an exact question set with {totalPoints} / {targetPoints} target points.";
 
         if (difference < 0)
-            return $"Generated {totalPoints} points, which is {Math.Abs(difference)} below the remaining target of {targetPoints}. You can now raise one or more question scores.";
+            return $"Generated {totalPoints} points, which is {Math.Abs(difference)} below the target of {targetPoints}. You can now raise one or more question scores.";
 
-        return $"Generated {totalPoints} points, which is {difference} above the remaining target of {targetPoints}. You can now reduce one or more question scores.";
+        return $"Generated {totalPoints} points, which is {difference} above the target of {targetPoints}. You can now reduce one or more question scores.";
     }
 
     private sealed record SubsetSelectionState(int TotalPoints, List<Question> Questions)

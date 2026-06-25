@@ -75,6 +75,7 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
+ feature/agnesa-exam-access-workflow
 export async function getExamAccessStatus(examId) {
   const response = await api.get(`/api/exams/${examId}/access-status`);
   return response.data;
@@ -97,6 +98,10 @@ export async function getExamLiveMonitor(examId) {
 
 export async function allowExamStudentAccess(examId, studentId, reason = "Professor approval") {
   const response = await api.post(`/api/exams/${examId}/students/${studentId}/allow-access`, { reason });
+
+export async function getExamIntegritySummary(examId) {
+  const response = await api.get(`/api/exams/${examId}/integrity-summary`);
+ main
   return response.data;
 }
 

@@ -446,6 +446,7 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = validationError });
 
         var (details, autoScore, _, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
+        var questionScores = BuildQuestionScoreBreakdown(exam.Questions, submittedAnswers);
         var now = DateTime.UtcNow;
         var createdNewAttempt = false;
 
@@ -461,6 +462,7 @@ public class ExamsController : ControllerBase
                 LastSavedAt = now,
                 SubmittedAt = now,
                 AnswersJson = JsonSerializer.Serialize(submittedAnswers),
+                QuestionScoresJson = SerializeQuestionScores(questionScores),
                 AutoScore = autoScore,
                 ManualScore = 0,
                 FinalScore = autoScore,
@@ -481,6 +483,7 @@ public class ExamsController : ControllerBase
             attempt.LastSavedAt = now;
             attempt.SubmittedAt = now;
             attempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
+            attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
             attempt.AutoScore = autoScore;
             attempt.ManualScore = 0;
             attempt.FinalScore = autoScore;
@@ -1686,13 +1689,23 @@ public class ExamsController : ControllerBase
         var answerRows = await _context.ExamAttempts
             .AsNoTracking()
             .Where(a => attemptIds.Contains(a.Id))
-            .Select(a => new { a.Id, a.AnswersJson })
+            .Select(a => new { a.Id, a.AnswersJson, a.QuestionScoresJson })
             .ToListAsync();
-        var answersByAttempt = answerRows.ToDictionary(x => x.Id, x => BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson)));
+        var questionScoresByAttempt = answerRows.ToDictionary(
+            x => x.Id,
+            x => ReadQuestionScoresForReview(questions, x.AnswersJson, x.QuestionScoresJson));
+        var answersByAttempt = answerRows.ToDictionary(
+            x => x.Id,
+            x =>
+            {
+                var scores = questionScoresByAttempt.TryGetValue(x.Id, out var questionScores) ? questionScores : [];
+                return BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson), scores);
+            });
 
         foreach (var attempt in mappedAttempts)
         {
             attempt.Answers = answersByAttempt.TryGetValue(attempt.AttemptId, out var answers) ? answers : [];
+            attempt.QuestionScores = questionScoresByAttempt.TryGetValue(attempt.AttemptId, out var questionScores) ? questionScores : [];
 
             if (integrityByAttempt.TryGetValue(attempt.AttemptId, out var events))
             {
@@ -1751,16 +1764,33 @@ public class ExamsController : ControllerBase
         if (attempt.Status != ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "Only submitted attempts can be graded." });
 
-        var questionTotal = await _context.Questions
+        var questions = await _context.Questions
+            .AsNoTracking()
             .Where(x => x.ExamId == attempt.ExamId)
-            .SumAsync(x => (double)x.Points);
-        var examPoints = ResolveExamMaximumPoints(attempt.Exam, questionTotal);
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        var examPoints = ResolveExamMaximumPoints(attempt.Exam, questions.Sum(x => (double)x.Points));
 
-        var manualScore = dto.ManualScore ?? attempt.ManualScore;
-        var finalScore = dto.FinalScore ?? (attempt.AutoScore + manualScore);
+        var requestedQuestionScores = dto.QuestionScores ?? [];
+        var questionScoreValidationError = ValidateRequestedQuestionScores(questions, requestedQuestionScores);
+        if (questionScoreValidationError != null)
+            return BadRequest(new { message = questionScoreValidationError });
 
-        if (manualScore < 0)
-            return BadRequest(new { message = "Manual score cannot be negative." });
+        var questionScores = ReadQuestionScoresForReview(questions, attempt.AnswersJson, attempt.QuestionScoresJson);
+        if (requestedQuestionScores.Count > 0)
+        {
+            ApplyQuestionScoreOverrides(questionScores, requestedQuestionScores);
+        }
+        else
+        {
+            var desiredFinalScore = dto.FinalScore ?? (attempt.AutoScore + (dto.ManualScore ?? attempt.ManualScore));
+            if (desiredFinalScore < 0 || (examPoints > 0 && desiredFinalScore > examPoints))
+                return BadRequest(new { message = "Final score is outside the allowed exam range." });
+
+            ApplyLegacyOverallAdjustment(questionScores, desiredFinalScore);
+        }
+
+        var (autoScore, finalScore, manualScore) = CalculateQuestionScoreTotals(questionScores);
 
         if (finalScore < 0 || (examPoints > 0 && finalScore > examPoints))
             return BadRequest(new { message = "Final score is outside the allowed exam range." });
@@ -1769,6 +1799,8 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
+        attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
+        attempt.AutoScore = autoScore;
         attempt.ManualScore = manualScore;
         attempt.FinalScore = finalScore;
         attempt.IsGraded = true;
@@ -1810,7 +1842,9 @@ public class ExamsController : ControllerBase
             IntegrityViolationCount = attempt.IntegrityViolationCount,
             IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
             IntegrityPolicyAction = attempt.IntegrityPolicyAction,
-            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
+            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt,
+            QuestionScores = questionScores,
+            Answers = BuildAnswerReview(questions, ParseAttemptAnswers(attempt.AnswersJson), questionScores)
         });
     }
 
@@ -3611,9 +3645,15 @@ public class ExamsController : ControllerBase
         };
     }
 
-    private static List<ExamAttemptAnswerReviewDto> BuildAnswerReview(List<Question> questions, List<AnswerDto> answers)
+    private static List<ExamAttemptAnswerReviewDto> BuildAnswerReview(
+        List<Question> questions,
+        List<AnswerDto> answers,
+        List<ExamAttemptQuestionScoreDto>? questionScores = null)
     {
         var answerByQuestion = answers.ToDictionary(x => x.QuestionId, x => x.Response ?? string.Empty);
+        var scoreByQuestion = (questionScores ?? [])
+            .GroupBy(x => x.QuestionId)
+            .ToDictionary(x => x.Key, x => x.Last());
 
         return questions.Select(question =>
         {
@@ -3621,6 +3661,7 @@ public class ExamsController : ControllerBase
             var normalizedResponse = NormalizeOptionalValue(response) ?? string.Empty;
             var isCorrect = !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
                 IsCorrectMcqResponse(question.CorrectAnswer, normalizedResponse);
+            scoreByQuestion.TryGetValue(question.Id, out var score);
 
             return new ExamAttemptAnswerReviewDto
             {
@@ -3631,9 +3672,178 @@ public class ExamsController : ControllerBase
                 CorrectAnswer = question.CorrectAnswer,
                 Response = normalizedResponse,
                 Points = question.Points,
-                IsCorrect = isCorrect
+                IsCorrect = isCorrect,
+                AutoPointsAwarded = score?.AutoPointsAwarded ?? (isCorrect ? question.Points : 0),
+                FinalPointsAwarded = score?.FinalPointsAwarded ?? (isCorrect ? question.Points : 0),
+                IsManuallyOverridden = score?.IsManuallyOverridden ?? false,
+                GradingNotes = score?.GradingNotes
             };
         }).ToList();
+    }
+
+    private static List<ExamAttemptQuestionScoreDto> BuildQuestionScoreBreakdown(List<Question> questions, List<AnswerDto> answers)
+    {
+        var answerByQuestion = answers.ToDictionary(x => x.QuestionId, x => x.Response ?? string.Empty);
+
+        return questions
+            .OrderBy(x => x.Id)
+            .Select(question =>
+            {
+                answerByQuestion.TryGetValue(question.Id, out var response);
+                var autoPoints = 0d;
+
+                if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
+                    IsCorrectMcqResponse(question.CorrectAnswer, response))
+                {
+                    autoPoints = question.Points;
+                }
+
+                return new ExamAttemptQuestionScoreDto
+                {
+                    QuestionId = question.Id,
+                    MaxPoints = question.Points,
+                    AutoPointsAwarded = RoundScore(autoPoints),
+                    FinalPointsAwarded = RoundScore(autoPoints),
+                    IsManuallyOverridden = false
+                };
+            })
+            .ToList();
+    }
+
+    private static List<ExamAttemptQuestionScoreDto> ReadQuestionScoresForReview(List<Question> questions, string answersJson, string? questionScoresJson)
+    {
+        var defaults = BuildQuestionScoreBreakdown(questions, ParseAttemptAnswers(answersJson));
+        var defaultByQuestion = defaults.ToDictionary(x => x.QuestionId);
+        var raw = NormalizeOptionalValue(questionScoresJson);
+        if (raw == null)
+            return defaults;
+
+        try
+        {
+            var stored = JsonSerializer.Deserialize<List<ExamAttemptQuestionScoreDto>>(raw) ?? [];
+            var storedByQuestion = stored
+                .Where(x => x.QuestionId != Guid.Empty)
+                .GroupBy(x => x.QuestionId)
+                .ToDictionary(x => x.Key, x => x.Last());
+
+            return questions
+                .OrderBy(x => x.Id)
+                .Select(question =>
+                {
+                    var fallback = defaultByQuestion[question.Id];
+                    if (!storedByQuestion.TryGetValue(question.Id, out var existing))
+                        return fallback;
+
+                    var normalizedAuto = Math.Clamp(RoundScore(existing.AutoPointsAwarded), 0, question.Points);
+                    var normalizedFinal = Math.Clamp(RoundScore(existing.FinalPointsAwarded), 0, question.Points);
+
+                    return new ExamAttemptQuestionScoreDto
+                    {
+                        QuestionId = question.Id,
+                        MaxPoints = question.Points,
+                        AutoPointsAwarded = normalizedAuto,
+                        FinalPointsAwarded = normalizedFinal,
+                        IsManuallyOverridden = existing.IsManuallyOverridden || Math.Abs(normalizedFinal - normalizedAuto) > 0.009,
+                        GradingNotes = NormalizeOptionalValue(existing.GradingNotes)
+                    };
+                })
+                .ToList();
+        }
+        catch
+        {
+            return defaults;
+        }
+    }
+
+    private static string? SerializeQuestionScores(List<ExamAttemptQuestionScoreDto> questionScores)
+    {
+        return questionScores.Count == 0 ? null : JsonSerializer.Serialize(questionScores);
+    }
+
+    private static string? ValidateRequestedQuestionScores(List<Question> questions, List<GradeExamAttemptQuestionScoreDto> requestedScores)
+    {
+        if (requestedScores.Count == 0)
+            return null;
+
+        var duplicateIds = requestedScores
+            .GroupBy(x => x.QuestionId)
+            .Where(x => x.Key != Guid.Empty && x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+        if (duplicateIds.Count > 0)
+            return "Each question score can only be submitted once per grading request.";
+
+        var questionById = questions.ToDictionary(x => x.Id);
+        foreach (var item in requestedScores)
+        {
+            if (!questionById.TryGetValue(item.QuestionId, out var question))
+                return "One or more question scores do not belong to this exam.";
+
+            if (item.PointsAwarded < 0 || item.PointsAwarded > question.Points)
+                return $"Question score for '{ResolveQuestionPrompt(question)}' is outside the allowed range.";
+        }
+
+        return null;
+    }
+
+    private static void ApplyQuestionScoreOverrides(
+        List<ExamAttemptQuestionScoreDto> currentScores,
+        List<GradeExamAttemptQuestionScoreDto> requestedScores)
+    {
+        var scoreByQuestion = currentScores.ToDictionary(x => x.QuestionId);
+
+        foreach (var item in requestedScores)
+        {
+            if (!scoreByQuestion.TryGetValue(item.QuestionId, out var existing))
+                continue;
+
+            existing.FinalPointsAwarded = RoundScore(item.PointsAwarded);
+            existing.IsManuallyOverridden = Math.Abs(existing.FinalPointsAwarded - existing.AutoPointsAwarded) > 0.009;
+            existing.GradingNotes = NormalizeOptionalValue(item.Notes);
+        }
+    }
+
+    private static void ApplyLegacyOverallAdjustment(List<ExamAttemptQuestionScoreDto> questionScores, double desiredFinalScore)
+    {
+        var remainingDelta = RoundScore(desiredFinalScore - questionScores.Sum(x => x.FinalPointsAwarded));
+        if (Math.Abs(remainingDelta) <= 0.009)
+            return;
+
+        var candidates = remainingDelta > 0
+            ? questionScores.OrderByDescending(x => x.MaxPoints - x.FinalPointsAwarded).ToList()
+            : questionScores.OrderByDescending(x => x.FinalPointsAwarded).ToList();
+
+        foreach (var score in candidates)
+        {
+            var available = remainingDelta > 0
+                ? score.MaxPoints - score.FinalPointsAwarded
+                : score.FinalPointsAwarded;
+
+            if (available <= 0)
+                continue;
+
+            var change = Math.Min(Math.Abs(remainingDelta), available);
+            score.FinalPointsAwarded = RoundScore(score.FinalPointsAwarded + (remainingDelta > 0 ? change : -change));
+            score.IsManuallyOverridden = Math.Abs(score.FinalPointsAwarded - score.AutoPointsAwarded) > 0.009;
+            remainingDelta = RoundScore(remainingDelta + (remainingDelta > 0 ? -change : change));
+
+            if (Math.Abs(remainingDelta) <= 0.009)
+                break;
+        }
+    }
+
+    private static (double autoScore, double finalScore, double manualScore) CalculateQuestionScoreTotals(List<ExamAttemptQuestionScoreDto> questionScores)
+    {
+        var autoScore = RoundScore(questionScores.Sum(x => x.AutoPointsAwarded));
+        var finalScore = RoundScore(questionScores.Sum(x => x.FinalPointsAwarded));
+        var manualScore = RoundScore(finalScore - autoScore);
+        return (autoScore, finalScore, manualScore);
+    }
+
+    private static double RoundScore(double value)
+    {
+        return Math.Round(value, 2, MidpointRounding.AwayFromZero);
     }
 
     private static TechnicalRunResultDto BuildTechnicalRunResult(Question question, string response)

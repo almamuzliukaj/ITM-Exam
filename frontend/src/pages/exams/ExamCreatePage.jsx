@@ -7,18 +7,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 const assessmentTypes = [
-  { value: "Provim", label: "Provim", professorOnly: true },
-  { value: "Kollokfium1", label: "Kollokfium 1" },
-  { value: "Kollokfium2", label: "Kollokfium 2" },
-  { value: "Practice", label: "Ushtrime / practice" },
+  { value: "Exam", label: "Exam", professorOnly: true },
+  { value: "Colloquium 1", label: "Colloquium 1" },
+  { value: "Colloquium 2", label: "Colloquium 2" },
+  { value: "Practice Assessment", label: "Practice Assessment" },
 ];
 
 const examPeriods = [
-  { value: "AfatiJanarit", label: "Afati i Janarit" },
-  { value: "AfatiPrillit", label: "Afati i Prillit" },
-  { value: "AfatiQershorit", label: "Afati i Qershorit" },
-  { value: "AfatiShtatorit", label: "Afati i Shtatorit" },
-  { value: "AfatiTetorit", label: "Afati i Tetorit" },
+  { value: "January Exam Period", label: "January Exam Period" },
+  { value: "April Exam Period", label: "April Exam Period" },
+  { value: "June Exam Period", label: "June Exam Period" },
+  { value: "September Exam Period", label: "September Exam Period" },
+  { value: "October Exam Period", label: "October Exam Period" },
 ];
 
 const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
@@ -33,11 +33,11 @@ export default function ExamCreatePage() {
     description: "",
     durationMinutes: 60,
     maximumPoints: 100,
-    startsAt: "",
-    endsAt: "",
+    startsAt: getDefaultStartsAt(),
+    endsAt: getDefaultEndsAt(60),
     courseOfferingId: "",
-    assessmentType: "Provim",
-    examPeriod: "AfatiJanarit",
+    assessmentType: "Exam",
+    examPeriod: "January Exam Period",
     academicYear: "",
     semesterLabel: "",
     cohortLabel: "",
@@ -45,7 +45,6 @@ export default function ExamCreatePage() {
     allowedClient: "StandardBrowser",
     lockdownMode: "Advisory",
   });
-  const [titleTouched, setTitleTouched] = useState(Boolean(examId));
   const [offerings, setOfferings] = useState([]);
   const [offeringsLoading, setOfferingsLoading] = useState(true);
   const [examLoading, setExamLoading] = useState(Boolean(examId));
@@ -76,9 +75,11 @@ export default function ExamCreatePage() {
         const assignedOfferings = Array.isArray(data) ? data : [];
         setOfferings(assignedOfferings);
         if (assignedOfferings.length > 0) {
+          const firstOffering = assignedOfferings[0];
           setForm((current) => ({
             ...current,
-            courseOfferingId: current.courseOfferingId || assignedOfferings[0].id,
+            ...(!current.courseOfferingId ? buildOfferingDefaults(firstOffering, current) : {}),
+            courseOfferingId: current.courseOfferingId || firstOffering.id,
           }));
         }
       } catch (err) {
@@ -153,22 +154,45 @@ export default function ExamCreatePage() {
     if (!user || allowedAssessmentTypes.some((type) => type.value === form.assessmentType)) return;
     setForm((current) => ({
       ...current,
-      assessmentType: allowedAssessmentTypes[0]?.value || "Kollokfium1",
+      assessmentType: allowedAssessmentTypes[0]?.value || "Colloquium 1",
     }));
   }, [allowedAssessmentTypes, form.assessmentType, user]);
 
   useEffect(() => {
-    if (isEditMode || titleTouched || !selectedOffering) return;
+    if (isEditMode || !selectedOffering) return;
 
-    const suggested = buildAssessmentTitle(selectedOffering, form.assessmentType, form.examPeriod);
     setForm((current) => ({
       ...current,
-      title: current.title.trim() ? current.title : suggested,
-      academicYear: current.academicYear || selectedOffering.term?.academicYearLabel || "",
-      semesterLabel: current.semesterLabel || formatSemesterLabel(selectedOffering),
-      cohortLabel: current.cohortLabel || formatCohortLabel(selectedOffering),
+      ...buildOfferingDefaults(selectedOffering, current),
     }));
-  }, [form.assessmentType, form.examPeriod, isEditMode, selectedOffering, titleTouched]);
+  }, [isEditMode, selectedOffering]);
+
+  function handleOfferingChange(offeringId) {
+    const offering = offerings.find((item) => item.id === offeringId);
+    setForm((current) => ({
+      ...current,
+      ...(offering ? buildOfferingDefaults(offering, current) : {}),
+      courseOfferingId: offeringId,
+    }));
+  }
+
+  function handleDurationChange(value) {
+    const durationMinutes = Number(value) || 60;
+    setForm((current) => ({
+      ...current,
+      durationMinutes,
+      endsAt: calculateEndsAt(current.startsAt, durationMinutes),
+    }));
+  }
+
+  function handleStartsAtChange(value) {
+    setForm((current) => ({
+      ...current,
+      startsAt: value,
+      endsAt: calculateEndsAt(value, Number(current.durationMinutes) || 60),
+      examPeriod: inferExamPeriodFromDate(value),
+    }));
+  }
 
   async function saveExam(e) {
     e.preventDefault();
@@ -272,7 +296,7 @@ export default function ExamCreatePage() {
                     <select
                       className="input"
                       value={form.courseOfferingId}
-                      onChange={(e) => setForm({ ...form, courseOfferingId: e.target.value })}
+                      onChange={(e) => handleOfferingChange(e.target.value)}
                       disabled={saving || offeringsLoading || offerings.length === 0}
                       required
                     >
@@ -285,80 +309,36 @@ export default function ExamCreatePage() {
                     <span className="fieldHint">This connects the draft to the correct term, course, and section.</span>
                   </div>
 
-                  <div className="field">
-                    <div className="label">{t("examCreate.titleLabel")}</div>
-                    <input
-                      className="input"
-                      value={form.title}
-                      onChange={(e) => {
-                        setTitleTouched(true);
-                        setForm({ ...form, title: e.target.value });
-                      }}
-                      placeholder="Generated from course and assessment type"
-                      required
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label className="label">Assessment category</label>
-                    <select
-                      className="input"
-                      value={form.assessmentType}
-                      onChange={(e) => setForm({ ...form, assessmentType: e.target.value })}
-                    >
-                      {allowedAssessmentTypes.map((type) => (
-                        <option key={type.value} value={type.value}>{type.label}</option>
-                      ))}
-                    </select>
-                    {user?.role === "Assistant" ? <span className="fieldHint">Assistants can create only kollokfium assessments.</span> : null}
-                  </div>
-
-                  <div className="field">
-                    <label className="label">Official exam period</label>
-                    <select
-                      className="input"
-                      value={form.examPeriod}
-                      onChange={(e) => setForm({ ...form, examPeriod: e.target.value })}
-                      disabled={form.assessmentType !== "Provim"}
-                    >
-                      {examPeriods.map((period) => (
-                        <option key={period.value} value={period.value}>{period.label}</option>
-                      ))}
-                    </select>
-                    {form.assessmentType !== "Provim" ? <span className="fieldHint">Kollokfiumet ruhen si vleresime gjate semestrit.</span> : null}
-                  </div>
-
-                  <div className="field">
-                    <label className="label">Academic year</label>
-                    <select
-                      className="input"
-                      value={form.academicYear}
-                      onChange={(e) => setForm({ ...form, academicYear: e.target.value })}
-                      required
-                    >
-                      <option value="">Select academic year</option>
-                      {academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label className="label">Semester</label>
-                    <input
-                      className="input"
-                      value={form.semesterLabel}
-                      onChange={(e) => setForm({ ...form, semesterLabel: e.target.value })}
-                      placeholder="Semester 1"
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label className="label">Generation / cohort</label>
-                    <input
-                      className="input"
-                      value={form.cohortLabel}
-                      onChange={(e) => setForm({ ...form, cohortLabel: e.target.value })}
-                      placeholder="Year 2 / 2025 cohort"
-                    />
+                  <div className="autoMetadataPanel fieldSpanFull">
+                    <div className="autoMetadataHeader">
+                      <div>
+                        <span className="summaryLabel">Auto-filled academic data</span>
+                        <strong>{form.title || "Select a course to generate the assessment title"}</strong>
+                      </div>
+                      <span className="statusPill statusDraft">System-filled</span>
+                    </div>
+                    <div className="autoMetadataGrid">
+                      <div>
+                        <span>Assessment category</span>
+                        <strong>{formatAssessmentType(form.assessmentType)}</strong>
+                      </div>
+                      <div>
+                        <span>Official exam period</span>
+                        <strong>{formatExamPeriod(form.examPeriod)}</strong>
+                      </div>
+                      <div>
+                        <span>Academic year</span>
+                        <strong>{form.academicYear || "From course offering"}</strong>
+                      </div>
+                      <div>
+                        <span>Semester</span>
+                        <strong>{form.semesterLabel || "From course offering"}</strong>
+                      </div>
+                      <div>
+                        <span>Generation / cohort</span>
+                        <strong>{form.cohortLabel || "From course offering"}</strong>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="field">
@@ -368,7 +348,7 @@ export default function ExamCreatePage() {
                       type="number"
                       min="1"
                       value={form.durationMinutes}
-                      onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })}
+                      onChange={(e) => handleDurationChange(e.target.value)}
                     />
                   </div>
 
@@ -390,7 +370,7 @@ export default function ExamCreatePage() {
                       className="input"
                       type="datetime-local"
                       value={form.startsAt}
-                      onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
+                      onChange={(e) => handleStartsAtChange(e.target.value)}
                     />
                   </div>
 
@@ -445,44 +425,62 @@ function formatOfferingOption(offering) {
   return `${courseTitle} / ${term} / ${section}`;
 }
 
-function buildAssessmentTitle(offering, assessmentType, examPeriod) {
-  const courseCode = offering.course?.code?.trim();
+function buildOfferingDefaults(offering, current) {
+  const startsAt = current.startsAt || getDefaultStartsAt();
+  const durationMinutes = Number(current.durationMinutes) || 60;
+  return {
+    title: buildAssessmentTitle(offering),
+    academicYear: offering.term?.academicYearLabel || inferAcademicYearFromDate(startsAt),
+    semesterLabel: formatSemesterLabel(offering),
+    cohortLabel: formatCohortLabel(offering),
+    startsAt,
+    endsAt: current.endsAt || calculateEndsAt(startsAt, durationMinutes),
+    assessmentType: current.assessmentType || "Exam",
+    examPeriod: inferExamPeriodFromDate(startsAt),
+  };
+}
+
+function buildAssessmentTitle(offering) {
   const courseName = offering.course?.name?.trim();
-  const courseTitle = [courseCode, courseName].filter(Boolean).join(" - ") || "Course";
-  const typeLabel = formatAssessmentType(assessmentType);
-  const periodLabel = assessmentType === "Provim" ? formatExamPeriod(examPeriod) : "";
-  const year = offering.term?.academicYearLabel || offering.term?.code || "";
-  return [courseTitle, typeLabel, periodLabel, year].filter(Boolean).join(" - ");
+  const courseCode = offering.course?.code?.trim();
+  return courseName || courseCode || "Course exam";
 }
 
 function formatAssessmentType(value) {
-  return assessmentTypes.find((type) => type.value === value)?.label || "Provim";
+  return assessmentTypes.find((type) => type.value === value)?.label || "Exam";
 }
 
 function formatExamPeriod(value) {
-  return examPeriods.find((period) => period.value === value)?.label || "Afati i Janarit";
+  return examPeriods.find((period) => period.value === value)?.label || "January Exam Period";
 }
 
 function normalizeAssessmentTypeForUi(value) {
-  if (value === "FinalExam" || value === "RetakeExam") return "Provim";
-  if (value === "Colloquium1") return "Kollokfium1";
-  if (value === "Colloquium2") return "Kollokfium2";
-  if (value === "PracticeExam") return "Practice";
-  return value || "Provim";
+  if (value === "FinalExam" || value === "RetakeExam" || value === "Provim") return "Exam";
+  if (value === "Colloquium1" || value === "Kollokfium1") return "Colloquium 1";
+  if (value === "Colloquium2" || value === "Kollokfium2") return "Colloquium 2";
+  if (value === "PracticeExam" || value === "Practice") return "Practice Assessment";
+  return value || "Exam";
 }
 
 function normalizeExamPeriodForUi(value) {
   const map = {
-    January: "AfatiJanarit",
-    June: "AfatiQershorit",
-    September: "AfatiShtatorit",
-    DuringSemester: "AfatiJanarit",
+    January: "January Exam Period",
+    AfatiJanarit: "January Exam Period",
+    AfatiPrillit: "April Exam Period",
+    June: "June Exam Period",
+    AfatiQershorit: "June Exam Period",
+    September: "September Exam Period",
+    AfatiShtatorit: "September Exam Period",
+    AfatiTetorit: "October Exam Period",
+    DuringSemester: "January Exam Period",
   };
-  return map[value] || value || "AfatiJanarit";
+  return map[value] || value || "January Exam Period";
 }
 
 function formatSemesterLabel(offering) {
   if (offering.semesterNo) return `Semester ${offering.semesterNo}`;
+  if (offering.term?.semesterNo) return `Semester ${offering.term.semesterNo}`;
+  if (offering.term?.semesterLabel) return offering.term.semesterLabel;
   if (offering.term?.season) return offering.term.season;
   return "";
 }
@@ -499,6 +497,40 @@ function toDateTimeLocalValue(value) {
   if (Number.isNaN(date.getTime())) return "";
   const pad = (part) => String(part).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getDefaultStartsAt() {
+  return toDateTimeLocalValue(new Date());
+}
+
+function getDefaultEndsAt(durationMinutes = 60) {
+  return calculateEndsAt(getDefaultStartsAt(), durationMinutes);
+}
+
+function calculateEndsAt(startsAt, durationMinutes = 60) {
+  const date = new Date(startsAt || new Date());
+  if (Number.isNaN(date.getTime())) return "";
+  date.setMinutes(date.getMinutes() + Number(durationMinutes || 60));
+  return toDateTimeLocalValue(date);
+}
+
+function inferExamPeriodFromDate(value) {
+  const date = new Date(value || new Date());
+  if (Number.isNaN(date.getTime())) return "January Exam Period";
+  const month = date.getMonth() + 1;
+  if (month <= 2) return "January Exam Period";
+  if (month <= 4) return "April Exam Period";
+  if (month <= 7) return "June Exam Period";
+  if (month <= 9) return "September Exam Period";
+  return "October Exam Period";
+}
+
+function inferAcademicYearFromDate(value) {
+  const date = new Date(value || new Date());
+  if (Number.isNaN(date.getTime())) return academicYears[0];
+  const year = date.getFullYear();
+  const startsInAutumn = date.getMonth() + 1 >= 10;
+  return startsInAutumn ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
 function toIsoOrNull(value) {

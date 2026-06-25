@@ -11,6 +11,8 @@ public class AppDbContext : DbContext
     public DbSet<Exam> Exams { get; set; }
     public DbSet<ExamAttempt> ExamAttempts { get; set; }
     public DbSet<ExamIntegrityEvent> ExamIntegrityEvents { get; set; }
+    public DbSet<ExamAccessCode> ExamAccessCodes { get; set; }
+    public DbSet<ExamStudentAccess> ExamStudentAccesses { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Question> Questions { get; set; }
     public DbSet<Term> Terms { get; set; }
@@ -109,6 +111,25 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<ExamIntegrityEvent>()
             .HasIndex(x => new { x.ExamId, x.StudentId, x.RecordedAt });
+
+        modelBuilder.Entity<ExamAccessCode>()
+            .HasOne(x => x.Exam)
+            .WithMany()
+            .HasForeignKey(x => x.ExamId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamAccessCode>()
+            .HasIndex(x => new { x.ExamId, x.IsActive });
+
+        modelBuilder.Entity<ExamStudentAccess>()
+            .HasOne(x => x.Exam)
+            .WithMany()
+            .HasForeignKey(x => x.ExamId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamStudentAccess>()
+            .HasIndex(x => new { x.ExamId, x.StudentId })
+            .IsUnique();
 
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)

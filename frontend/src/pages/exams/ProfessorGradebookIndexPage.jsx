@@ -5,18 +5,18 @@ import { listExams } from "../../lib/examsApi";
 import { useEffect, useMemo, useState } from "react";
 
 const assessmentTypes = [
-  { value: "Provim", label: "Provim" },
-  { value: "Kollokfium1", label: "Kollokfium 1" },
-  { value: "Kollokfium2", label: "Kollokfium 2" },
-  { value: "Practice", label: "Ushtrime / practice" },
+  { value: "Exam", label: "Exam" },
+  { value: "Colloquium 1", label: "Colloquium 1" },
+  { value: "Colloquium 2", label: "Colloquium 2" },
+  { value: "Practice Assessment", label: "Practice Assessment" },
 ];
 
 const examPeriods = [
-  { value: "AfatiJanarit", label: "Afati i Janarit" },
-  { value: "AfatiPrillit", label: "Afati i Prillit" },
-  { value: "AfatiQershorit", label: "Afati i Qershorit" },
-  { value: "AfatiShtatorit", label: "Afati i Shtatorit" },
-  { value: "AfatiTetorit", label: "Afati i Tetorit" },
+  { value: "January Exam Period", label: "January Exam Period" },
+  { value: "April Exam Period", label: "April Exam Period" },
+  { value: "June Exam Period", label: "June Exam Period" },
+  { value: "September Exam Period", label: "September Exam Period" },
+  { value: "October Exam Period", label: "October Exam Period" },
 ];
 
 const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
@@ -183,7 +183,7 @@ export default function ProfessorGradebookIndexPage() {
 }
 
 function formatAssessmentType(value) {
-  return assessmentTypes.find((type) => type.value === normalizeAssessmentTypeForUi(value))?.label || "Provim";
+  return assessmentTypes.find((type) => type.value === normalizeAssessmentTypeForUi(value))?.label || "Exam";
 }
 
 function formatOffering(exam) {
@@ -204,21 +204,26 @@ function formatDateTime(value) {
 }
 
 function normalizeAssessmentTypeForUi(value) {
-  if (value === "FinalExam" || value === "RetakeExam") return "Provim";
-  if (value === "Colloquium1") return "Kollokfium1";
-  if (value === "Colloquium2") return "Kollokfium2";
-  if (value === "PracticeExam") return "Practice";
-  return value || "Provim";
+  if (value === "FinalExam" || value === "RetakeExam" || value === "Provim") return "Exam";
+  if (value === "Colloquium1" || value === "Kollokfium1") return "Colloquium 1";
+  if (value === "Colloquium2" || value === "Kollokfium2") return "Colloquium 2";
+  if (value === "PracticeExam" || value === "Practice") return "Practice Assessment";
+  return value || "Exam";
 }
 
 function normalizeExamPeriodForUi(value) {
   const map = {
-    January: "AfatiJanarit",
-    June: "AfatiQershorit",
-    September: "AfatiShtatorit",
-    DuringSemester: "AfatiJanarit",
+    January: "January Exam Period",
+    AfatiJanarit: "January Exam Period",
+    AfatiPrillit: "April Exam Period",
+    June: "June Exam Period",
+    AfatiQershorit: "June Exam Period",
+    September: "September Exam Period",
+    AfatiShtatorit: "September Exam Period",
+    AfatiTetorit: "October Exam Period",
+    DuringSemester: "January Exam Period",
   };
-  return map[value] || value || "AfatiJanarit";
+  return map[value] || value || "January Exam Period";
 }
 
 function readApiMessage(err) {

@@ -1,13 +1,9 @@
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
- feature/professor-assessment-workflow
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamLockdownReadiness, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt } from "../../lib/examsApi";
 import Editor from "@monaco-editor/react";
-
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
- main
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -29,12 +25,15 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
- feature/professor-assessment-workflow
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
-
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
- main
+  const [savedAt, setSavedAt] = useState("");
+  const [loadedDraftAt, setLoadedDraftAt] = useState("");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [accessStatus, setAccessStatus] = useState(null);
+  const [entryCode, setEntryCode] = useState("");
+  const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -72,6 +71,11 @@ export default function StudentExamSessionPage() {
         if (!active) return;
 
         setExam(examData);
+        const accessData = await getExamAccessStatus(examId).catch((err) => {
+          throw err;
+        });
+        if (!active) return;
+        setAccessStatus(accessData);
 
         if (!isLiveSession) {
           setQuestions([]);
@@ -123,6 +127,10 @@ export default function StudentExamSessionPage() {
         }
         if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
           setTechnicalRunResults(restored.technicalRunResults);
+        }
+        if (restored?.savedAt) {
+          setSavedAt(restored.savedAt);
+          setLoadedDraftAt(restored.savedAt);
           setDraftRestored(true);
         }
       } catch (err) {
@@ -179,6 +187,7 @@ export default function StudentExamSessionPage() {
         savedAt: nextSavedAt,
         ...sessionTiming,
       }));
+      setSavedAt(nextSavedAt);
       setSaveState(state);
     } catch {
       setSaveState("error");
@@ -425,14 +434,13 @@ export default function StudentExamSessionPage() {
       setIntegrityPolicy(null);
       setShowSubmitReview(false);
       setResult({ ...submission, reason });
-      navigate(`/exams/${examId}`, { replace: true, state: { submitted: true, reason } });
     } catch (err) {
       submittedRef.current = false;
       setError(getApiMessage(err, "Failed to submit the exam."));
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, navigate, storageKey]);
+  }, [answers, examId, storageKey]);
 
   useEffect(() => {
     if (!shouldShowFinalWarning || result || loading) return;
@@ -502,6 +510,11 @@ export default function StudentExamSessionPage() {
 
   async function startLiveSession() {
     setError("");
+    if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
+      setError("Enter the exam access code before starting this exam.");
+      return;
+    }
+
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -511,7 +524,33 @@ export default function StudentExamSessionPage() {
       setError("Camera permission was not granted. The exam can start, but this will be recorded as an integrity warning.");
     }
 
-feature/professor-assessment-workflow
+    if (document.fullscreenEnabled && !document.fullscreenElement) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {
+        // The session will still open; the integrity guard records fullscreen failures inside the exam.
+      }
+    }
+
+    navigate(`/exams/${examId}/session`);
+  }
+
+  async function verifyEntryCode() {
+    if (!examId || verifyingEntryCode) return;
+
+    try {
+      setVerifyingEntryCode(true);
+      setError("");
+      const updatedAccess = await verifyExamEntryCode(examId, entryCode);
+      setAccessStatus(updatedAccess);
+      setEntryCode("");
+    } catch (err) {
+      setError(getApiMessage(err, "The entry code could not be verified."));
+    } finally {
+      setVerifyingEntryCode(false);
+    }
+  }
+
   function discardRestoredDraft() {
     if (!storageKey) return;
     localStorage.removeItem(storageKey);
@@ -562,39 +601,6 @@ feature/professor-assessment-workflow
     }
   }
 
-  return (
-    <AppShell
-      user={user}
-      badge="Exam session"
-      title={exam?.title || "Student exam"}
-      subtitle={exam?.description || "Answer each question, keep an eye on the timer, and submit when ready."}
-      actions={
-        <>
-          <Link className="btn" to="/exams">Back to exams</Link>
-          {!result && !lockdownBlocked ? (
-            <button className="btn" type="button" onClick={enterFullscreen}>
-              {fullscreenActive ? "Fullscreen active" : "Enter fullscreen"}
-            </button>
-          ) : null}
-          {!result && !lockdownBlocked ? (
-            <button className="btn btnPrimary examSubmitBtn" type="button" onClick={() => setShowSubmitReview(true)} disabled={submitting || loading || questions.length === 0 || interactionLocked}>
-              {submitting ? "Submitting..." : "Submit exam"}
-            </button>
-          ) : null}
-        </>
-
-    if (document.fullscreenEnabled && !document.fullscreenElement) {
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        // The session will still open; the integrity guard records fullscreen failures inside the exam.
-main
-      }
-    }
-
-    navigate(`/exams/${examId}/session`);
-  }
-
   if (!isLiveSession) {
     return (
       <AppShell
@@ -615,6 +621,15 @@ main
             <div className="pageStateCard">Loading exam information...</div>
           ) : (
             <>
+              {accessStatus?.requiresCode ? (
+                <ExamEntryCodePanel
+                  accessStatus={accessStatus}
+                  entryCode={entryCode}
+                  verifying={verifyingEntryCode}
+                  onEntryCodeChange={setEntryCode}
+                  onVerify={verifyEntryCode}
+                />
+              ) : null}
               <section className="examBriefingHero">
                 <div>
                   <span className="summaryLabel">Secure exam entry</span>
@@ -624,7 +639,7 @@ main
                     monitors integrity events, and automatically submits if the violation limit is reached.
                   </p>
                 </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession}>
+                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={accessStatus?.requiresCode && !accessStatus?.hasAccess}>
                   Start exam
                 </button>
               </section>
@@ -738,7 +753,14 @@ main
 
         {loading ? (
           <div className="pageStateCard">Loading questions...</div>
-        ) : !result ? (
+        ) : result ? (
+          <SubmissionResult
+            result={result}
+            answeredCount={answeredCount}
+            questionsCount={questions.length}
+            onDone={() => navigate("/exams")}
+          />
+        ) : (
           <>
             <section className="secureExamNotice">
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
@@ -759,26 +781,16 @@ main
                       <span className="statusPill statusDraft">{activeQuestion.points ?? 0} pts</span>
                     </div>
                     <QuestionAnswerCard
- feature/professor-assessment-workflow
-                      key={question.id}
-                      index={index}
-                      question={question}
-                      value={answers[question.id] || ""}
-                      runResult={technicalRunResults[question.id]}
-                      running={runningQuestionId === question.id}
-                      flagged={Boolean(flaggedQuestions[question.id])}
-                      disabled={interactionLocked}
-                      onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
-                      onRun={() => runTechnicalAnswer(question)}
-
                       key={activeQuestion.id}
                       index={activeQuestionIndex}
                       question={activeQuestion}
                       value={answers[activeQuestion.id] || ""}
+                      runResult={technicalRunResults[activeQuestion.id]}
+                      running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       disabled={interactionLocked}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
- main
+                      onRun={() => runTechnicalAnswer(activeQuestion)}
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -846,7 +858,7 @@ main
               </aside>
             </section>
           </>
-        ) : null}
+        )}
       </main>
     </div>
   );
@@ -1016,28 +1028,6 @@ function QuestionAnswerCard({ index, question, value, runResult, running, flagge
             <span id={`answer-section-${question.id}`} className="examSectionLabel">Your Answer</span>
             <small>{isMcq && options.length > 0 ? "Select the best option." : "Write a clear response."}</small>
           </div>
-feature/professor-assessment-workflow
-        ) : isTechnical ? (
-          <TechnicalAnswerWorkspace
-            question={question}
-            value={value}
-            starterCode={parsed.code}
-            runResult={runResult}
-            running={running}
-            disabled={disabled}
-            onChange={onChange}
-            onRun={onRun}
-          />
-        ) : (
-          <textarea
-            className="input textarea"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="Type your answer here..."
-            disabled={disabled}
-          />
-        )}
-
           {isMcq && options.length > 0 ? (
             <div className="examMcqOptions">
               {options.map((option) => (
@@ -1065,17 +1055,27 @@ feature/professor-assessment-workflow
               ))}
               {isMultiAnswerMcq ? <span className="small">Select all correct answers.</span> : null}
             </div>
+          ) : isTechnical ? (
+            <TechnicalAnswerWorkspace
+              question={question}
+              value={value}
+              starterCode={parsed.code}
+              runResult={runResult}
+              running={running}
+              disabled={disabled}
+              onChange={onChange}
+              onRun={onRun}
+            />
           ) : (
             <textarea
-              className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
+              className="input textarea"
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+              placeholder="Type your answer here..."
               disabled={disabled}
             />
           )}
         </section>
- main
       </div>
     </article>
   );
@@ -1228,6 +1228,46 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
         </div>
       </section>
     </div>
+  );
+}
+
+function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeChange, onVerify }) {
+  const verified = Boolean(accessStatus?.hasAccess);
+
+  return (
+    <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
+      <div className="sectionHeader">
+        <div>
+          <h3>{verified ? "Exam access confirmed" : "Enter exam access code"}</h3>
+          <span className="small">
+            {verified
+              ? "You can now start the monitored exam session."
+              : "The professor provides this short code in the exam room. Codes expire after a few minutes."}
+          </span>
+        </div>
+        <span className={`statusPill ${verified ? "statusPublished" : "statusDraft"}`}>
+          {verified ? accessStatus.accessStatus || "Verified" : "Code required"}
+        </span>
+      </div>
+      {!verified ? (
+        <div className="sectionBody examEntryCodeForm">
+          <label className="field">
+            <span>Access code</span>
+            <input
+              className="input"
+              value={entryCode}
+              onChange={(event) => onEntryCodeChange(event.target.value)}
+              placeholder="Enter code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+            />
+          </label>
+          <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
+            {verifying ? "Verifying..." : "Verify code"}
+          </button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

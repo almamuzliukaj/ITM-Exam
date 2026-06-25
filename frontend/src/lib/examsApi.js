@@ -75,6 +75,31 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
+export async function getExamAccessStatus(examId) {
+  const response = await api.get(`/api/exams/${examId}/access-status`);
+  return response.data;
+}
+
+export async function verifyExamEntryCode(examId, code) {
+  const response = await api.post(`/api/exams/${examId}/verify-entry-code`, { code });
+  return response.data;
+}
+
+export async function generateExamAccessCode(examId) {
+  const response = await api.post(`/api/exams/${examId}/access-codes`);
+  return response.data;
+}
+
+export async function getExamLiveMonitor(examId) {
+  const response = await api.get(`/api/exams/${examId}/live-monitor`);
+  return response.data;
+}
+
+export async function allowExamStudentAccess(examId, studentId, reason = "Professor approval") {
+  const response = await api.post(`/api/exams/${examId}/students/${studentId}/allow-access`, { reason });
+  return response.data;
+}
+
 export async function getExamLockdownReadiness(examId) {
   const response = await api.get(`/api/exams/${examId}/lockdown-readiness`);
   return response.data;

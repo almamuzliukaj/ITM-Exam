@@ -333,7 +333,6 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "MaximumPoints" integer NOT NULL DEFAULT 100;
 
- feature/professor-assessment-workflow
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
 
@@ -344,7 +343,7 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ADD COLUMN IF NOT EXISTS "UnpublishedAt" timestamp with time zone NULL;
 
             ALTER TABLE IF EXISTS "Exams"
-            ADD COLUMN IF NOT EXISTS "AssessmentType" text NOT NULL DEFAULT 'Provim';
+            ADD COLUMN IF NOT EXISTS "AssessmentType" text NOT NULL DEFAULT 'Exam';
 
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "ExamPeriod" text NOT NULL DEFAULT 'Custom';
@@ -367,32 +366,49 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ) AS points
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
-
-
- main
             UPDATE "Exams"
             SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
             WHERE "Status" IS NULL OR "Status" = '';
 
- feature/professor-assessment-workflow
             UPDATE "Exams"
-            SET "AssessmentType" = 'Provim'
+            SET "AssessmentType" = 'Exam'
             WHERE "AssessmentType" IS NULL OR "AssessmentType" = '';
+
+            UPDATE "Exams"
+            SET "AssessmentType" = 'Exam'
+            WHERE "AssessmentType" = 'Provim';
+
+            UPDATE "Exams"
+            SET "AssessmentType" = 'Colloquium 1'
+            WHERE "AssessmentType" IN ('Kollokfium 1', 'Kollokfiumi 1');
+
+            UPDATE "Exams"
+            SET "AssessmentType" = 'Colloquium 2'
+            WHERE "AssessmentType" IN ('Kollokfium 2', 'Kollokfiumi 2');
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'January Exam Period'
+            WHERE "ExamPeriod" = 'Afati i Janarit';
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'April Exam Period'
+            WHERE "ExamPeriod" = 'Afati i Prillit';
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'June Exam Period'
+            WHERE "ExamPeriod" = 'Afati i Qershorit';
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'September Exam Period'
+            WHERE "ExamPeriod" = 'Afati i Shtatorit';
+
+            UPDATE "Exams"
+            SET "ExamPeriod" = 'October Exam Period'
+            WHERE "ExamPeriod" = 'Afati i Tetorit';
 
             UPDATE "Exams"
             SET "ExamPeriod" = 'Custom'
             WHERE "ExamPeriod" IS NULL OR "ExamPeriod" = '';
-
-            UPDATE "Exams" AS exams
-            SET "MaximumPoints" = COALESCE(points.total_points, exams."MaximumPoints", 100)
-            FROM (
-                SELECT "ExamId", GREATEST(SUM("Points"), 1) AS total_points
-                FROM "Questions"
-                GROUP BY "ExamId"
-            ) AS points
-            WHERE exams."Id" = points."ExamId"
-              AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
- main
 
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';
@@ -441,6 +457,40 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
 
             ALTER TABLE IF EXISTS "Questions"
             ADD COLUMN IF NOT EXISTS "Difficulty" text NULL;
+
+            CREATE TABLE IF NOT EXISTS "ExamAccessCodes" (
+                "Id" uuid NOT NULL,
+                "ExamId" uuid NOT NULL,
+                "CodeHash" text NOT NULL,
+                "GeneratedByUserId" uuid NOT NULL,
+                "GeneratedAt" timestamp with time zone NOT NULL,
+                "ExpiresAt" timestamp with time zone NOT NULL,
+                "IsActive" boolean NOT NULL DEFAULT TRUE,
+                "RevokedAt" timestamp with time zone NULL,
+                "RevokedByUserId" uuid NULL,
+                CONSTRAINT "PK_ExamAccessCodes" PRIMARY KEY ("Id"),
+                CONSTRAINT "FK_ExamAccessCodes_Exams_ExamId" FOREIGN KEY ("ExamId") REFERENCES "Exams" ("Id") ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS "IX_ExamAccessCodes_ExamId_IsActive"
+            ON "ExamAccessCodes" ("ExamId", "IsActive");
+
+            CREATE TABLE IF NOT EXISTS "ExamStudentAccesses" (
+                "Id" uuid NOT NULL,
+                "ExamId" uuid NOT NULL,
+                "StudentId" uuid NOT NULL,
+                "AccessStatus" text NOT NULL DEFAULT 'NotVerified',
+                "VerifiedAt" timestamp with time zone NULL,
+                "ApprovedByUserId" uuid NULL,
+                "ApprovedAt" timestamp with time zone NULL,
+                "ApprovalReason" text NOT NULL DEFAULT '',
+                "LastActivityAt" timestamp with time zone NULL,
+                CONSTRAINT "PK_ExamStudentAccesses" PRIMARY KEY ("Id"),
+                CONSTRAINT "FK_ExamStudentAccesses_Exams_ExamId" FOREIGN KEY ("ExamId") REFERENCES "Exams" ("Id") ON DELETE CASCADE
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ExamStudentAccesses_ExamId_StudentId"
+            ON "ExamStudentAccesses" ("ExamId", "StudentId");
 
             UPDATE "ExamAttempts"
             SET "Status" = CASE WHEN "SubmittedAt" IS NULL THEN 'InProgress' ELSE 'Submitted' END

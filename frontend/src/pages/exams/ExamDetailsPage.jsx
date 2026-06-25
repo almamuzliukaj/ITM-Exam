@@ -1,9 +1,12 @@
 import { Link, useParams } from "react-router-dom";
 import {
   addSelectedQuestionsFromBank,
+  allowExamStudentAccess,
   deleteExamQuestion,
+  generateExamAccessCode,
   generateRandomQuestions,
   getExam,
+  getExamLiveMonitor,
   listQuestions,
   publishExam,
   replaceExamQuestionWithBankQuestion,
@@ -30,6 +33,10 @@ export default function ExamDetailsPage() {
   const [publishing, setPublishing] = useState(false);
   const [unpublishing, setUnpublishing] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [accessCode, setAccessCode] = useState(null);
+  const [liveMonitor, setLiveMonitor] = useState(null);
+  const [generatingAccessCode, setGeneratingAccessCode] = useState(false);
+  const [approvingStudentId, setApprovingStudentId] = useState("");
   const [generating, setGenerating] = useState(false);
   const [replacingId, setReplacingId] = useState("");
   const [savingPointsId, setSavingPointsId] = useState("");
@@ -182,6 +189,33 @@ export default function ExamDetailsPage() {
     };
   }, [canEdit, exam?.courseOfferingId, isDraft]);
 
+  useEffect(() => {
+    if (!canEdit || !examId || !exam?.isPublished) {
+      setLiveMonitor(null);
+      setAccessCode(null);
+      return;
+    }
+
+    let active = true;
+
+    async function loadLiveMonitor() {
+      try {
+        const data = await getExamLiveMonitor(examId);
+        if (active) setLiveMonitor(data);
+      } catch {
+        if (active) setLiveMonitor(null);
+      }
+    }
+
+    loadLiveMonitor();
+    const timer = window.setInterval(loadLiveMonitor, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canEdit, exam?.isPublished, examId]);
+
   if (userLoading) {
     return <div className="pageState">{t("examDetails.loading")}</div>;
   }
@@ -231,6 +265,50 @@ export default function ExamDetailsPage() {
       setError(apiMessage || "Failed to unpublish assessment.");
     } finally {
       setUnpublishing(false);
+    }
+  }
+
+  async function onGenerateAccessCode() {
+    if (!examId || !canEdit || !exam?.isPublished) return;
+
+    try {
+      setGeneratingAccessCode(true);
+      setError("");
+      const generated = await generateExamAccessCode(examId);
+      setAccessCode(generated);
+      const monitor = await getExamLiveMonitor(examId).catch(() => null);
+      if (monitor) setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to generate exam access code.");
+    } finally {
+      setGeneratingAccessCode(false);
+    }
+  }
+
+  async function onAllowStudentAccess(student) {
+    if (!examId || !student?.studentId) return;
+
+    const confirmed = window.confirm(`Allow ${student.fullName || student.email} to enter this exam without the active code?`);
+    if (!confirmed) return;
+
+    try {
+      setApprovingStudentId(student.studentId);
+      setError("");
+      await allowExamStudentAccess(examId, student.studentId, "Professor approval");
+      const monitor = await getExamLiveMonitor(examId);
+      setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to approve student access.");
+    } finally {
+      setApprovingStudentId("");
     }
   }
 
@@ -526,6 +604,17 @@ export default function ExamDetailsPage() {
                 <strong>{exam?.requiresLockdown ? "Required" : "Optional"}</strong>
               </article>
             </section>
+
+            {canEdit && exam?.isPublished ? (
+              <ExamAccessPanel
+                accessCode={accessCode}
+                liveMonitor={liveMonitor}
+                generating={generatingAccessCode}
+                approvingStudentId={approvingStudentId}
+                onGenerate={onGenerateAccessCode}
+                onAllowStudent={onAllowStudentAccess}
+              />
+            ) : null}
 
             <section className="surfaceCard">
               <div className="sectionHeader">
@@ -1081,6 +1170,90 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
   );
 }
 
+function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudentId, onGenerate, onAllowStudent }) {
+  const summary = liveMonitor?.summary || {};
+  const students = Array.isArray(liveMonitor?.students) ? liveMonitor.students : [];
+  const activeExpiresAt = accessCode?.expiresAt || liveMonitor?.activeCodeExpiresAt;
+
+  return (
+    <section className="surfaceCard examAccessPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Exam access and live monitoring</h3>
+          <span className="small">Control classroom entry with a short code and monitor student activity during the exam.</span>
+        </div>
+        <button className="btn btnPrimary" type="button" onClick={onGenerate} disabled={generating}>
+          {generating ? "Generating..." : accessCode ? "Regenerate entry code" : "Generate entry code"}
+        </button>
+      </div>
+
+      <div className="sectionBody">
+        <div className="examAccessGrid">
+          <article className="examAccessCodeBox">
+            <span className="summaryLabel">Active code</span>
+            <strong>{accessCode?.code || (activeExpiresAt ? "Generated" : "No active code")}</strong>
+            <small>{activeExpiresAt ? `Expires ${formatDateTime(activeExpiresAt)}` : "Generate a 3-minute code when students are ready to enter."}</small>
+          </article>
+          <article><span className="summaryLabel">Verified</span><strong>{summary.verified ?? 0}</strong></article>
+          <article><span className="summaryLabel">Active</span><strong>{summary.active ?? 0}</strong></article>
+          <article><span className="summaryLabel">Submitted</span><strong>{summary.submitted ?? 0}</strong></article>
+          <article><span className="summaryLabel">Not joined</span><strong>{summary.notJoined ?? 0}</strong></article>
+          <article><span className="summaryLabel">With violations</span><strong>{summary.withViolations ?? 0}</strong></article>
+        </div>
+
+        <div className="compactTableWrap liveMonitorTableWrap">
+          <table className="compactTable">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Access</th>
+                <th>Attempt</th>
+                <th>Last activity</th>
+                <th>Violations</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No eligible students found for this course offering.</td>
+                </tr>
+              ) : (
+                students.map((student) => (
+                  <tr key={student.studentId}>
+                    <td>
+                      <strong>{student.fullName || student.email}</strong>
+                      <span className="questionRowMeta">{student.email}</span>
+                    </td>
+                    <td><span className="statusPill statusDraft">{student.accessStatus}</span></td>
+                    <td>{student.attemptStatus}</td>
+                    <td>{formatDateTime(student.lastActivityAt)}</td>
+                    <td>
+                      <span className={student.violationCount > 0 ? "statusPill statusWarn" : "statusPill statusPublished"}>
+                        {student.violationCount || 0} {student.integritySeverity || "None"}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="btn btnTiny"
+                        type="button"
+                        onClick={() => onAllowStudent(student)}
+                        disabled={approvingStudentId === student.studentId || student.attemptStatus === "Submitted"}
+                      >
+                        {approvingStudentId === student.studentId ? "Approving..." : "Allow access"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function EditQuestionModal({ draft, error, saving, onChange, onClose, onSave }) {
   const isMcq = draft.type === "MCQ";
 
@@ -1353,14 +1526,10 @@ function formatQuestionType(type) {
 
 function formatLockdownClient(value) {
   if (value === "SafeExamBrowser") return "Safe Exam Browser";
- feature/professor-assessment-workflow
+  if (value === "KioskClient") return "Kiosk client";
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
-  return value || "Standard browser";
-
-  if (value === "KioskClient") return "Kiosk client";
   return "Standard browser";
- main
 }
 
 function parseTechnicalQuestion(question) {
@@ -1418,34 +1587,44 @@ function formatOfferingLabel(offering) {
 
 function formatAssessmentType(value) {
   const labels = {
-    FinalExam: "Provim",
-    Provim: "Provim",
-    Colloquium1: "Kollokfium 1",
-    Kollokfium1: "Kollokfium 1",
-    Colloquium2: "Kollokfium 2",
-    Kollokfium2: "Kollokfium 2",
-    RetakeExam: "Provim",
-    PracticeExam: "Ushtrime / practice",
-    Practice: "Ushtrime / practice",
+    FinalExam: "Exam",
+    Provim: "Exam",
+    Exam: "Exam",
+    Colloquium1: "Colloquium 1",
+    "Colloquium 1": "Colloquium 1",
+    Kollokfium1: "Colloquium 1",
+    Colloquium2: "Colloquium 2",
+    "Colloquium 2": "Colloquium 2",
+    Kollokfium2: "Colloquium 2",
+    RetakeExam: "Exam",
+    PracticeExam: "Practice Assessment",
+    Practice: "Practice Assessment",
+    "Practice Assessment": "Practice Assessment",
   };
-  return labels[value] || "Provim";
+  return labels[value] || "Exam";
 }
 
 function formatExamPeriod(value) {
   const labels = {
-    January: "Afati i Janarit",
-    AfatiJanarit: "Afati i Janarit",
-    AfatiPrillit: "Afati i Prillit",
-    June: "Afati i Qershorit",
-    AfatiQershorit: "Afati i Qershorit",
-    September: "Afati i Shtatorit",
-    AfatiShtatorit: "Afati i Shtatorit",
-    AfatiTetorit: "Afati i Tetorit",
-    DuringSemester: "Gjate semestrit",
-    GjateSemestrit: "Gjate semestrit",
+    January: "January Exam Period",
+    "January Exam Period": "January Exam Period",
+    AfatiJanarit: "January Exam Period",
+    AfatiPrillit: "April Exam Period",
+    "April Exam Period": "April Exam Period",
+    June: "June Exam Period",
+    "June Exam Period": "June Exam Period",
+    AfatiQershorit: "June Exam Period",
+    September: "September Exam Period",
+    "September Exam Period": "September Exam Period",
+    AfatiShtatorit: "September Exam Period",
+    AfatiTetorit: "October Exam Period",
+    "October Exam Period": "October Exam Period",
+    DuringSemester: "During semester",
+    GjateSemestrit: "During semester",
+    "During Semester": "During semester",
     Custom: "Custom",
   };
-  return labels[value] || "Afati i Janarit";
+  return labels[value] || "January Exam Period";
 }
 
 function formatDateTime(value) {

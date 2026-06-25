@@ -744,9 +744,64 @@
   line-height: 1.5;
 }
 
+ feature/agnesa-exam-access-workflow
+.autoMetadataPanel{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+  padding: 14px 16px;
+}
+
+.autoMetadataHeader{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.autoMetadataHeader strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--heading);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.autoMetadataGrid{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.autoMetadataGrid div{
+  min-width: 0;
+  border-left: 2px solid var(--border-strong);
+  padding-left: 10px;
+}
+
+.autoMetadataGrid span{
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.autoMetadataGrid strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+
 .publishNoticeWarning{
   border-color: #f0c878;
   background: #fff8eb;
+ main
 }
 
 .statusPill{
@@ -4668,6 +4723,7 @@ input[type="radio"]{
   .questionImportLayout,
   .formGridTwo,
   .formGridThree,
+  .autoMetadataGrid,
   .loginContent,
   .loginFeatureGrid{
     grid-template-columns: 1fr;
@@ -6053,6 +6109,47 @@ body{
   background: #eef6ff;
   color: var(--primary);
   box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.examAccessPanel,
+.examEntryCodePanel{
+  border-radius: 4px;
+}
+
+.examAccessGrid{
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.examAccessGrid article{
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  background: var(--surfaceSubtle);
+}
+
+.examAccessCodeBox strong{
+  display: block;
+  font-size: 1.35rem;
+  letter-spacing: 0;
+}
+
+.liveMonitorTableWrap{
+  max-height: 360px;
+  overflow: auto;
+}
+
+.examEntryCodeForm{
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.examEntryCodePanelReady{
+  border-color: rgba(29, 121, 74, 0.35);
 }
 
 .questionSetupBody{

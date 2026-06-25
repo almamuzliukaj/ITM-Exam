@@ -2,8 +2,14 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+ feature/alma-question-generation-ux
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
 import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+
+import Editor from "@monaco-editor/react";
+import { useFaceProctoring } from "../../hooks/useFaceProctoring";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+ main
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -25,8 +31,19 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
+ feature/alma-question-generation-ux
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [technicalRunResults, setTechnicalRunResults] = useState({});
+  const [technicalRunResults, setTechnicalRunResults] = useState({});
+  const [runningQuestionId, setRunningQuestionId] = useState("");
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [savedAt, setSavedAt] = useState("");
+  const [loadedDraftAt, setLoadedDraftAt] = useState("");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [accessStatus, setAccessStatus] = useState(null);
+  const [entryCode, setEntryCode] = useState("");
+  const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
+  main
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -64,6 +81,11 @@ export default function StudentExamSessionPage() {
         if (!active) return;
 
         setExam(examData);
+        const accessData = await getExamAccessStatus(examId).catch((err) => {
+          throw err;
+        });
+        if (!active) return;
+        setAccessStatus(accessData);
 
         if (!isLiveSession) {
           setQuestions([]);
@@ -113,6 +135,17 @@ export default function StudentExamSessionPage() {
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
           setFlaggedQuestions(restored.flaggedQuestions);
         }
+ feature/alma-question-generation-ux
+
+        if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
+          setTechnicalRunResults(restored.technicalRunResults);
+        }
+        if (restored?.savedAt) {
+          setSavedAt(restored.savedAt);
+          setLoadedDraftAt(restored.savedAt);
+          setDraftRestored(true);
+        }
+ main
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
       } finally {
@@ -166,6 +199,7 @@ export default function StudentExamSessionPage() {
         savedAt: nextSavedAt,
         ...sessionTiming,
       }));
+      setSavedAt(nextSavedAt);
       setSaveState(state);
     } catch {
       setSaveState("error");
@@ -412,14 +446,13 @@ export default function StudentExamSessionPage() {
       setIntegrityPolicy(null);
       setShowSubmitReview(false);
       setResult({ ...submission, reason });
-      navigate(`/exams/${examId}`, { replace: true, state: { submitted: true, reason } });
     } catch (err) {
       submittedRef.current = false;
       setError(getApiMessage(err, "Failed to submit the exam."));
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, navigate, storageKey]);
+  }, [answers, examId, storageKey]);
 
   useEffect(() => {
     if (!shouldShowFinalWarning || result || loading) return;
@@ -489,6 +522,11 @@ export default function StudentExamSessionPage() {
 
   async function startLiveSession() {
     setError("");
+    if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
+      setError("Enter the exam access code before starting this exam.");
+      return;
+    }
+
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -509,6 +547,74 @@ export default function StudentExamSessionPage() {
     navigate(`/exams/${examId}/session`);
   }
 
+ feature/alma-question-generation-ux
+  async function verifyEntryCode() {
+    if (!examId || verifyingEntryCode) return;
+
+    try {
+      setVerifyingEntryCode(true);
+      setError("");
+      const updatedAccess = await verifyExamEntryCode(examId, entryCode);
+      setAccessStatus(updatedAccess);
+      setEntryCode("");
+    } catch (err) {
+      setError(getApiMessage(err, "The entry code could not be verified."));
+    } finally {
+      setVerifyingEntryCode(false);
+    }
+  }
+
+  function discardRestoredDraft() {
+    if (!storageKey) return;
+    localStorage.removeItem(storageKey);
+    setAnswers({});
+    setFlaggedQuestions({});
+    setTechnicalRunResults({});
+    setLoadedDraftAt("");
+    setSavedAt("");
+    setDraftRestored(false);
+    setSaveState("idle");
+  }
+
+  async function runTechnicalAnswer(question) {
+    if (!examId || !question?.id || interactionLocked) return;
+
+    try {
+      setRunningQuestionId(question.id);
+      setError("");
+      const response = String(answers[question.id] || "");
+      const runResult = await runTechnicalExamAnswer(examId, question.id, {
+        attemptId: attemptId || null,
+        questionId: question.id,
+        response,
+        clientSessionId: clientSessionIdRef.current,
+      });
+
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: runResult,
+      }));
+      setSavedAt(runResult?.executedAt || new Date().toISOString());
+      setSaveState("saved");
+    } catch (err) {
+      const message = getApiMessage(err, "Technical answer could not be run.");
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: {
+          status: "Error",
+          errors: message,
+          output: "",
+          notes: "Run failed before the answer could be evaluated.",
+          executedAt: new Date().toISOString(),
+          testResults: [],
+        },
+      }));
+    } finally {
+      setRunningQuestionId("");
+    }
+  }
+
+ main
   if (!isLiveSession) {
     return (
       <AppShell
@@ -529,6 +635,15 @@ export default function StudentExamSessionPage() {
             <div className="pageStateCard">Loading exam information...</div>
           ) : (
             <>
+              {accessStatus?.requiresCode ? (
+                <ExamEntryCodePanel
+                  accessStatus={accessStatus}
+                  entryCode={entryCode}
+                  verifying={verifyingEntryCode}
+                  onEntryCodeChange={setEntryCode}
+                  onVerify={verifyEntryCode}
+                />
+              ) : null}
               <section className="examBriefingHero">
                 <div>
                   <span className="summaryLabel">Secure exam entry</span>
@@ -538,7 +653,7 @@ export default function StudentExamSessionPage() {
                     monitors integrity events, and automatically submits if the violation limit is reached.
                   </p>
                 </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession}>
+                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={accessStatus?.requiresCode && !accessStatus?.hasAccess}>
                   Start exam
                 </button>
               </section>
@@ -652,7 +767,14 @@ export default function StudentExamSessionPage() {
 
         {loading ? (
           <div className="pageStateCard">Loading questions...</div>
-        ) : !result ? (
+        ) : result ? (
+          <SubmissionResult
+            result={result}
+            answeredCount={answeredCount}
+            questionsCount={questions.length}
+            onDone={() => navigate("/exams")}
+          />
+        ) : (
           <>
             <section className="secureExamNotice">
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
@@ -677,13 +799,18 @@ export default function StudentExamSessionPage() {
                       index={activeQuestionIndex}
                       question={activeQuestion}
                       value={answers[activeQuestion.id] || ""}
+                      runResult={technicalRunResults[activeQuestion.id]}
+                      running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       runResult={technicalRunResults[activeQuestion.id] || null}
                       disabled={submitting}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
+ feature/alma-question-generation-ux
                       onRunResult={(runResult) =>
                         setTechnicalRunResults((current) => ({ ...current, [activeQuestion.id]: runResult }))
                       }
+                      onRun={() => runTechnicalAnswer(activeQuestion)}
+ main
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -751,7 +878,7 @@ export default function StudentExamSessionPage() {
               </aside>
             </section>
           </>
-        ) : null}
+        )}
       </main>
     </div>
   );
@@ -951,19 +1078,29 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
           ) : isTechnical ? (
             <TechnicalAnswerWorkspace
               question={question}
+ feature/alma-question-generation-ux
               parsed={parsed}
               value={value}
               disabled={disabled}
               runResult={runResult}
               onChange={onChange}
               onRunResult={onRunResult}
+
+              value={value}
+              starterCode={parsed.code}
+              runResult={runResult}
+              running={running}
+              disabled={disabled}
+              onChange={onChange}
+              onRun={onRun}
+ main
             />
           ) : (
             <textarea
-              className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
+              className="input textarea"
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+              placeholder="Type your answer here..."
               disabled={disabled}
             />
           )}
@@ -1077,6 +1214,46 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
         </div>
       </section>
     </div>
+  );
+}
+
+function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeChange, onVerify }) {
+  const verified = Boolean(accessStatus?.hasAccess);
+
+  return (
+    <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
+      <div className="sectionHeader">
+        <div>
+          <h3>{verified ? "Exam access confirmed" : "Enter exam access code"}</h3>
+          <span className="small">
+            {verified
+              ? "You can now start the monitored exam session."
+              : "The professor provides this short code in the exam room. Codes expire after a few minutes."}
+          </span>
+        </div>
+        <span className={`statusPill ${verified ? "statusPublished" : "statusDraft"}`}>
+          {verified ? accessStatus.accessStatus || "Verified" : "Code required"}
+        </span>
+      </div>
+      {!verified ? (
+        <div className="sectionBody examEntryCodeForm">
+          <label className="field">
+            <span>Access code</span>
+            <input
+              className="input"
+              value={entryCode}
+              onChange={(event) => onEntryCodeChange(event.target.value)}
+              placeholder="Enter code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+            />
+          </label>
+          <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
+            {verifying ? "Verifying..." : "Verify code"}
+          </button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

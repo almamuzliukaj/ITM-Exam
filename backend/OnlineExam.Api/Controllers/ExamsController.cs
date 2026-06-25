@@ -1627,7 +1627,11 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/alma-question-generation-ux
+
+
 feature/albiona-exam-metadata-validation
+ main
  main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
@@ -3124,6 +3128,8 @@ feature/albiona-exam-metadata-validation
         if (!string.IsNullOrWhiteSpace(sectionCode))
             parts.Add($"Section {sectionCode}");
 
+ feature/alma-question-generation-ux
+
         if (parts.Count > 0)
             return string.Join(" / ", parts);
 
@@ -3157,6 +3163,7 @@ feature/albiona-exam-metadata-validation
             _ => null
         };
     }
+main
 main
     private static bool RequiresAiReview(Question question)
     {
@@ -3525,6 +3532,9 @@ feature/albiona-exam-metadata-validation
         if (!requiresLockdown)
             return null;
 
+ feature/alma-question-generation-ux
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient", "InstitutionalKiosk" };
+
         var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);
         if (!validClient)
@@ -3535,6 +3545,7 @@ feature/albiona-exam-metadata-validation
         if (!validMode)
             return "LockdownMode must be Advisory or Strict.";
         var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+ main
         var allowedModes = new[] { "Advisory", "Strict" };
 
         if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
@@ -3542,10 +3553,13 @@ feature/albiona-exam-metadata-validation
 
         if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
             return "Invalid lockdown mode.";
+ feature/alma-question-generation-ux
+
      main
 
         if (requiresLockdown && string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
             return "A lockdown exam must require SafeExamBrowser or KioskClient.";
+ main
 
         return null;
     }

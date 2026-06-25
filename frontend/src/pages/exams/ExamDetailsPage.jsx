@@ -53,7 +53,6 @@ export default function ExamDetailsPage() {
     difficulty: "",
   });
   const [manualSelectorOpen, setManualSelectorOpen] = useState(false);
-  const [questionSetupMode, setQuestionSetupMode] = useState("");
   const [reviewQuestionsOpen, setReviewQuestionsOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -697,7 +696,6 @@ export default function ExamDetailsPage() {
             ) : null}
 
             {isDraft && exam?.courseOfferingId ? (
- feature/alma-question-generation-ux
               <section className="surfaceCard generationPanel">
                 <div className="sectionHeader">
                   <div>
@@ -788,110 +786,6 @@ export default function ExamDetailsPage() {
                         {generationFeedback.createdQuestionCount || generationFeedback.questions?.length || 0} questions generated
                         {generationFeedback.replacedQuestionCount ? `, ${generationFeedback.replacedQuestionCount} replaced` : ""}
                       </strong>
-
-              <section className="surfaceCard questionSetupPanel">
-                <div className="sectionHeader">
-                  <div>
-                    <h3>Question setup</h3>
-                    <span className="small">Choose how questions should be added to this draft.</span>
-                  </div>
-                  <span className="statusPill statusDraft">{questions.length} in exam</span>
-                </div>
-                <div className="sectionBody stackLg">
-                  <div className="questionSetupChoices" role="tablist" aria-label="Question setup mode">
-                    <button
-                      className={questionSetupMode === "generate" ? "active" : ""}
-                      type="button"
-                      onClick={() => setQuestionSetupMode("generate")}
-                    >
-                      <strong>Generate from question bank</strong>
-                      <span>Suggest questions by type and count.</span>
-                    </button>
-                    <button
-                      className={questionSetupMode === "manual" ? "active" : ""}
-                      type="button"
-                      onClick={() => setQuestionSetupMode("manual")}
-                    >
-                      <strong>Select questions manually</strong>
-                      <span>Choose exact bank questions.</span>
-                    </button>
-                  </div>
-
-                  {!questionSetupMode ? (
-                    <div className="compactHelpPanel">
-                      Select one option above to open the related setup form. Automatic generation uses the course question bank; manual selection lets you choose exact questions.
-                    </div>
-                  ) : null}
-
-                  {questionSetupMode === "generate" ? (
-                    <div className="questionSetupBody">
-                      <div className="questionBankFormGrid">
-                        <div className="field">
-                          <label className="label">Maximum generated questions</label>
-                          <input
-                            className="input"
-                            type="number"
-                            min="1"
-                            value={generator.numberOfQuestions}
-                            onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
-                            disabled={generating}
-                          />
-                          <span className="fieldHint">The generator targets the remaining exam points and avoids questions already in this exam.</span>
-                        </div>
-                        <div className="field">
-                          <label className="label">{t("questionBank.type")}</label>
-                          <select
-                            className="input"
-                            value={generator.type}
-                            onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
-                            disabled={generating}
-                          >
-                            <option value="">{t("questionBank.allTypes")}</option>
-                            <option value="MCQ">MCQ</option>
-                            <option value="Text">{t("common.text")}</option>
-                            <option value="CSharp">C#</option>
-                            <option value="SQL">SQL</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
-                        <button
-                          className="btn btnPrimary"
-                          type="button"
-                          onClick={onGenerateRandomQuestions}
-                          disabled={!canGenerate || generating}
-                        >
-                          {generating ? t("examDetails.generator.generating") : t("examDetails.generator.generate")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {questionSetupMode === "manual" ? (
-                    <div className="questionSetupBody">
-                      <div className="compactHelpPanel questionSelectorSummary">
-                        <strong>{bankLoading ? "Loading question bank..." : `${availableBankQuestions.length} available questions`}</strong>
-                        <span>Open the selector to search, filter by type/topic/difficulty, and choose exact questions.</span>
-                      </div>
-
-                      <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => setManualSelectorOpen(true)}
-                          disabled={bankLoading}
-                        >
-                          Open question selector
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {generationFeedback ? (
-                    <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
-                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
- main
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}
@@ -1621,10 +1515,17 @@ function formatQuestionType(type) {
 
 function formatLockdownClient(value) {
   if (value === "SafeExamBrowser") return "Safe Exam Browser";
+ feature/alma-question-generation-ux
+  if (value === "InstitutionalKiosk") return "Institutional kiosk";
+  if (value === "StandardBrowser") return "Standard browser";
+  if (value === "KioskClient") return "Kiosk client";
+  return value || "Standard browser";
+
   if (value === "KioskClient") return "Kiosk client";
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
   return "Standard browser";
+ main
 }
 
 function parseTechnicalQuestion(question) {

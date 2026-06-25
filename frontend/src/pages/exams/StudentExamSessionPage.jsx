@@ -1,9 +1,15 @@
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+ feature/alma-question-generation-ux
+import { useFaceProctoring } from "../../hooks/useFaceProctoring";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+
 import Editor from "@monaco-editor/react";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
 import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+ main
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -25,6 +31,9 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
+ feature/alma-question-generation-ux
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
@@ -34,6 +43,7 @@ export default function StudentExamSessionPage() {
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
+  main
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -125,6 +135,8 @@ export default function StudentExamSessionPage() {
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
           setFlaggedQuestions(restored.flaggedQuestions);
         }
+ feature/alma-question-generation-ux
+
         if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
           setTechnicalRunResults(restored.technicalRunResults);
         }
@@ -133,6 +145,7 @@ export default function StudentExamSessionPage() {
           setLoadedDraftAt(restored.savedAt);
           setDraftRestored(true);
         }
+ main
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
       } finally {
@@ -183,7 +196,6 @@ export default function StudentExamSessionPage() {
       localStorage.setItem(storageKey, JSON.stringify({
         answers,
         flaggedQuestions,
-        technicalRunResults,
         savedAt: nextSavedAt,
         ...sessionTiming,
       }));
@@ -192,7 +204,7 @@ export default function StudentExamSessionPage() {
     } catch {
       setSaveState("error");
     }
-  }, [answers, flaggedQuestions, result, sessionTiming, storageKey, technicalRunResults]);
+  }, [answers, flaggedQuestions, result, sessionTiming, storageKey]);
 
   useEffect(() => {
     if (!storageKey || loading || result || !sessionTiming) return;
@@ -200,7 +212,7 @@ export default function StudentExamSessionPage() {
     setSaveState("saving");
     const timeout = window.setTimeout(() => persistDraft("saved"), 650);
     return () => window.clearTimeout(timeout);
-  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey, technicalRunResults]);
+  }, [answers, flaggedQuestions, loading, persistDraft, result, sessionTiming, storageKey]);
 
   useEffect(() => {
     if (!storageKey || loading || result || !sessionTiming) return;
@@ -535,6 +547,7 @@ export default function StudentExamSessionPage() {
     navigate(`/exams/${examId}/session`);
   }
 
+ feature/alma-question-generation-ux
   async function verifyEntryCode() {
     if (!examId || verifyingEntryCode) return;
 
@@ -601,6 +614,7 @@ export default function StudentExamSessionPage() {
     }
   }
 
+ main
   if (!isLiveSession) {
     return (
       <AppShell
@@ -788,9 +802,15 @@ export default function StudentExamSessionPage() {
                       runResult={technicalRunResults[activeQuestion.id]}
                       running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
-                      disabled={interactionLocked}
+                      runResult={technicalRunResults[activeQuestion.id] || null}
+                      disabled={submitting}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
+ feature/alma-question-generation-ux
+                      onRunResult={(runResult) =>
+                        setTechnicalRunResults((current) => ({ ...current, [activeQuestion.id]: runResult }))
+                      }
                       onRun={() => runTechnicalAnswer(activeQuestion)}
+ main
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -799,7 +819,7 @@ export default function StudentExamSessionPage() {
                       }
                     />
                     <div className="examQuestionStepper">
-                      <button className="btn" type="button" onClick={() => setActiveQuestionIndex((current) => Math.max(0, current - 1))} disabled={isFirstQuestion || interactionLocked}>
+                      <button className="btn" type="button" onClick={() => setActiveQuestionIndex((current) => Math.max(0, current - 1))} disabled={isFirstQuestion || submitting}>
                         Previous
                       </button>
                       <span>{unansweredCount} unanswered / {flaggedCount} flagged</span>
@@ -813,7 +833,7 @@ export default function StudentExamSessionPage() {
                             setActiveQuestionIndex((current) => Math.min(questions.length - 1, current + 1));
                           }
                         }}
-                        disabled={submitting || interactionLocked}
+                        disabled={submitting}
                       >
                         {isLastQuestion ? (submitting ? "Submitting..." : "Finish and submit") : "Next"}
                       </button>
@@ -850,7 +870,7 @@ export default function StudentExamSessionPage() {
                     className="btn btnDanger btnBlock examNavigatorSubmit"
                     type="button"
                     onClick={() => setShowSubmitReview(true)}
-                    disabled={submitting || questions.length === 0 || interactionLocked}
+                    disabled={submitting || questions.length === 0}
                   >
                     Submit exam
                   </button>
@@ -982,7 +1002,7 @@ function LockdownReadinessPanel({ readiness }) {
   );
 }
 
-function QuestionAnswerCard({ index, question, value, runResult, running, flagged, disabled, onChange, onRun, onToggleFlag }) {
+function QuestionAnswerCard({ index, question, value, flagged, runResult, disabled, onChange, onRunResult, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
@@ -1058,6 +1078,14 @@ function QuestionAnswerCard({ index, question, value, runResult, running, flagge
           ) : isTechnical ? (
             <TechnicalAnswerWorkspace
               question={question}
+ feature/alma-question-generation-ux
+              parsed={parsed}
+              value={value}
+              disabled={disabled}
+              runResult={runResult}
+              onChange={onChange}
+              onRunResult={onRunResult}
+
               value={value}
               starterCode={parsed.code}
               runResult={runResult}
@@ -1065,6 +1093,7 @@ function QuestionAnswerCard({ index, question, value, runResult, running, flagge
               disabled={disabled}
               onChange={onChange}
               onRun={onRun}
+ main
             />
           ) : (
             <textarea
@@ -1081,97 +1110,54 @@ function QuestionAnswerCard({ index, question, value, runResult, running, flagge
   );
 }
 
-function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, running, disabled, onChange, onRun }) {
+function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult, onChange, onRunResult }) {
   const language = question.type === "SQL" ? "sql" : "csharp";
-  const lastRunLabel = runResult?.executedAt ? formatSavedAt(runResult.executedAt) : "Not run yet";
-  const status = runResult?.status || "NotRun";
-  const statusClass = status === "Error" ? "statusWarn" : status === "Passed" ? "statusLive" : "statusDraft";
+  const runDisabled = disabled || String(value || "").trim().length === 0;
 
-  function useStarterCode() {
-    if (value || !starterCode) return;
-    onChange(starterCode);
+  function onRun() {
+    onRunResult(buildTechnicalRunResult(question.type, value, parsed));
   }
 
   return (
     <div className="technicalAnswerWorkspace">
-      <div className="technicalAnswerToolbar">
-        <div>
-          <span className="summaryLabel">{question.type === "SQL" ? "SQL workspace" : "C# workspace"}</span>
-          <strong>{question.type === "SQL" ? "Write and preview your query" : "Write and preview your solution"}</strong>
-        </div>
-        <div className="technicalAnswerActions">
-          {starterCode && !value ? (
-            <button className="btn btnCompact" type="button" onClick={useStarterCode} disabled={disabled || running}>
-              Use starter
-            </button>
-          ) : null}
-          <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={disabled || running}>
-            {running ? "Running..." : "Run preview"}
+      <div className="technicalEditorShell">
+        <div className="technicalEditorToolbar">
+          <div>
+            <span className="summaryLabel">{question.type === "SQL" ? "SQL editor" : "C# editor"}</span>
+            <strong>{question.type === "SQL" ? "Write a safe query" : "Write a focused C# solution"}</strong>
+          </div>
+          <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={runDisabled}>
+            Run check
           </button>
         </div>
-      </div>
-
-      <div className="technicalEditorShell">
         <Editor
-          height="320px"
+          height="260px"
+          defaultLanguage={language}
           language={language}
-          theme="vs-dark"
           value={value}
           onChange={(nextValue) => onChange(nextValue || "")}
+          theme="vs"
           options={{
             minimap: { enabled: false },
             fontSize: 14,
-            lineNumbers: "on",
+            lineHeight: 21,
             scrollBeyondLastLine: false,
             wordWrap: "on",
-            readOnly: disabled,
-            tabSize: 2,
             automaticLayout: true,
+            tabSize: 2,
+            readOnly: disabled,
+            renderLineHighlight: "line",
+            padding: { top: 12, bottom: 12 },
           }}
         />
       </div>
 
-      <div className="technicalRunPanel">
+      <div className={`technicalRunPanel ${runResult?.status === "error" ? "technicalRunPanelError" : runResult?.status === "success" ? "technicalRunPanelSuccess" : ""}`}>
         <div className="technicalRunHeader">
-          <div>
-            <span className="summaryLabel">Run status</span>
-            <strong>{formatRunStatus(status)}</strong>
-            <small>Last run: {lastRunLabel}</small>
-          </div>
-          <span className={`statusPill ${statusClass}`}>{formatRunStatus(status)}</span>
+          <span className="summaryLabel">Run output</span>
+          <strong>{runResult ? formatRunStatus(runResult.status) : "Not run yet"}</strong>
         </div>
-
-        {runResult?.output ? (
-          <div className="technicalRunBlock">
-            <span>Output</span>
-            <pre>{runResult.output}</pre>
-          </div>
-        ) : null}
-
-        {runResult?.errors ? (
-          <div className="technicalRunBlock technicalRunError">
-            <span>Errors</span>
-            <pre>{runResult.errors}</pre>
-          </div>
-        ) : null}
-
-        {Array.isArray(runResult?.testResults) && runResult.testResults.length > 0 ? (
-          <div className="technicalTestGrid">
-            {runResult.testResults.map((test) => (
-              <article key={test.name} className={test.passed ? "technicalTestPassed" : "technicalTestFailed"}>
-                <span>{test.passed ? "Passed" : "Check"}</span>
-                <strong>{test.name}</strong>
-                <small>{test.message}</small>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="technicalRunEmpty">
-            Run preview checks structure and saves the current draft. Final submission remains controlled by the exam submit button.
-          </div>
-        )}
-
-        {runResult?.notes ? <p className="technicalRunNotes">{runResult.notes}</p> : null}
+        <pre>{runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
       </div>
     </div>
   );
@@ -1474,14 +1460,6 @@ function formatQuestionType(type) {
   return type || "Answer";
 }
 
-function formatRunStatus(status) {
-  if (status === "Passed") return "Passed";
-  if (status === "Failed") return "Failed";
-  if (status === "Error") return "Error";
-  if (status === "NotSupported") return "Preview only";
-  return "Not run";
-}
-
 function isAnswerFilled(answer) {
   const selected = parseSelectedOptions(answer);
   if (selected.length > 0) return true;
@@ -1529,6 +1507,86 @@ function parseTechnicalQuestion(question) {
   }
 
   return result;
+}
+
+function buildTechnicalRunResult(type, answer, parsed) {
+  const code = String(answer || "").trim();
+  if (!code) {
+    return {
+      status: "error",
+      message: "No answer to run. Write your solution first.",
+      ranAt: new Date().toISOString(),
+    };
+  }
+
+  if (type === "SQL") {
+    return buildSqlRunResult(code, parsed);
+  }
+
+  return buildCSharpRunResult(code);
+}
+
+function buildSqlRunResult(sql, parsed) {
+  const normalized = sql.replace(/\s+/g, " ").trim();
+  const forbiddenPattern = /\b(drop|delete|truncate|alter|update|insert|create|grant|revoke|exec|execute)\b/i;
+
+  if (forbiddenPattern.test(normalized)) {
+    return {
+      status: "error",
+      message: "Unsafe SQL command detected. Use read-only SELECT queries for this assessment.",
+      ranAt: new Date().toISOString(),
+    };
+  }
+
+  if (!/^(select|with)\b/i.test(normalized)) {
+    return {
+      status: "error",
+      message: "SQL answers should start with SELECT or WITH so the query remains read-only.",
+      ranAt: new Date().toISOString(),
+    };
+  }
+
+  const schemaHint = parsed?.schema ? " Schema context was detected and used for the structural check." : "";
+  return {
+    status: "success",
+    message: `Query structure looks safe for review. Simulated result: read-only query accepted.${schemaHint}`,
+    ranAt: new Date().toISOString(),
+  };
+}
+
+function buildCSharpRunResult(code) {
+  const hasEntryPoint = /\b(static\s+void\s+Main|static\s+async\s+Task\s+Main|class\s+\w+)/i.test(code);
+  const hasOutput = /Console\.(WriteLine|Write)\s*\(/.test(code);
+  const hasDangerousIo = /\b(File|Directory|Process|Environment)\s*\./.test(code);
+
+  if (hasDangerousIo) {
+    return {
+      status: "error",
+      message: "Restricted API usage detected. Avoid file system, process, or environment access in exam answers.",
+      ranAt: new Date().toISOString(),
+    };
+  }
+
+  if (!hasEntryPoint && !hasOutput) {
+    return {
+      status: "warning",
+      message: "The answer was saved, but the checker did not find a clear class/Main method or Console output.",
+      ranAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    status: "success",
+    message: "C# structure looks ready for manual grading. This safe checker validates format only and does not execute code.",
+    ranAt: new Date().toISOString(),
+  };
+}
+
+function formatRunStatus(status) {
+  if (status === "success") return "Check passed";
+  if (status === "warning") return "Needs review";
+  if (status === "error") return "Check failed";
+  return "Not run yet";
 }
 
 function createClientSessionId() {

@@ -10,11 +10,9 @@ import ExamsListPage from "../pages/exams/ExamsListPage";
 import ExamCreatePage from "../pages/exams/ExamCreatePage";
 import ExamDetailsPage from "../pages/exams/ExamDetailsPage";
 import ExamGradebookPage from "../pages/exams/ExamGradebookPage";
- feature/alma-question-generation-ux
 import ExamMonitorPage from "../pages/exams/ExamMonitorPage";
 
 import ProfessorGradebookIndexPage from "../pages/exams/ProfessorGradebookIndexPage";
- main
 import QuestionCreatePage from "../pages/exams/QuestionCreatePage";
 import StudentExamSessionPage from "../pages/exams/StudentExamSessionPage";
 import StudentResultsPage from "../pages/exams/StudentResultsPage";

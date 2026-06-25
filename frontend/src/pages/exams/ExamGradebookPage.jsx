@@ -673,6 +673,18 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatAttemptDuration(startedAt, submittedAt) {
+  const start = Date.parse(startedAt || "");
+  const end = Date.parse(submittedAt || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
+
+  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return `${hours}h ${minutes}m`;
+}
+
 function formatDisplayValue(value) {
   if (typeof value === "string") return value;
   return formatScore(value);

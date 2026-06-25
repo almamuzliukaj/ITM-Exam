@@ -428,6 +428,9 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ADD COLUMN IF NOT EXISTS "LastSavedAt" timestamp with time zone NULL;
 
             ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "QuestionScoresJson" text NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "AutoScore" double precision NOT NULL DEFAULT 0;
 
             ALTER TABLE IF EXISTS "ExamAttempts"

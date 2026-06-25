@@ -218,6 +218,20 @@ export default function ExamGradebookPage() {
     }
   }
 
+  function onExportCsv() {
+    if (visibleAttempts.length === 0) {
+      setError("No gradebook rows are available to export in the current view.");
+      return;
+    }
+
+    const csv = buildGradebookCsv(visibleAttempts, drafts);
+    const examName = exam?.title || "exam";
+    const filterName = reviewFilter === "all" ? "all-attempts" : reviewFilter;
+    downloadTextFile(`${safeFileName(examName)}-${filterName}-gradebook.csv`, csv, "text/csv;charset=utf-8");
+    setError("");
+    setSuccess(`Exported ${visibleAttempts.length} gradebook row${visibleAttempts.length === 1 ? "" : "s"} to CSV.`);
+  }
+
   return (
     <AppShell
       user={user}
@@ -285,7 +299,14 @@ export default function ExamGradebookPage() {
             </div>
             <div className="resourceActionGroup">
               <span className="statusPill statusDraft">{publishedCount} published</span>
+ feature/alma-student-code-workspace
+              <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
+                Export CSV
+              </button>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
+
               <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
+ main
                 {publishing ? "Publishing..." : "Publish graded results"}
               </button>
             </div>
@@ -704,6 +725,83 @@ function buildDrafts(attempts) {
     };
     return acc;
   }, {});
+}
+
+function buildGradebookCsv(attempts, drafts) {
+  const headers = [
+    "Student",
+    "Email",
+    "Attempt ID",
+    "Submitted At",
+    "Duration",
+    "Auto Score",
+    "Manual Score",
+    "Final Score",
+    "Exam Max Points",
+    "Percentage",
+    "Grade",
+    "Review Status",
+    "Publication Status",
+    "Integrity Violations",
+    "Policy Action",
+    "Answers",
+    "Notes",
+  ];
+
+  const rows = attempts.map((attempt) => {
+    const draft = drafts[attempt.attemptId] || {};
+    const finalScore = Number(draft.finalScore ?? attempt.finalScore ?? 0);
+    const examMaxPoints = Number(attempt.examMaxPoints || 0);
+    const percentage = examMaxPoints > 0 ? (finalScore / examMaxPoints) * 100 : 0;
+    const answerCount = Array.isArray(attempt.answers) ? attempt.answers.length : 0;
+
+    return [
+      attempt.studentName || "Student",
+      attempt.studentEmail || "",
+      attempt.attemptId,
+      formatDateTime(attempt.submittedAt),
+      formatAttemptDuration(attempt.startedAt, attempt.submittedAt),
+      formatScore(attempt.autoScore),
+      formatScore(draft.manualScore ?? attempt.manualScore),
+      formatScore(finalScore),
+      formatScore(examMaxPoints),
+      `${percentage.toFixed(2)}%`,
+      formatGrade(calculateGrade(percentage), percentage >= 51),
+      attempt.isGraded ? "Reviewed" : "Needs review",
+      attempt.isPublished ? "Published" : "Hidden",
+      Number(attempt.integrityViolationCount || 0),
+      attempt.integrityPolicyAction || "None",
+      answerCount,
+      draft.notes ?? attempt.gradingNotes ?? "",
+    ];
+  });
+
+  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadTextFile(fileName, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFileName(value) {
+  return String(value || "gradebook")
+    .trim()
+    .replace(/[^a-z0-9-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "gradebook";
 }
 
 function parseNumberOrNull(value) {

@@ -280,15 +280,20 @@
 }
 
 .mainPanel{
+  height: 100vh;
   min-width: 0;
   padding: 0 32px 34px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-size: 15px;
 }
 
 .topbar{
-  position: sticky;
+  position: relative;
   top: 0;
   z-index: 80;
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -374,6 +379,12 @@
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 34px;
+  scrollbar-gutter: stable;
 }
 
 .stackLg{

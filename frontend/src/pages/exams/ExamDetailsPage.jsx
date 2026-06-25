@@ -139,10 +139,11 @@ export default function ExamDetailsPage() {
       const created = await generateRandomQuestions(examId, {
         numberOfQuestions: Number(generator.numberOfQuestions),
         type: generator.type || null,
+        replaceExisting: true,
       });
       const newQuestions = Array.isArray(created?.questions) ? created.questions : [];
-      setQuestions((current) => [...current, ...newQuestions]);
-      setPointDrafts((current) => ({ ...current, ...buildPointDrafts(newQuestions) }));
+      setQuestions(newQuestions);
+      setPointDrafts(buildPointDrafts(newQuestions));
       setGenerationFeedback(created);
     } catch (err) {
       const apiMessage =
@@ -239,6 +240,7 @@ export default function ExamDetailsPage() {
       actions={
         <>
           <Link className="btn" to="/exams">{t("examDetails.backToExams")}</Link>
+          {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/monitor`}>Live monitor</Link> : null}
           {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/gradebook`}>Gradebook</Link> : null}
           {canEdit && examId ? <Link className="btn" to={`/exams/${examId}/edit`}>Edit exam</Link> : null}
           {isDraft ? (
@@ -364,29 +366,66 @@ export default function ExamDetailsPage() {
             ) : null}
 
             {isDraft && exam?.courseOfferingId ? (
-              <section className="surfaceCard">
+              <section className="surfaceCard generationPanel">
                 <div className="sectionHeader">
-                  <h3>{t("examDetails.generator.title")}</h3>
-                  <span className="small">{t("examDetails.generator.subtitle")}</span>
+                  <div>
+                    <h3>{t("examDetails.generator.title")}</h3>
+                    <span className="small">Rebuild this draft from the course question bank with an exact question count.</span>
+                  </div>
+                  <span className="statusPill statusDraft">{questions.length} current</span>
                 </div>
                 <div className="sectionBody stackLg">
-                  <div className="questionBankFormGrid">
+                  <div className="generationSummaryGrid">
+                    <article>
+                      <span className="summaryLabel">Mode</span>
+                      <strong>Replace current set</strong>
+                      <small>Old draft questions are removed before the new set is saved.</small>
+                    </article>
+                    <article>
+                      <span className="summaryLabel">Target points</span>
+                      <strong>{examMaximumPoints || "-"}</strong>
+                      <small>The closest matching point total is selected from the bank.</small>
+                    </article>
+                    <article>
+                      <span className="summaryLabel">After generate</span>
+                      <strong>{Number(generator.numberOfQuestions) || 0} questions</strong>
+                      <small>Generate 5 creates 5. Generate 3 rebuilds the set to 3.</small>
+                    </article>
+                  </div>
+
+                  <div className="generationControls">
                     <div className="field">
-                      <label className="label">Maximum generated questions</label>
+                      <label className="label">Question count</label>
                       <input
-                        className="input"
+                        className="input inputCompact"
                         type="number"
                         min="1"
                         value={generator.numberOfQuestions}
                         onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
                         disabled={generating}
                       />
-                      <span className="fieldHint">The generator will target the remaining exam points and stay within this question count cap.</span>
+                      <span className="fieldHint">This is the final number of generated questions in the exam.</span>
+                    </div>
+                    <div className="field generationQuickPick">
+                      <span className="label">Quick count</span>
+                      <div className="segmentedControl">
+                        {[3, 5, 10].map((count) => (
+                          <button
+                            key={count}
+                            className={Number(generator.numberOfQuestions) === count ? "active" : ""}
+                            type="button"
+                            onClick={() => setGenerator((current) => ({ ...current, numberOfQuestions: count }))}
+                            disabled={generating}
+                          >
+                            {count}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="field">
                       <label className="label">{t("questionBank.type")}</label>
                       <select
-                        className="input"
+                        className="input inputCompact"
                         value={generator.type}
                         onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
                         disabled={generating}
@@ -398,25 +437,28 @@ export default function ExamDetailsPage() {
                         <option value="SQL">SQL</option>
                       </select>
                     </div>
+                    <div className="field generationSubmitField">
+                      <span className="label">Action</span>
+                      <button
+                        className="btn btnPrimary"
+                        type="button"
+                        onClick={onGenerateRandomQuestions}
+                        disabled={!canGenerate || generating}
+                      >
+                        {generating ? "Rebuilding..." : `Generate ${Number(generator.numberOfQuestions) || ""}`}
+                      </button>
+                    </div>
                   </div>
 
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
-                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Point adjustment recommended"}</strong>
+                      <strong>
+                        {generationFeedback.createdQuestionCount || generationFeedback.questions?.length || 0} questions generated
+                        {generationFeedback.replacedQuestionCount ? `, ${generationFeedback.replacedQuestionCount} replaced` : ""}
+                      </strong>
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}
-
-                  <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
-                    <button
-                      className="btn btnPrimary"
-                      type="button"
-                      onClick={onGenerateRandomQuestions}
-                      disabled={!canGenerate || generating}
-                    >
-                      {generating ? t("examDetails.generator.generating") : t("examDetails.generator.generate")}
-                    </button>
-                  </div>
                 </div>
               </section>
             ) : null}

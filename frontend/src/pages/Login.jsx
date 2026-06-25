@@ -13,6 +13,7 @@ export default function Login() {
   const presets = [
     { label: t("login.presets.admin"), email: "admin@onlineexam.com", password: "Password123!" },
     { label: t("login.presets.professor"), email: "prof@onlineexam.com", password: "Password123!" },
+    { label: t("login.presets.assistant"), email: "assistant@onlineexam.com", password: "Password123!" },
     { label: t("login.presets.student"), email: "student@onlineexam.com", password: "Password123!" },
   ];
 

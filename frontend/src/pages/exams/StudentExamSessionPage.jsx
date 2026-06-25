@@ -64,9 +64,7 @@ export default function StudentExamSessionPage() {
         setExam(examData);
 
         if (!isLiveSession) {
-          const questionData = await listQuestions(examId);
-          if (!active) return;
-          setQuestions(Array.isArray(questionData) ? questionData : []);
+          setQuestions([]);
           setSessionTiming(null);
           setTimeRemaining(0);
           return;
@@ -125,6 +123,23 @@ export default function StudentExamSessionPage() {
       active = false;
     };
   }, [examId, isLiveSession, storageKey, user]);
+
+  useEffect(() => {
+    if (isLiveSession) return;
+    setQuestions([]);
+    setAnswers({});
+    setFlaggedQuestions({});
+    setActiveQuestionIndex(0);
+    setAttemptId("");
+    setIntegrityEvents([]);
+    setIntegrityPolicy(null);
+    setResult(null);
+    setShowSubmitReview(false);
+    setShowFinalWarning(false);
+    setAutoActionCountdown(null);
+    submittedRef.current = false;
+    autoSubmitAttemptedRef.current = false;
+  }, [isLiveSession]);
 
   useEffect(() => {
     if (!sessionTiming) return;
@@ -386,6 +401,13 @@ export default function StudentExamSessionPage() {
         await document.exitFullscreen().catch(() => {});
       }
       localStorage.removeItem(storageKey);
+      setQuestions([]);
+      setAnswers({});
+      setFlaggedQuestions({});
+      setActiveQuestionIndex(0);
+      setAttemptId("");
+      setIntegrityEvents([]);
+      setIntegrityPolicy(null);
       setShowSubmitReview(false);
       setResult({ ...submission, reason });
       navigate(`/exams/${examId}`, { replace: true, state: { submitted: true, reason } });
@@ -526,7 +548,7 @@ export default function StudentExamSessionPage() {
                 </article>
                 <article className="summaryCard">
                   <span className="summaryLabel">Questions</span>
-                  <strong>{questions.length}</strong>
+                  <strong>Hidden until start</strong>
                 </article>
                 <article className="summaryCard">
                   <span className="summaryLabel">Monitoring</span>

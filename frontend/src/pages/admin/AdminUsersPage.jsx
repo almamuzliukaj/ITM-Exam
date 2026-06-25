@@ -14,7 +14,7 @@ import {
   updateUserStatus,
 } from "../../lib/usersApi";
 
-const ROLE_OPTIONS = ["Student", "Professor", "Assistant"];
+const ROLE_OPTIONS = ["Student", "Professor", "Assistant", "Admin"];
 const CSV_TEMPLATE = `FullName,Email,Role,IsActive,Password
 Alice Student,alice@student.edu,Student,true,
 Bob Professor,bob@university.edu,Professor,true,Welcome123
@@ -104,10 +104,6 @@ export default function AdminUsersPage() {
 
   async function handleCreateUser(e) {
     e.preventDefault();
-    if (smuManaged) {
-      setPageError("SMU is the source of truth for students and staff. Run SMU sync instead of creating accounts manually.");
-      return;
-    }
     try {
       setCreating(true);
       setPageError("");
@@ -131,10 +127,6 @@ export default function AdminUsersPage() {
   }
 
   async function handleImportUsers() {
-    if (smuManaged) {
-      setPageError("CSV import is locked while SMU is the active source of truth.");
-      return;
-    }
     try {
       const { rows, errors } = parseCsvRows(importText, t);
       setImportPreview(rows.map((row) => ({ ...row, error: errors[row.__line] || "" })));
@@ -255,7 +247,7 @@ export default function AdminUsersPage() {
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
         <SmuSourceBanner
           title="Students and staff come from SMU"
-          description="Synced student, professor, and assistant records are displayed here for review. Manual account creation and CSV import are fallback tools only when SMU is not configured."
+          description="Synced student, professor, and assistant records are displayed here for review. Manual account creation and CSV import remain available for local overrides and emergency onboarding."
           isConfigured={smuStatus.isConfigured}
           loading={smuStatus.loading}
           error={smuStatus.error}
@@ -322,13 +314,13 @@ export default function AdminUsersPage() {
             <div className="sectionHeader">
               <div>
                 <h3>{t("adminUsers.createUser")}</h3>
-                <span className="sectionMeta">{smuManaged ? "Locked because SMU owns students and staff." : "Manual fallback for local accounts."}</span>
+                <span className="sectionMeta">{smuManaged ? "Manual override while SMU is configured." : "Manual fallback for local accounts."}</span>
               </div>
             </div>
             <div className="sectionBody">
               <form className="stackLg" onSubmit={handleCreateUser}>
-                {smuManaged ? <div className="pageStateCard">Use SMU sync to create or update students, professors, and assistants.</div> : null}
-                <fieldset className="formFieldset" disabled={smuManaged}>
+                {smuManaged ? <div className="pageStateCard">SMU is configured. Manual accounts are still allowed for emergency, testing, or local-only users.</div> : null}
+                <fieldset className="formFieldset">
                 <div className="field">
                   <label className="label">{t("adminUsers.fullName")}</label>
                   <input className="input" value={createForm.fullName} onChange={(e) => setCreateForm((c) => ({ ...c, fullName: e.target.value }))} required />
@@ -363,12 +355,12 @@ export default function AdminUsersPage() {
             <div className="sectionHeader">
               <div>
                 <h3>{t("adminUsers.bulkImport")}</h3>
-                <span className="sectionMeta">{smuManaged ? "Locked because SMU sync replaces CSV import." : "Manual fallback for seed/import work."}</span>
+                <span className="sectionMeta">{smuManaged ? "Manual override while SMU is configured." : "Manual fallback for seed/import work."}</span>
               </div>
             </div>
             <div className="sectionBody stackLg">
-              {smuManaged ? <div className="pageStateCard">CSV import is disabled while SMU is active. Use the SMU sync page to preview and import records.</div> : null}
-              <fieldset className="formFieldset" disabled={smuManaged}>
+              {smuManaged ? <div className="pageStateCard">SMU is configured. CSV import remains available for test data, missing local accounts, or emergency onboarding.</div> : null}
+              <fieldset className="formFieldset">
               <div className="field">
                 <label className="label">{t("adminUsers.defaultPassword")}</label>
                 <input className="input" value={defaultPassword} onChange={(e) => setDefaultPassword(e.target.value)} placeholder={t("adminUsers.defaultPasswordPlaceholder")} />
@@ -518,7 +510,6 @@ export default function AdminUsersPage() {
               <select className="input" value={filters.role} onChange={(e) => setFilters((c) => ({ ...c, role: e.target.value }))}>
                 <option value="">{t("adminUsers.allRoles")}</option>
                 {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
-                <option value="Admin">{t("adminUsers.roles.Admin")}</option>
               </select>
               <select className="input" value={filters.status} onChange={(e) => setFilters((c) => ({ ...c, status: e.target.value }))}>
                 <option value="all">{t("adminUsers.allStatuses")}</option>
@@ -563,7 +554,7 @@ export default function AdminUsersPage() {
                             <td>{account.email}</td>
                             <td>{isEditing ? (
                               <select className="input" value={editForm.role} onChange={(e) => setEditForm((c) => ({ ...c, role: e.target.value }))}>
-                                {[...ROLE_OPTIONS, "Admin"].map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
+                                {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
                               </select>
                             ) : t(`adminUsers.roles.${account.role}`) || account.role}</td>
                             <td><span className={`statusPill ${account.isActive ? "statusLive" : "statusDraft"}`}>{account.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</span></td>
@@ -641,15 +632,16 @@ function parseCsvRows(rawText, t) {
   const seenEmails = new Set();
 
   for (let index = 1; index < lines.length; index += 1) {
-    const parts = lines[index].split(",").map((part) => part.trim());
+    const parts = parseCsvLine(lines[index]).map((part) => part.trim());
     const [fullName = "", email = "", role = "", isActive = "true", password = ""] = parts;
+    const normalizedRole = normalizeRole(role);
     const key = email.toLowerCase();
     const lineNumber = index + 1;
     let error = "";
 
     if (!fullName || !email || !role) {
       error = t("adminUsers.csvErrors.required");
-    } else if (!ROLE_OPTIONS.includes(role) && role !== "Admin") {
+    } else if (!normalizedRole) {
       error = t("adminUsers.csvErrors.invalidRole");
     } else if (seenEmails.has(key)) {
       error = t("adminUsers.csvErrors.duplicate");
@@ -667,7 +659,7 @@ function parseCsvRows(rawText, t) {
       __line: lineNumber,
       fullName,
       email,
-      role,
+      role: normalizedRole || role,
       isActive: isActive.toLowerCase() !== "false",
       password,
     });
@@ -680,10 +672,50 @@ function isStrongPassword(password) {
   return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password);
 }
 
+function normalizeRole(role) {
+  return ROLE_OPTIONS.find((option) => option.toLowerCase() === String(role || "").trim().toLowerCase()) || "";
+}
+
 function readError(error, fallback) {
-  return error?.response?.data?.message || fallback;
+  return error?.response?.data?.message ||
+    (typeof error?.response?.data === "string" ? error.response.data : null) ||
+    error?.message ||
+    fallback;
 }
 
 function isSmuManagedAccount(account, smuManaged) {
   return Boolean(smuManaged && account && ["Student", "Professor", "Assistant"].includes(account.role));
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === "\"" && inQuotes && next === "\"") {
+      current += "\"";
+      index += 1;
+      continue;
+    }
+
+    if (char === "\"") {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current);
+  return cells;
 }

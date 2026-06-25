@@ -2,14 +2,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
- feature/alma-question-generation-ux
-import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
-
-import Editor from "@monaco-editor/react";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
 import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
- main
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -31,9 +25,6 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
- feature/alma-question-generation-ux
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
@@ -43,7 +34,6 @@ export default function StudentExamSessionPage() {
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
-  main
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -135,7 +125,6 @@ export default function StudentExamSessionPage() {
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
           setFlaggedQuestions(restored.flaggedQuestions);
         }
- feature/alma-question-generation-ux
 
         if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
           setTechnicalRunResults(restored.technicalRunResults);
@@ -145,7 +134,6 @@ export default function StudentExamSessionPage() {
           setLoadedDraftAt(restored.savedAt);
           setDraftRestored(true);
         }
- main
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
       } finally {
@@ -547,7 +535,6 @@ export default function StudentExamSessionPage() {
     navigate(`/exams/${examId}/session`);
   }
 
- feature/alma-question-generation-ux
   async function verifyEntryCode() {
     if (!examId || verifyingEntryCode) return;
 
@@ -614,7 +601,6 @@ export default function StudentExamSessionPage() {
     }
   }
 
- main
   if (!isLiveSession) {
     return (
       <AppShell
@@ -799,18 +785,12 @@ export default function StudentExamSessionPage() {
                       index={activeQuestionIndex}
                       question={activeQuestion}
                       value={answers[activeQuestion.id] || ""}
-                      runResult={technicalRunResults[activeQuestion.id]}
                       running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       runResult={technicalRunResults[activeQuestion.id] || null}
                       disabled={submitting}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
- feature/alma-question-generation-ux
-                      onRunResult={(runResult) =>
-                        setTechnicalRunResults((current) => ({ ...current, [activeQuestion.id]: runResult }))
-                      }
                       onRun={() => runTechnicalAnswer(activeQuestion)}
- main
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -1002,7 +982,7 @@ function LockdownReadinessPanel({ readiness }) {
   );
 }
 
-function QuestionAnswerCard({ index, question, value, flagged, runResult, disabled, onChange, onRunResult, onToggleFlag }) {
+function QuestionAnswerCard({ index, question, value, flagged, runResult, running, disabled, onChange, onRun, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
@@ -1078,14 +1058,6 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
           ) : isTechnical ? (
             <TechnicalAnswerWorkspace
               question={question}
- feature/alma-question-generation-ux
-              parsed={parsed}
-              value={value}
-              disabled={disabled}
-              runResult={runResult}
-              onChange={onChange}
-              onRunResult={onRunResult}
-
               value={value}
               starterCode={parsed.code}
               runResult={runResult}
@@ -1093,7 +1065,6 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
               disabled={disabled}
               onChange={onChange}
               onRun={onRun}
- main
             />
           ) : (
             <textarea
@@ -1110,13 +1081,11 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
   );
 }
 
-function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult, onChange, onRunResult }) {
+function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, running, disabled, onChange, onRun }) {
   const language = question.type === "SQL" ? "sql" : "csharp";
-  const runDisabled = disabled || String(value || "").trim().length === 0;
-
-  function onRun() {
-    onRunResult(buildTechnicalRunResult(question.type, value, parsed));
-  }
+  const editorValue = value || starterCode || "";
+  const runDisabled = disabled || running || String(editorValue || "").trim().length === 0;
+  const status = String(runResult?.status || "").toLowerCase();
 
   return (
     <div className="technicalAnswerWorkspace">
@@ -1127,14 +1096,14 @@ function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult
             <strong>{question.type === "SQL" ? "Write a safe query" : "Write a focused C# solution"}</strong>
           </div>
           <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={runDisabled}>
-            Run check
+            {running ? "Running..." : "Run check"}
           </button>
         </div>
         <Editor
           height="260px"
           defaultLanguage={language}
           language={language}
-          value={value}
+          value={editorValue}
           onChange={(nextValue) => onChange(nextValue || "")}
           theme="vs"
           options={{
@@ -1152,12 +1121,21 @@ function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult
         />
       </div>
 
-      <div className={`technicalRunPanel ${runResult?.status === "error" ? "technicalRunPanelError" : runResult?.status === "success" ? "technicalRunPanelSuccess" : ""}`}>
+      <div className={`technicalRunPanel ${status === "error" || status === "failed" ? "technicalRunPanelError" : status === "passed" || status === "success" ? "technicalRunPanelSuccess" : ""}`}>
         <div className="technicalRunHeader">
           <span className="summaryLabel">Run output</span>
           <strong>{runResult ? formatRunStatus(runResult.status) : "Not run yet"}</strong>
         </div>
-        <pre>{runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
+        <pre>{runResult?.output || runResult?.errors || runResult?.notes || runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
+        {Array.isArray(runResult?.testResults) && runResult.testResults.length > 0 ? (
+          <div className="technicalTestList">
+            {runResult.testResults.map((test, index) => (
+              <span key={`${test.name || "test"}-${index}`} className={test.passed ? "statusOk" : "statusWarn"}>
+                {test.name || `Test ${index + 1}`}: {test.passed ? "Passed" : "Needs review"}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

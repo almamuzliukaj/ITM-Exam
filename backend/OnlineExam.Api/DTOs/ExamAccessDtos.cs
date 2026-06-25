@@ -22,10 +22,13 @@ public class ExamAccessCodeResponseDto
 public class ExamAccessStatusDto
 {
     public bool RequiresCode { get; set; }
+    public bool HasActiveCode { get; set; }
     public bool HasAccess { get; set; }
     public string AccessStatus { get; set; } = "NotVerified";
+    public DateTime? ActiveCodeExpiresAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
+    public int CodeLifetimeSeconds { get; set; }
     public string Message { get; set; } = string.Empty;
 }
 

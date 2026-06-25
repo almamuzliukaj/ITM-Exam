@@ -673,6 +673,19 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatAttemptDuration(startedAt, submittedAt) {
+  if (!startedAt || !submittedAt) return "-";
+  const started = new Date(startedAt);
+  const submitted = new Date(submittedAt);
+  if (Number.isNaN(started.getTime()) || Number.isNaN(submitted.getTime())) return "-";
+
+  const totalMinutes = Math.max(0, Math.round((submitted.getTime() - started.getTime()) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes} min`;
+  return `${hours}h ${minutes}m`;
+}
+
 function formatDisplayValue(value) {
   if (typeof value === "string") return value;
   return formatScore(value);

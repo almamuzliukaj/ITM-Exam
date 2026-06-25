@@ -333,7 +333,6 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "MaximumPoints" integer NOT NULL DEFAULT 100;
 
- feature/professor-assessment-workflow
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
 
@@ -368,13 +367,10 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
 
-
- main
             UPDATE "Exams"
             SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
             WHERE "Status" IS NULL OR "Status" = '';
 
- feature/professor-assessment-workflow
             UPDATE "Exams"
             SET "AssessmentType" = 'Provim'
             WHERE "AssessmentType" IS NULL OR "AssessmentType" = '';
@@ -392,7 +388,6 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ) AS points
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
- main
 
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';

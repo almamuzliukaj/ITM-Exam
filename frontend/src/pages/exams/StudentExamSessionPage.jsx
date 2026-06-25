@@ -29,7 +29,6 @@ export default function StudentExamSessionPage() {
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [, setSavedAt] = useState("");
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
@@ -39,6 +38,7 @@ export default function StudentExamSessionPage() {
   const [networkOnline, setNetworkOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [savedAt, setSavedAt] = useState("");
   const submittedRef = useRef(false);
   const autoSubmitAttemptedRef = useRef(false);
   const autoSubmitSummaryRef = useRef(null);
@@ -778,7 +778,7 @@ export default function StudentExamSessionPage() {
             <section className="secureExamNotice">
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
               <span className="secureNoticeItem">{networkOnline ? "Online" : "Connection lost"}</span>
-              <span className="secureNoticeItem">{formatSaveState(saveState)}</span>
+              <span className="secureNoticeItem">{savedAt ? `${formatSaveState(saveState)} ${formatSavedAt(savedAt)}` : formatSaveState(saveState)}</span>
               <strong>{answeredCount}/{questions.length} answered</strong>
             </section>
 
@@ -801,7 +801,7 @@ export default function StudentExamSessionPage() {
                       running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       runResult={technicalRunResults[activeQuestion.id] || null}
-                      disabled={submitting}
+                      disabled={submitting || interactionLocked}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
                       onRun={() => runTechnicalAnswer(activeQuestion)}
                       onToggleFlag={() =>

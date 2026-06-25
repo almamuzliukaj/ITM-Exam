@@ -1546,7 +1546,7 @@ function formatLockdownClient(value) {
   if (value === "KioskClient") return "Kiosk client";
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
-  return "Standard browser";
+  return value || "Standard browser";
 }
 
 function parseTechnicalQuestion(question) {

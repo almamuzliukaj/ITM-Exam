@@ -268,6 +268,7 @@ export default function ExamGradebookPage() {
           </section>
         ) : null}
 
+feature/alma-attempt-review-export
         {!error ? (
           <section className="summaryStrip">
             <article className="summaryCard">
@@ -292,6 +293,66 @@ export default function ExamGradebookPage() {
             </article>
           </section>
         ) : null}
+
+        {!error ? <section className="summaryStrip">
+          <article className="summaryCard">
+            <span className="summaryLabel">Attempts</span>
+            <strong>{attempts.length}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Graded</span>
+            <strong>{gradedCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Needs review</span>
+            <strong>{pendingCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Integrity flags</span>
+            <strong>{integrityCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Ready to publish</span>
+            <strong>{readyToPublishCount}</strong>
+          </article>
+        </section> : null}
+
+        {!error ? <section className="surfaceCard">
+          <div className="sectionHeader">
+            <div>
+              <h3>Human review workflow</h3>
+              <span className="sectionMeta">Review submitted attempts, inspect integrity events, and publish only approved grades.</span>
+            </div>
+            <div className="resourceActionGroup">
+              <span className="statusPill statusDraft">{publishedCount} published</span>
+              <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
+                Export CSV
+              </button>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
+                {publishing ? "Publishing..." : "Publish graded results"}
+              </button>
+            </div>
+          </div>
+          <div className="sectionBody stackLg">
+            <div className="gradebookToolbar">
+              {[
+                { key: "all", label: "All attempts", count: attempts.length },
+                { key: "needsReview", label: "Needs review", count: pendingCount },
+                { key: "violations", label: "Violations", count: attempts.filter((attempt) => Number(attempt.integrityViolationCount || 0) > 0).length },
+                { key: "ready", label: "Ready to publish", count: attempts.filter((attempt) => attempt.isGraded && !attempt.isPublished).length },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  className={`filterTab${reviewFilter === item.key ? " filterTabActive" : ""}`}
+                  type="button"
+                  onClick={() => setReviewFilter(item.key)}
+                >
+                  <span>{item.label}</span>
+                  <strong>{item.count}</strong>
+                </button>
+              ))}
+            </div>
+main
 
         {!error ? (
           <section className="surfaceCard">
@@ -835,6 +896,7 @@ function formatDateTime(value) {
 
 function formatAttemptDuration(startedAt, submittedAt) {
   if (!startedAt || !submittedAt) return "-";
+ feature/alma-attempt-review-export
   const started = new Date(startedAt);
   const submitted = new Date(submittedAt);
   if (Number.isNaN(started.getTime()) || Number.isNaN(submitted.getTime())) return "-";
@@ -844,6 +906,18 @@ function formatAttemptDuration(startedAt, submittedAt) {
   const minutes = totalMinutes % 60;
   if (hours === 0) return `${minutes} min`;
   return `${hours}h ${minutes}m`;
+
+  const start = new Date(startedAt);
+  const end = new Date(submittedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "-";
+
+  const totalSeconds = Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  if (seconds === 0) return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
+ main
 }
 
 function formatDisplayValue(value) {

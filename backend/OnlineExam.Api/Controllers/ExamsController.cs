@@ -1627,7 +1627,10 @@ public class ExamsController : ControllerBase
             })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/alma-attempt-review-export
 
+
+ main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);

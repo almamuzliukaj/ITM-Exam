@@ -1,5 +1,12 @@
 # Work Log (Albiona)
 
+## 2026-06-25
+- Completed Sprint A backend exam metadata validation cleanup.
+- Required `CourseOfferingId` for exam create/update so draft exams always stay anchored to a real assigned offering.
+- Moved exam metadata authority to the backend by deriving title fallback, academic year, semester label, and cohort label from the selected offering instead of trusting UI input.
+- Expanded offering access validation so professor and assistant exam management works for both active staff assignments and direct offering ownership fields.
+- Verified the changes with a successful backend build to an alternate output folder because the local API process was locking the default `bin/Debug` artifacts.
+
 ## 2026-05-25
 - Completed the backend stability pass for API error handling and upstream timeout behavior.
 - Added centralized exception handling so unexpected server failures and dependency timeouts return consistent JSON API errors instead of breaking with raw framework output.

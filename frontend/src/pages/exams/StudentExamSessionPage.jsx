@@ -3,7 +3,7 @@ import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, listQuestions, recordExamIntegrityEvent, submitExamAttempt } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -25,8 +25,13 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [attemptId, setAttemptId] = useState("");
-  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [technicalRunResults, setTechnicalRunResults] = useState({});
+  const [runningQuestionId, setRunningQuestionId] = useState("");
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [, setSavedAt] = useState("");
+  const [accessStatus, setAccessStatus] = useState(null);
+  const [entryCode, setEntryCode] = useState("");
+  const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -64,6 +69,11 @@ export default function StudentExamSessionPage() {
         if (!active) return;
 
         setExam(examData);
+        const accessData = await getExamAccessStatus(examId).catch((err) => {
+          throw err;
+        });
+        if (!active) return;
+        setAccessStatus(accessData);
 
         if (!isLiveSession) {
           setQuestions([]);
@@ -112,6 +122,13 @@ export default function StudentExamSessionPage() {
         }
         if (restored?.flaggedQuestions && typeof restored.flaggedQuestions === "object") {
           setFlaggedQuestions(restored.flaggedQuestions);
+        }
+
+        if (restored?.technicalRunResults && typeof restored.technicalRunResults === "object") {
+          setTechnicalRunResults(restored.technicalRunResults);
+        }
+        if (restored?.savedAt) {
+          setSavedAt(restored.savedAt);
         }
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
@@ -166,6 +183,7 @@ export default function StudentExamSessionPage() {
         savedAt: nextSavedAt,
         ...sessionTiming,
       }));
+      setSavedAt(nextSavedAt);
       setSaveState(state);
     } catch {
       setSaveState("error");
@@ -412,14 +430,13 @@ export default function StudentExamSessionPage() {
       setIntegrityPolicy(null);
       setShowSubmitReview(false);
       setResult({ ...submission, reason });
-      navigate(`/exams/${examId}`, { replace: true, state: { submitted: true, reason } });
     } catch (err) {
       submittedRef.current = false;
       setError(getApiMessage(err, "Failed to submit the exam."));
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, navigate, storageKey]);
+  }, [answers, examId, storageKey]);
 
   useEffect(() => {
     if (!shouldShowFinalWarning || result || loading) return;
@@ -489,6 +506,11 @@ export default function StudentExamSessionPage() {
 
   async function startLiveSession() {
     setError("");
+    if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
+      setError("Enter the exam access code before starting this exam.");
+      return;
+    }
+
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -507,6 +529,60 @@ export default function StudentExamSessionPage() {
     }
 
     navigate(`/exams/${examId}/session`);
+  }
+
+  async function verifyEntryCode() {
+    if (!examId || verifyingEntryCode) return;
+
+    try {
+      setVerifyingEntryCode(true);
+      setError("");
+      const updatedAccess = await verifyExamEntryCode(examId, entryCode);
+      setAccessStatus(updatedAccess);
+      setEntryCode("");
+    } catch (err) {
+      setError(getApiMessage(err, "The entry code could not be verified."));
+    } finally {
+      setVerifyingEntryCode(false);
+    }
+  }
+
+  async function runTechnicalAnswer(question) {
+    if (!examId || !question?.id || interactionLocked) return;
+
+    try {
+      setRunningQuestionId(question.id);
+      setError("");
+      const response = String(answers[question.id] || "");
+      const runResult = await runTechnicalExamAnswer(examId, question.id, {
+        attemptId: attemptId || null,
+        questionId: question.id,
+        response,
+        clientSessionId: clientSessionIdRef.current,
+      });
+
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: runResult,
+      }));
+      setSavedAt(runResult?.executedAt || new Date().toISOString());
+      setSaveState("saved");
+    } catch (err) {
+      const message = getApiMessage(err, "Technical answer could not be run.");
+      setTechnicalRunResults((current) => ({
+        ...current,
+        [question.id]: {
+          status: "Error",
+          errors: message,
+          output: "",
+          notes: "Run failed before the answer could be evaluated.",
+          executedAt: new Date().toISOString(),
+          testResults: [],
+        },
+      }));
+    } finally {
+      setRunningQuestionId("");
+    }
   }
 
   if (!isLiveSession) {
@@ -529,6 +605,15 @@ export default function StudentExamSessionPage() {
             <div className="pageStateCard">Loading exam information...</div>
           ) : (
             <>
+              {accessStatus?.requiresCode ? (
+                <ExamEntryCodePanel
+                  accessStatus={accessStatus}
+                  entryCode={entryCode}
+                  verifying={verifyingEntryCode}
+                  onEntryCodeChange={setEntryCode}
+                  onVerify={verifyEntryCode}
+                />
+              ) : null}
               <section className="examBriefingHero">
                 <div>
                   <span className="summaryLabel">Secure exam entry</span>
@@ -538,7 +623,7 @@ export default function StudentExamSessionPage() {
                     monitors integrity events, and automatically submits if the violation limit is reached.
                   </p>
                 </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession}>
+                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={accessStatus?.requiresCode && !accessStatus?.hasAccess}>
                   Start exam
                 </button>
               </section>
@@ -652,7 +737,14 @@ export default function StudentExamSessionPage() {
 
         {loading ? (
           <div className="pageStateCard">Loading questions...</div>
-        ) : !result ? (
+        ) : result ? (
+          <SubmissionResult
+            result={result}
+            answeredCount={answeredCount}
+            questionsCount={questions.length}
+            onDone={() => navigate("/exams")}
+          />
+        ) : (
           <>
             <section className="secureExamNotice">
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
@@ -677,13 +769,12 @@ export default function StudentExamSessionPage() {
                       index={activeQuestionIndex}
                       question={activeQuestion}
                       value={answers[activeQuestion.id] || ""}
+                      running={runningQuestionId === activeQuestion.id}
                       flagged={Boolean(flaggedQuestions[activeQuestion.id])}
                       runResult={technicalRunResults[activeQuestion.id] || null}
                       disabled={submitting}
                       onChange={(value) => setAnswers((current) => ({ ...current, [activeQuestion.id]: value }))}
-                      onRunResult={(runResult) =>
-                        setTechnicalRunResults((current) => ({ ...current, [activeQuestion.id]: runResult }))
-                      }
+                      onRun={() => runTechnicalAnswer(activeQuestion)}
                       onToggleFlag={() =>
                         setFlaggedQuestions((current) => ({
                           ...current,
@@ -751,7 +842,7 @@ export default function StudentExamSessionPage() {
               </aside>
             </section>
           </>
-        ) : null}
+        )}
       </main>
     </div>
   );
@@ -875,7 +966,7 @@ function LockdownReadinessPanel({ readiness }) {
   );
 }
 
-function QuestionAnswerCard({ index, question, value, flagged, runResult, disabled, onChange, onRunResult, onToggleFlag }) {
+function QuestionAnswerCard({ index, question, value, flagged, runResult, running, disabled, onChange, onRun, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
   const isMcq = question.type === "MCQ";
@@ -951,19 +1042,20 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
           ) : isTechnical ? (
             <TechnicalAnswerWorkspace
               question={question}
-              parsed={parsed}
               value={value}
-              disabled={disabled}
+              starterCode={parsed.code}
               runResult={runResult}
+              running={running}
+              disabled={disabled}
               onChange={onChange}
-              onRunResult={onRunResult}
+              onRun={onRun}
             />
           ) : (
             <textarea
-              className={`input textarea ${isTechnical ? "examCodeAnswer" : ""}`}
+              className="input textarea"
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              placeholder={isTechnical ? "Write your solution here..." : "Type your answer here..."}
+              placeholder="Type your answer here..."
               disabled={disabled}
             />
           )}
@@ -973,13 +1065,11 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, disabl
   );
 }
 
-function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult, onChange, onRunResult }) {
+function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, running, disabled, onChange, onRun }) {
   const language = question.type === "SQL" ? "sql" : "csharp";
-  const runDisabled = disabled || String(value || "").trim().length === 0;
-
-  function onRun() {
-    onRunResult(buildTechnicalRunResult(question.type, value, parsed));
-  }
+  const editorValue = value || starterCode || "";
+  const runDisabled = disabled || running || String(editorValue || "").trim().length === 0;
+  const status = String(runResult?.status || "").toLowerCase();
 
   return (
     <div className="technicalAnswerWorkspace">
@@ -990,14 +1080,14 @@ function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult
             <strong>{question.type === "SQL" ? "Write a safe query" : "Write a focused C# solution"}</strong>
           </div>
           <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={runDisabled}>
-            Run check
+            {running ? "Running..." : "Run check"}
           </button>
         </div>
         <Editor
           height="260px"
           defaultLanguage={language}
           language={language}
-          value={value}
+          value={editorValue}
           onChange={(nextValue) => onChange(nextValue || "")}
           theme="vs"
           options={{
@@ -1015,12 +1105,21 @@ function TechnicalAnswerWorkspace({ question, parsed, value, disabled, runResult
         />
       </div>
 
-      <div className={`technicalRunPanel ${runResult?.status === "error" ? "technicalRunPanelError" : runResult?.status === "success" ? "technicalRunPanelSuccess" : ""}`}>
+      <div className={`technicalRunPanel ${status === "error" || status === "failed" ? "technicalRunPanelError" : status === "passed" || status === "success" ? "technicalRunPanelSuccess" : ""}`}>
         <div className="technicalRunHeader">
           <span className="summaryLabel">Run output</span>
           <strong>{runResult ? formatRunStatus(runResult.status) : "Not run yet"}</strong>
         </div>
-        <pre>{runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
+        <pre>{runResult?.output || runResult?.errors || runResult?.notes || runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
+        {Array.isArray(runResult?.testResults) && runResult.testResults.length > 0 ? (
+          <div className="technicalTestList">
+            {runResult.testResults.map((test, index) => (
+              <span key={`${test.name || "test"}-${index}`} className={test.passed ? "statusOk" : "statusWarn"}>
+                {test.name || `Test ${index + 1}`}: {test.passed ? "Passed" : "Needs review"}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1077,6 +1176,46 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
         </div>
       </section>
     </div>
+  );
+}
+
+function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeChange, onVerify }) {
+  const verified = Boolean(accessStatus?.hasAccess);
+
+  return (
+    <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
+      <div className="sectionHeader">
+        <div>
+          <h3>{verified ? "Exam access confirmed" : "Enter exam access code"}</h3>
+          <span className="small">
+            {verified
+              ? "You can now start the monitored exam session."
+              : "The professor provides this short code in the exam room. Codes expire after a few minutes."}
+          </span>
+        </div>
+        <span className={`statusPill ${verified ? "statusPublished" : "statusDraft"}`}>
+          {verified ? accessStatus.accessStatus || "Verified" : "Code required"}
+        </span>
+      </div>
+      {!verified ? (
+        <div className="sectionBody examEntryCodeForm">
+          <label className="field">
+            <span>Access code</span>
+            <input
+              className="input"
+              value={entryCode}
+              onChange={(event) => onEntryCodeChange(event.target.value)}
+              placeholder="Enter code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+            />
+          </label>
+          <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
+            {verifying ? "Verifying..." : "Verify code"}
+          </button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

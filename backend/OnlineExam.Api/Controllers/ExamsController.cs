@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
@@ -20,6 +22,12 @@ public class ExamsController : ControllerBase
     private const string QuestionBankMarker = "__QUESTION_BANK__:";
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
+    private const string StudentAccessStatusNotVerified = "NotVerified";
+    private const string StudentAccessStatusCodeVerified = "CodeVerified";
+    private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
+    private const string StudentAccessStatusStarted = "Started";
+    private const string StudentAccessStatusSubmitted = "Submitted";
+    private const int ExamAccessCodeLifetimeMinutes = 3;
     private const int IntegrityFinalWarningThreshold = 2;
     private const int IntegrityAutoActionThreshold = 3;
     private const string IntegrityPolicyActionNone = "None";
@@ -203,9 +211,6 @@ public class ExamsController : ControllerBase
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<ActionResult<Exam>> PostExam([FromBody] CreateExamDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Title))
-            return BadRequest(new { message = "Title is required." });
-
         if (dto.MaximumPoints <= 0)
             return BadRequest(new { message = "MaximumPoints must be greater than 0." });
 
@@ -217,8 +222,8 @@ public class ExamsController : ControllerBase
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
         var assessmentType = NormalizeAssessmentType(dto.AssessmentType);
         var examPeriod = NormalizeExamPeriod(dto.ExamPeriod);
-        if (User.IsInRole("Assistant") && assessmentType == "Provim")
-            return BadRequest(new { message = "Assistants can create only kollokfium assessments." });
+        if (User.IsInRole("Assistant") && assessmentType == "Exam")
+            return BadRequest(new { message = "Assistants can create only colloquium assessments." });
 
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
@@ -227,30 +232,22 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
-            return BadRequest(new { message = "Assistant exams must be linked to an assigned course offering." });
+        if (!dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "CourseOfferingId is required." });
 
-        if (dto.CourseOfferingId.HasValue)
-        {
-            var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
-            if (!offeringExists)
-                return BadRequest(new { message = "CourseOfferingId is invalid." });
+        var offering = await GetAuthorizedCourseOfferingAsync(dto.CourseOfferingId.Value, userId.Value);
+        if (offering == null)
+            return Forbid();
 
-            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-            var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == dto.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive &&
-                a.RoleInOffering == assignmentRole);
-
-            if (!hasAssignment)
-                return Forbid();
-        }
+        var title = BuildExamTitle(dto.Title, offering, assessmentType, examPeriod);
+        var academicYear = ResolveAcademicYear(offering, dto.AcademicYear);
+        var semesterLabel = ResolveSemesterLabel(offering, dto.SemesterLabel);
+        var cohortLabel = ResolveCohortLabel(offering, dto.CohortLabel);
 
         var exam = new Exam
         {
             Id = Guid.NewGuid(),
-            Title = dto.Title.Trim(),
+            Title = title,
             Description = dto.Description?.Trim() ?? string.Empty,
             StartsAt = startsAt,
             EndsAt = endsAt,
@@ -267,10 +264,10 @@ public class ExamsController : ControllerBase
             UnpublishedAt = null,
             AssessmentType = assessmentType,
             ExamPeriod = examPeriod,
-            AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty,
-            SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty,
-            CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty,
-            CourseOfferingId = dto.CourseOfferingId,
+            AcademicYear = academicYear,
+            SemesterLabel = semesterLabel,
+            CohortLabel = cohortLabel,
+            CourseOfferingId = offering.Id,
             MaximumPoints = dto.MaximumPoints
         };
 
@@ -310,11 +307,8 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        if (exam.CreatedByUserId != userId.Value)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
-
-        if (string.IsNullOrWhiteSpace(dto.Title))
-            return BadRequest(new { message = "Title is required." });
 
         if (dto.MaximumPoints <= 0)
             return BadRequest(new { message = "MaximumPoints must be greater than 0." });
@@ -327,33 +321,20 @@ public class ExamsController : ControllerBase
         var endsAt = dto.EndsAt?.ToUniversalTime() ?? startsAt.AddMinutes(durationMinutes);
         var assessmentType = NormalizeAssessmentType(dto.AssessmentType);
         var examPeriod = NormalizeExamPeriod(dto.ExamPeriod);
-        if (User.IsInRole("Assistant") && assessmentType == "Provim")
-            return BadRequest(new { message = "Assistants can manage only kollokfium assessments." });
+        if (User.IsInRole("Assistant") && assessmentType == "Exam")
+            return BadRequest(new { message = "Assistants can manage only colloquium assessments." });
 
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
 
-        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
-            return BadRequest(new { message = "Assistant exams must stay linked to an assigned course offering." });
+        if (!dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "CourseOfferingId is required." });
 
-        if (dto.CourseOfferingId.HasValue)
-        {
-            var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
-            if (!offeringExists)
-                return BadRequest(new { message = "CourseOfferingId is invalid." });
+        var offering = await GetAuthorizedCourseOfferingAsync(dto.CourseOfferingId.Value, userId.Value);
+        if (offering == null)
+            return Forbid();
 
-            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-            var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == dto.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive &&
-                a.RoleInOffering == assignmentRole);
-
-            if (!hasAssignment)
-                return Forbid();
-        }
-
-        exam.Title = dto.Title.Trim();
+        exam.Title = BuildExamTitle(dto.Title, offering, assessmentType, examPeriod);
         exam.Description = dto.Description?.Trim() ?? string.Empty;
         exam.StartsAt = startsAt;
         exam.EndsAt = endsAt;
@@ -365,11 +346,11 @@ public class ExamsController : ControllerBase
         exam.UnpublishedAt = exam.UnpublishedAt ?? DateTime.UtcNow;
         exam.AssessmentType = assessmentType;
         exam.ExamPeriod = examPeriod;
-        exam.AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty;
-        exam.SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty;
-        exam.CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty;
+        exam.AcademicYear = ResolveAcademicYear(offering, dto.AcademicYear);
+        exam.SemesterLabel = ResolveSemesterLabel(offering, dto.SemesterLabel);
+        exam.CohortLabel = ResolveCohortLabel(offering, dto.CohortLabel);
         exam.MaximumPoints = dto.MaximumPoints;
-        exam.CourseOfferingId = dto.CourseOfferingId;
+        exam.CourseOfferingId = offering.Id;
         exam.RequiresLockdown = false;
         exam.AllowedClient = "StandardBrowser";
         exam.LockdownMode = "Advisory";
@@ -512,6 +493,8 @@ public class ExamsController : ControllerBase
             attempt.PublishedAt = null;
             attempt.PublishedByUserId = null;
         }
+
+        await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
         try
         {
             await _context.SaveChangesAsync();
@@ -602,6 +585,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            await MarkStudentAccessStartedAsync(examId, userId.Value, now);
             try
             {
                 await _context.SaveChangesAsync();
@@ -622,6 +606,9 @@ public class ExamsController : ControllerBase
                 attempt.StartedAt
             }, "ExamDelivery");
         }
+
+        await MarkStudentAccessStartedAsync(examId, userId.Value, DateTime.UtcNow);
+        await _context.SaveChangesAsync();
 
         return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
     }
@@ -699,6 +686,7 @@ public class ExamsController : ControllerBase
             attempt.AnswersJson = JsonSerializer.Serialize(answers);
         }
 
+        await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         try
         {
             await _context.SaveChangesAsync();
@@ -816,6 +804,7 @@ public class ExamsController : ControllerBase
             attempt.AnswersJson = JsonSerializer.Serialize(answers);
         }
 
+        await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         await _context.SaveChangesAsync();
 
         var runResult = BuildTechnicalRunResult(question, response);
@@ -943,6 +932,7 @@ public class ExamsController : ControllerBase
         attempt.IntegrityAutoActionTriggeredAt = autoActionTriggeredAt;
 
         _context.ExamIntegrityEvents.Add(integrityEvent);
+        await MarkStudentAccessStartedAsync(examId, userId.Value, DateTime.UtcNow);
         await _context.SaveChangesAsync(cancellationToken);
 
         await _auditLogService.LogAsync("ExamIntegrityEvent.Recorded", "ExamAttempt", attempt.Id, new
@@ -1033,9 +1023,311 @@ public class ExamsController : ControllerBase
             Events = events.Select(MapIntegrityTimelineEvent).ToList()
         });
     }
+
+    [HttpGet("{examId:guid}/access-status")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> GetExamAccessStatus(Guid examId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: true, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var access = await _context.ExamStudentAccesses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId.Value);
+        var hasAccess = !requiresCode || IsStudentAccessGranted(access);
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = requiresCode,
+            HasAccess = hasAccess,
+            AccessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified,
+            VerifiedAt = access?.VerifiedAt,
+            ApprovedAt = access?.ApprovedAt,
+            Message = hasAccess ? "Access confirmed." : "Enter the exam access code provided by the professor."
+        });
+    }
+
+    [HttpPost("{examId:guid}/verify-entry-code")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> VerifyEntryCode(Guid examId, [FromBody] VerifyExamAccessCodeDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: true, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var submittedCode = NormalizeAccessCode(dto.Code);
+        if (string.IsNullOrWhiteSpace(submittedCode))
+            return BadRequest(new { message = "Entry code is required." });
+
+        var now = DateTime.UtcNow;
+        var activeCode = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
+            .OrderByDescending(x => x.GeneratedAt)
+            .FirstOrDefaultAsync();
+
+        if (activeCode == null || activeCode.ExpiresAt <= now)
+            return BadRequest(new { message = "This entry code has expired. Please ask the professor for a new code." });
+
+        var codeHash = HashAccessCode(submittedCode);
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(activeCode.CodeHash), Encoding.UTF8.GetBytes(codeHash)))
+            return BadRequest(new { message = "The entry code is not valid for this exam." });
+
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        access.AccessStatus = StudentAccessStatusCodeVerified;
+        access.VerifiedAt = now;
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.CodeVerified", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            access.VerifiedAt
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = true,
+            HasAccess = true,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            Message = "Access confirmed. You can start the exam."
+        });
+    }
+
+    [HttpPost("{examId:guid}/access-codes")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessCodeResponseDto>> GenerateExamAccessCode(Guid examId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!exam.IsPublished || exam.Status != "Published")
+            return BadRequest(new { message = "Entry codes can be generated only after the assessment is published." });
+
+        var now = DateTime.UtcNow;
+        var activeCodes = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
+            .ToListAsync();
+
+        foreach (var accessCode in activeCodes)
+        {
+            accessCode.IsActive = false;
+            accessCode.RevokedAt = now;
+            accessCode.RevokedByUserId = userId.Value;
+        }
+
+        var plainCode = GenerateAccessCode();
+        var created = new ExamAccessCode
+        {
+            Id = Guid.NewGuid(),
+            ExamId = exam.Id,
+            CodeHash = HashAccessCode(plainCode),
+            GeneratedByUserId = userId.Value,
+            GeneratedAt = now,
+            ExpiresAt = now.AddMinutes(ExamAccessCodeLifetimeMinutes),
+            IsActive = true
+        };
+
+        _context.ExamAccessCodes.Add(created);
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.CodeGenerated", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            created.GeneratedAt,
+            created.ExpiresAt
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessCodeResponseDto
+        {
+            Id = created.Id,
+            Code = plainCode,
+            GeneratedAt = created.GeneratedAt,
+            ExpiresAt = created.ExpiresAt,
+            IsActive = created.IsActive
+        });
+    }
+
+    [HttpPost("{examId:guid}/students/{studentId:guid}/allow-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessStatusDto>> AllowStudentExamAccess(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusManuallyApproved;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovedAt = now;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Professor approval";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.ManualApproval", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            approvedByUserId = userId.Value,
+            access.ApprovedAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = true,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            Message = "Student access approved."
+        });
+    }
+
+    [HttpGet("{examId:guid}/live-monitor")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamLiveMonitorDto>> GetLiveMonitor(Guid examId)
+    {
+        var exam = await _context.Exams
+            .Include(x => x.CourseOffering)
+            .FirstOrDefaultAsync(x => x.Id == examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Exam must be linked to a course offering before live monitoring is available." });
+
+        var students = await _context.StudentCourseEnrollments
+            .Where(x => x.CourseOfferingId == exam.CourseOfferingId.Value && x.EligibleForExam)
+            .Join(_context.Users,
+                enrollment => enrollment.StudentId,
+                user => user.Id,
+                (enrollment, user) => new { Enrollment = enrollment, Student = user })
+            .OrderBy(x => x.Student.FullName)
+            .ToListAsync();
+        var studentIds = students.Select(x => x.Student.Id).ToList();
+        var accesses = await _context.ExamStudentAccesses
+            .Where(x => x.ExamId == exam.Id && studentIds.Contains(x.StudentId))
+            .ToDictionaryAsync(x => x.StudentId);
+        var attempts = await _context.ExamAttempts
+            .Where(x => x.ExamId == exam.Id && studentIds.Contains(x.StudentId))
+            .ToDictionaryAsync(x => x.StudentId);
+        var latestEvents = await _context.ExamIntegrityEvents
+            .Where(x => x.ExamId == exam.Id && studentIds.Contains(x.StudentId))
+            .GroupBy(x => x.StudentId)
+            .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
+            .ToDictionaryAsync(x => x.StudentId);
+        var activeCode = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null && x.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(x => x.GeneratedAt)
+            .FirstOrDefaultAsync();
+
+        var rows = students.Select(item =>
+        {
+            accesses.TryGetValue(item.Student.Id, out var access);
+            attempts.TryGetValue(item.Student.Id, out var attempt);
+            latestEvents.TryGetValue(item.Student.Id, out var latestEvent);
+
+            var lastActivityAt = attempt?.LastSavedAt ?? attempt?.SubmittedAt ?? access?.LastActivityAt ?? access?.VerifiedAt ?? access?.ApprovedAt;
+            var durationUsed = attempt?.SubmittedAt is not null
+                ? Math.Max(0, (int)Math.Round((attempt.SubmittedAt.Value - attempt.StartedAt).TotalMinutes))
+                : attempt is not null
+                    ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - attempt.StartedAt).TotalMinutes))
+                    : 0;
+
+            return new ExamLiveMonitorStudentDto
+            {
+                StudentId = item.Student.Id,
+                FullName = item.Student.FullName,
+                Email = item.Student.Email,
+                EnrollmentStatus = item.Enrollment.Status,
+                AccessStatus = ResolveLiveAccessStatus(access, attempt),
+                AttemptStatus = attempt?.Status ?? "NotStarted",
+                VerifiedAt = access?.VerifiedAt,
+                ApprovedAt = access?.ApprovedAt,
+                StartedAt = attempt?.StartedAt,
+                SubmittedAt = attempt?.SubmittedAt,
+                LastActivityAt = lastActivityAt,
+                DurationUsedMinutes = durationUsed,
+                ViolationCount = attempt?.IntegrityViolationCount ?? 0,
+                LatestViolationAt = latestEvent?.OccurredAt,
+                LatestViolationType = latestEvent?.EventType ?? string.Empty,
+                IntegritySeverity = ResolveIntegritySeverity(attempt?.IntegrityViolationCount ?? 0)
+            };
+        }).ToList();
+
+        return Ok(new ExamLiveMonitorDto
+        {
+            ExamId = exam.Id,
+            ExamTitle = exam.Title,
+            ActiveCodeExpiresAt = activeCode?.ExpiresAt,
+            Summary = new ExamLiveMonitorSummaryDto
+            {
+                TotalEnrolled = rows.Count,
+                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
+                Active = rows.Count(x => x.AttemptStatus == ExamAttemptInProgressStatus),
+                Submitted = rows.Count(x => x.AttemptStatus == ExamAttemptSubmittedStatus),
+                NotJoined = rows.Count(x => x.AttemptStatus == "NotStarted"),
+                WithViolations = rows.Count(x => x.ViolationCount > 0)
+            },
+            Students = rows
+        });
+    }
+
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
-    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission)
+    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission, bool enforceEntryCode = true)
     {
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return "This exam is not available for students.";
@@ -1058,7 +1350,7 @@ public class ExamsController : ControllerBase
                 (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
 
             if (!canUseCurrentTermFallback)
-                return null;
+                return StudentExamNotEligibleMessage;
         }
 
         if (blockResubmission)
@@ -1072,7 +1364,117 @@ public class ExamsController : ControllerBase
                 return "You have already submitted this exam.";
         }
 
+        if (enforceEntryCode && await RequiresEntryCodeAsync(exam.Id))
+        {
+            var access = await _context.ExamStudentAccesses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId);
+
+            if (!IsStudentAccessGranted(access))
+                return "Enter the exam access code before starting this exam.";
+        }
+
         return null;
+    }
+
+    private async Task<bool> RequiresEntryCodeAsync(Guid examId)
+    {
+        return await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == examId);
+    }
+
+    private async Task<ExamStudentAccess> GetOrCreateStudentAccessAsync(Guid examId, Guid studentId)
+    {
+        var access = await _context.ExamStudentAccesses
+            .FirstOrDefaultAsync(x => x.ExamId == examId && x.StudentId == studentId);
+
+        if (access != null)
+            return access;
+
+        access = new ExamStudentAccess
+        {
+            Id = Guid.NewGuid(),
+            ExamId = examId,
+            StudentId = studentId,
+            AccessStatus = StudentAccessStatusNotVerified
+        };
+        _context.ExamStudentAccesses.Add(access);
+        return access;
+    }
+
+    private static bool IsStudentAccessGranted(ExamStudentAccess? access)
+    {
+        return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
+    }
+
+    private async Task MarkStudentAccessStartedAsync(Guid examId, Guid studentId, DateTime now)
+    {
+        if (!await RequiresEntryCodeAsync(examId))
+            return;
+
+        var access = await GetOrCreateStudentAccessAsync(examId, studentId);
+        if (access.AccessStatus != StudentAccessStatusSubmitted)
+            access.AccessStatus = StudentAccessStatusStarted;
+        access.LastActivityAt = now;
+    }
+
+    private async Task MarkStudentAccessSubmittedAsync(Guid examId, Guid studentId, DateTime now)
+    {
+        if (!await RequiresEntryCodeAsync(examId))
+            return;
+
+        var access = await GetOrCreateStudentAccessAsync(examId, studentId);
+        access.AccessStatus = StudentAccessStatusSubmitted;
+        access.LastActivityAt = now;
+    }
+
+    private async Task<bool> IsStudentEligibleForExamAsync(Guid studentId, Exam exam)
+    {
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        return await _context.StudentCourseEnrollments.AnyAsync(x =>
+            x.StudentId == studentId &&
+            x.CourseOfferingId == exam.CourseOfferingId.Value &&
+            x.EligibleForExam &&
+            x.Status == "Eligible");
+    }
+
+    private static string ResolveLiveAccessStatus(ExamStudentAccess? access, ExamAttempt? attempt)
+    {
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
+            return StudentAccessStatusSubmitted;
+
+        if (attempt?.Status == ExamAttemptInProgressStatus)
+            return StudentAccessStatusStarted;
+
+        return access?.AccessStatus ?? StudentAccessStatusNotVerified;
+    }
+
+    private static string ResolveIntegritySeverity(int violationCount)
+    {
+        if (violationCount >= IntegrityAutoActionThreshold)
+            return "High risk";
+
+        if (violationCount > 0)
+            return "Warning";
+
+        return "None";
+    }
+
+    private static string GenerateAccessCode()
+    {
+        return RandomNumberGenerator.GetInt32(100000, 999999).ToString();
+    }
+
+    private static string NormalizeAccessCode(string? code)
+    {
+        return Regex.Replace(code ?? string.Empty, "\\s+", string.Empty).Trim().ToUpperInvariant();
+    }
+
+    private static string HashAccessCode(string code)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(NormalizeAccessCode(code)));
+        return Convert.ToHexString(bytes);
     }
 
     private static bool IsDuplicateExamAttemptException(DbUpdateException exception)
@@ -1225,7 +1627,12 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/albiona-exam-metadata-validation
+feature/albiona-exam-metadata-validation
+ main
 
+
+ main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -1821,6 +2228,8 @@ public class ExamsController : ControllerBase
         if (selectedCandidates.Count == 0)
             return BadRequest(new { message = "No valid question combination could be created for the remaining exam points." });
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
         if (replaceExisting && existingQuestions.Count > 0)
         {
             _context.Questions.RemoveRange(existingQuestions);
@@ -1831,7 +2240,9 @@ public class ExamsController : ControllerBase
             .ToList();
 
         _context.Questions.AddRange(createdQuestions);
+        exam.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         var createdPoints = createdQuestions.Sum(question => question.Points);
         var difference = createdPoints - targetPoints;
@@ -2070,11 +2481,49 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(assignmentRole))
             return false;
 
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
+        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
+    }
+
+    private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)
+    {
+        var assignmentRole = User.IsInRole("Professor")
+            ? "Professor"
+            : User.IsInRole("Assistant")
+                ? "Assistant"
+                : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(assignmentRole))
+            return null;
+
+        var offering = await _context.CourseOfferings
+            .Include(x => x.Course)
+            .Include(x => x.Term)
+            .FirstOrDefaultAsync(x => x.Id == offeringId);
+
+        if (offering == null)
+            return null;
+
+        var hasAccess = await UserHasOfferingAccessAsync(offeringId, userId, assignmentRole);
+        return hasAccess ? offering : null;
+    }
+
+    private async Task<bool> UserHasOfferingAccessAsync(Guid offeringId, Guid userId, string assignmentRole)
+    {
+        var hasStaffAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == offeringId &&
+            a.UserId == userId &&
             a.IsActive &&
             a.RoleInOffering == assignmentRole);
+
+        if (hasStaffAssignment)
+            return true;
+
+        return assignmentRole switch
+        {
+            "Professor" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.PrimaryProfessorId == userId),
+            "Assistant" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.AssistantId == userId),
+            _ => false
+        };
     }
 
     private async Task<Exam?> FindQuestionBankContainerAsync(Guid offeringId)
@@ -2593,11 +3042,11 @@ public class ExamsController : ControllerBase
         var normalized = NormalizeOptionalValue(value)?.Replace(" ", "", StringComparison.OrdinalIgnoreCase);
         return normalized switch
         {
-            "Colloquium1" or "Kollokfium1" or "Midterm1" => "Kollokfium1",
-            "Colloquium2" or "Kollokfium2" or "Midterm2" => "Kollokfium2",
-            "Practice" or "PracticeExam" or "Ushtrime" => "Practice",
-            "Final" or "FinalExam" or "Exam" or "Provim" => "Provim",
-            _ => "Provim"
+            "Colloquium1" or "Kollokfium1" or "Midterm1" => "Colloquium 1",
+            "Colloquium2" or "Kollokfium2" or "Midterm2" => "Colloquium 2",
+            "Practice" or "PracticeExam" or "PracticeAssessment" or "Ushtrime" => "Practice Assessment",
+            "Final" or "FinalExam" or "Exam" or "Provim" => "Exam",
+            _ => "Exam"
         };
     }
 
@@ -2609,12 +3058,12 @@ public class ExamsController : ControllerBase
 
         return normalized.ToLowerInvariant() switch
         {
-            "january" or "janar" or "afati i janarit" => "AfatiJanarit",
-            "april" or "prill" or "afati i prillit" => "AfatiPrillit",
-            "june" or "qershor" or "afati i qershorit" => "AfatiQershorit",
-            "september" or "shtator" or "afati i shtatorit" => "AfatiShtatorit",
-            "october" or "tetor" or "afati i tetorit" => "AfatiTetorit",
-            "semester" or "during semester" or "gjate semestrit" => "GjateSemestrit",
+            "january" or "january exam period" or "af atijanarit" or "afatijanarit" or "janar" or "afati i janarit" => "January Exam Period",
+            "april" or "april exam period" or "afatiprillit" or "prill" or "afati i prillit" => "April Exam Period",
+            "june" or "june exam period" or "afatiqershorit" or "qershor" or "afati i qershorit" => "June Exam Period",
+            "september" or "september exam period" or "afatishtatorit" or "shtator" or "afati i shtatorit" => "September Exam Period",
+            "october" or "october exam period" or "af atitetorit" or "afatitetorit" or "tetor" or "afati i tetorit" => "October Exam Period",
+            "semester" or "during semester" or "gjate semestrit" => "During Semester",
             _ => "Custom"
         };
     }
@@ -2624,7 +3073,103 @@ public class ExamsController : ControllerBase
         var normalized = NormalizeOptionalValue(value);
         return normalized?.Length > 120 ? normalized[..120] : normalized;
     }
+ feature/albiona-exam-metadata-validation
+feature/albiona-exam-metadata-validation
+ main
 
+    private static string BuildExamTitle(string? requestedTitle, CourseOffering offering, string assessmentType, string examPeriod)
+    {
+        var normalizedTitle = NormalizeOptionalText(requestedTitle);
+        if (!string.IsNullOrWhiteSpace(normalizedTitle))
+            return normalizedTitle;
+
+        var courseCode = NormalizeOptionalText(offering.Course?.Code);
+        var courseName = NormalizeOptionalText(offering.Course?.Name);
+        var courseLabel = string.Join(" - ", new[] { courseCode, courseName }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        if (string.IsNullOrWhiteSpace(courseLabel))
+            courseLabel = "Course";
+
+        var parts = new List<string>
+        {
+            courseLabel,
+            FormatAssessmentTypeLabel(assessmentType)
+        };
+
+        var periodLabel = FormatExamPeriodLabel(assessmentType, examPeriod);
+        if (!string.IsNullOrWhiteSpace(periodLabel))
+            parts.Add(periodLabel);
+
+        var academicYear = ResolveAcademicYear(offering, null);
+        if (!string.IsNullOrWhiteSpace(academicYear))
+            parts.Add(academicYear);
+
+        return string.Join(" - ", parts);
+    }
+
+    private static string ResolveAcademicYear(CourseOffering offering, string? fallbackAcademicYear)
+    {
+        return NormalizeOptionalText(offering.Term?.AcademicYearLabel) ??
+               NormalizeOptionalText(offering.Term?.Code) ??
+               NormalizeOptionalText(fallbackAcademicYear) ??
+               string.Empty;
+    }
+
+    private static string ResolveSemesterLabel(CourseOffering offering, string? fallbackSemesterLabel)
+    {
+        if (offering.SemesterNo > 0)
+            return $"Semester {offering.SemesterNo}";
+
+        return NormalizeOptionalText(offering.Term?.Season) ??
+               NormalizeOptionalText(fallbackSemesterLabel) ??
+               string.Empty;
+    }
+
+    private static string ResolveCohortLabel(CourseOffering offering, string? fallbackCohortLabel)
+    {
+        var parts = new List<string>();
+        if (offering.YearOfStudy > 0)
+            parts.Add($"Year {offering.YearOfStudy}");
+
+        var sectionCode = NormalizeOptionalText(offering.SectionCode);
+        if (!string.IsNullOrWhiteSpace(sectionCode))
+            parts.Add($"Section {sectionCode}");
+
+        if (parts.Count > 0)
+            return string.Join(" / ", parts);
+
+        return NormalizeOptionalText(fallbackCohortLabel) ?? string.Empty;
+    }
+
+    private static string FormatAssessmentTypeLabel(string assessmentType)
+    {
+        return assessmentType switch
+        {
+            "Kollokfium1" => "Kollokfium 1",
+            "Kollokfium2" => "Kollokfium 2",
+            "Practice" => "Ushtrime / practice",
+            _ => "Provim"
+        };
+    }
+
+    private static string? FormatExamPeriodLabel(string assessmentType, string examPeriod)
+    {
+        if (!string.Equals(assessmentType, "Provim", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return examPeriod switch
+        {
+            "AfatiJanarit" => "Afati i Janarit",
+            "AfatiPrillit" => "Afati i Prillit",
+            "AfatiQershorit" => "Afati i Qershorit",
+            "AfatiShtatorit" => "Afati i Shtatorit",
+            "AfatiTetorit" => "Afati i Tetorit",
+            "GjateSemestrit" => "Gjate semestrit",
+            _ => null
+        };
+    }
+ feature/albiona-exam-metadata-validation
+main
+ main
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -2988,10 +3533,27 @@ public class ExamsController : ControllerBase
         var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
         var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
 
+ feature/albiona-exam-metadata-validation
+feature/albiona-exam-metadata-validation
+        if (!requiresLockdown)
+            return null;
+
+        var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);
+        if (!validClient)
+            return "AllowedClient must be StandardBrowser or SafeExamBrowser.";
+
+        var validMode = string.Equals(normalizedMode, "Advisory", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalizedMode, "Strict", StringComparison.OrdinalIgnoreCase);
+        if (!validMode)
+            return "LockdownMode must be Advisory or Strict.";
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+
         if (!requiresLockdown)
             return null;
 
         var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient", "InstitutionalKiosk" };
+ main
         var allowedModes = new[] { "Advisory", "Strict" };
 
         if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
@@ -2999,6 +3561,10 @@ public class ExamsController : ControllerBase
 
         if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
             return "Invalid lockdown mode.";
+     main
+
+        if (requiresLockdown && string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
+            return "A lockdown exam must require SafeExamBrowser or KioskClient.";
 
         return null;
     }

@@ -1,9 +1,12 @@
 import { Link, useParams } from "react-router-dom";
 import {
   addSelectedQuestionsFromBank,
+  allowExamStudentAccess,
   deleteExamQuestion,
+  generateExamAccessCode,
   generateRandomQuestions,
   getExam,
+  getExamLiveMonitor,
   listQuestions,
   publishExam,
   replaceExamQuestionWithBankQuestion,
@@ -30,6 +33,10 @@ export default function ExamDetailsPage() {
   const [publishing, setPublishing] = useState(false);
   const [unpublishing, setUnpublishing] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [accessCode, setAccessCode] = useState(null);
+  const [liveMonitor, setLiveMonitor] = useState(null);
+  const [generatingAccessCode, setGeneratingAccessCode] = useState(false);
+  const [approvingStudentId, setApprovingStudentId] = useState("");
   const [generating, setGenerating] = useState(false);
   const [replacingId, setReplacingId] = useState("");
   const [savingPointsId, setSavingPointsId] = useState("");
@@ -181,6 +188,33 @@ export default function ExamDetailsPage() {
     };
   }, [canEdit, exam?.courseOfferingId, isDraft]);
 
+  useEffect(() => {
+    if (!canEdit || !examId || !exam?.isPublished) {
+      setLiveMonitor(null);
+      setAccessCode(null);
+      return;
+    }
+
+    let active = true;
+
+    async function loadLiveMonitor() {
+      try {
+        const data = await getExamLiveMonitor(examId);
+        if (active) setLiveMonitor(data);
+      } catch {
+        if (active) setLiveMonitor(null);
+      }
+    }
+
+    loadLiveMonitor();
+    const timer = window.setInterval(loadLiveMonitor, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canEdit, exam?.isPublished, examId]);
+
   if (userLoading) {
     return <div className="pageState">{t("examDetails.loading")}</div>;
   }
@@ -233,6 +267,50 @@ export default function ExamDetailsPage() {
     }
   }
 
+  async function onGenerateAccessCode() {
+    if (!examId || !canEdit || !exam?.isPublished) return;
+
+    try {
+      setGeneratingAccessCode(true);
+      setError("");
+      const generated = await generateExamAccessCode(examId);
+      setAccessCode(generated);
+      const monitor = await getExamLiveMonitor(examId).catch(() => null);
+      if (monitor) setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to generate exam access code.");
+    } finally {
+      setGeneratingAccessCode(false);
+    }
+  }
+
+  async function onAllowStudentAccess(student) {
+    if (!examId || !student?.studentId) return;
+
+    const confirmed = window.confirm(`Allow ${student.fullName || student.email} to enter this exam without the active code?`);
+    if (!confirmed) return;
+
+    try {
+      setApprovingStudentId(student.studentId);
+      setError("");
+      await allowExamStudentAccess(examId, student.studentId, "Professor approval");
+      const monitor = await getExamLiveMonitor(examId);
+      setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to approve student access.");
+    } finally {
+      setApprovingStudentId("");
+    }
+  }
+
   async function onGenerateRandomQuestions() {
     if (!examId || !canGenerate) return;
 
@@ -245,10 +323,23 @@ export default function ExamDetailsPage() {
         type: generator.type || null,
         replaceExisting: true,
       });
-      const newQuestions = Array.isArray(created?.questions) ? created.questions : [];
+      const refreshedQuestions = await listQuestions(examId);
+      const newQuestions = Array.isArray(refreshedQuestions)
+        ? refreshedQuestions
+        : Array.isArray(created?.questions)
+          ? created.questions
+          : [];
       setQuestions(newQuestions);
       setPointDrafts(buildPointDrafts(newQuestions));
-      setGenerationFeedback(created);
+      setSelectedBankQuestionIds([]);
+      setGenerationFeedback({
+        ...created,
+        createdQuestionCount: newQuestions.length,
+        requestedQuestionCount: Number(generator.numberOfQuestions),
+        message:
+          created?.message ||
+          `Rebuilt this draft with ${newQuestions.length} question${newQuestions.length === 1 ? "" : "s"}.`,
+      });
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -528,6 +619,17 @@ export default function ExamDetailsPage() {
               </article>
             </section>
 
+            {canEdit && exam?.isPublished ? (
+              <ExamAccessPanel
+                accessCode={accessCode}
+                liveMonitor={liveMonitor}
+                generating={generatingAccessCode}
+                approvingStudentId={approvingStudentId}
+                onGenerate={onGenerateAccessCode}
+                onAllowStudent={onAllowStudentAccess}
+              />
+            ) : null}
+
             <section className="surfaceCard">
               <div className="sectionHeader">
                 <div>
@@ -607,96 +709,114 @@ export default function ExamDetailsPage() {
             ) : null}
 
             {isDraft && exam?.courseOfferingId ? (
-              <section className="surfaceCard generationPanel">
+              <section className="surfaceCard questionSetupPanel">
                 <div className="sectionHeader">
                   <div>
-                    <h3>{t("examDetails.generator.title")}</h3>
-                    <span className="small">Rebuild this draft from the course question bank with an exact question count.</span>
+                    <h3>Question setup</h3>
+                    <span className="small">Choose how questions should be added to this draft.</span>
                   </div>
-                  <span className="statusPill statusDraft">{questions.length} current</span>
+                  <span className="statusPill statusDraft">{questions.length} in exam</span>
                 </div>
                 <div className="sectionBody stackLg">
-                  <div className="generationSummaryGrid">
-                    <article>
-                      <span className="summaryLabel">Mode</span>
-                      <strong>Replace current set</strong>
-                      <small>Old draft questions are removed before the new set is saved.</small>
-                    </article>
-                    <article>
-                      <span className="summaryLabel">Target points</span>
-                      <strong>{examMaximumPoints || "-"}</strong>
-                      <small>The closest matching point total is selected from the bank.</small>
-                    </article>
-                    <article>
-                      <span className="summaryLabel">After generate</span>
-                      <strong>{Number(generator.numberOfQuestions) || 0} questions</strong>
-                      <small>Generate 5 creates 5. Generate 3 rebuilds the set to 3.</small>
-                    </article>
+                  <div className="questionSetupChoices" role="tablist" aria-label="Question setup mode">
+                    <button
+                      className={questionSetupMode === "generate" ? "active" : ""}
+                      type="button"
+                      onClick={() => setQuestionSetupMode("generate")}
+                    >
+                      <strong>Generate from question bank</strong>
+                      <span>Suggest questions by type and count.</span>
+                    </button>
+                    <button
+                      className={questionSetupMode === "manual" ? "active" : ""}
+                      type="button"
+                      onClick={() => setQuestionSetupMode("manual")}
+                    >
+                      <strong>Select questions manually</strong>
+                      <span>Choose exact bank questions.</span>
+                    </button>
                   </div>
 
-                  <div className="generationControls">
-                    <div className="field">
-                      <label className="label">Question count</label>
-                      <input
-                        className="input inputCompact"
-                        type="number"
-                        min="1"
-                        value={generator.numberOfQuestions}
-                        onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
-                        disabled={generating}
-                      />
-                      <span className="fieldHint">This is the final number of generated questions in the exam.</span>
+                  {!questionSetupMode ? (
+                    <div className="compactHelpPanel">
+                      Select one option above to open the related setup form. Automatic generation uses the course question bank; manual selection lets you choose exact questions.
                     </div>
-                    <div className="field generationQuickPick">
-                      <span className="label">Quick count</span>
-                      <div className="segmentedControl">
-                        {[3, 5, 10].map((count) => (
-                          <button
-                            key={count}
-                            className={Number(generator.numberOfQuestions) === count ? "active" : ""}
-                            type="button"
-                            onClick={() => setGenerator((current) => ({ ...current, numberOfQuestions: count }))}
+                  ) : null}
+
+                  {questionSetupMode === "generate" ? (
+                    <div className="questionSetupBody">
+                      <div className="questionBankFormGrid">
+                        <div className="field">
+                          <label className="label">Question count</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min="1"
+                            value={generator.numberOfQuestions}
+                            onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
+                            disabled={generating}
+                          />
+                          <span className="fieldHint">Generate 5 creates 5 questions. Changing to 3 rebuilds the draft to 3 questions.</span>
+                        </div>
+                        <div className="field">
+                          <label className="label">{t("questionBank.type")}</label>
+                          <select
+                            className="input"
+                            value={generator.type}
+                            onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
                             disabled={generating}
                           >
-                            {count}
-                          </button>
-                        ))}
+                            <option value="">{t("questionBank.allTypes")}</option>
+                            <option value="MCQ">MCQ</option>
+                            <option value="Text">{t("common.text")}</option>
+                            <option value="CSharp">C#</option>
+                            <option value="SQL">SQL</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
+                        <button
+                          className="btn btnPrimary"
+                          type="button"
+                          onClick={onGenerateRandomQuestions}
+                          disabled={!canGenerate || generating}
+                        >
+                          {generating ? "Rebuilding..." : `Generate ${Number(generator.numberOfQuestions) || ""}`}
+                        </button>
                       </div>
                     </div>
-                    <div className="field">
-                      <label className="label">{t("questionBank.type")}</label>
-                      <select
-                        className="input inputCompact"
-                        value={generator.type}
-                        onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
-                        disabled={generating}
-                      >
-                        <option value="">{t("questionBank.allTypes")}</option>
-                        <option value="MCQ">MCQ</option>
-                        <option value="Text">{t("common.text")}</option>
-                        <option value="CSharp">C#</option>
-                        <option value="SQL">SQL</option>
-                      </select>
+                  ) : null}
+
+                  {questionSetupMode === "manual" ? (
+                    <div className="questionSetupBody">
+                      <div className="compactHelpPanel questionSelectorSummary">
+                        <strong>{bankLoading ? "Loading question bank..." : `${availableBankQuestions.length} available questions`}</strong>
+                        <span>Open the selector to search, filter by type/topic/difficulty, and choose exact questions.</span>
+                      </div>
+
+                      <div className="row examFormActions" style={{ justifyContent: "flex-end" }}>
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => setManualSelectorOpen(true)}
+                          disabled={bankLoading}
+                        >
+                          Open question selector
+                        </button>
+                      </div>
                     </div>
-                    <div className="field generationSubmitField">
-                      <span className="label">Action</span>
-                      <button
-                        className="btn btnPrimary"
-                        type="button"
-                        onClick={onGenerateRandomQuestions}
-                        disabled={!canGenerate || generating}
-                      >
-                        {generating ? "Rebuilding..." : `Generate ${Number(generator.numberOfQuestions) || ""}`}
-                      </button>
-                    </div>
-                  </div>
+                  ) : null}
 
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
+ feature/albiona-exam-metadata-validation
+                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
+
                       <strong>
-                        {generationFeedback.createdQuestionCount || generationFeedback.questions?.length || 0} questions generated
-                        {generationFeedback.replacedQuestionCount ? `, ${generationFeedback.replacedQuestionCount} replaced` : ""}
+                        Rebuilt exam question set: {generationFeedback.createdQuestionCount || questions.length} / {generationFeedback.requestedQuestionCount || generator.numberOfQuestions} questions
                       </strong>
+ main
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}
@@ -1070,6 +1190,90 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
   );
 }
 
+function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudentId, onGenerate, onAllowStudent }) {
+  const summary = liveMonitor?.summary || {};
+  const students = Array.isArray(liveMonitor?.students) ? liveMonitor.students : [];
+  const activeExpiresAt = accessCode?.expiresAt || liveMonitor?.activeCodeExpiresAt;
+
+  return (
+    <section className="surfaceCard examAccessPanel">
+      <div className="sectionHeader">
+        <div>
+          <h3>Exam access and live monitoring</h3>
+          <span className="small">Control classroom entry with a short code and monitor student activity during the exam.</span>
+        </div>
+        <button className="btn btnPrimary" type="button" onClick={onGenerate} disabled={generating}>
+          {generating ? "Generating..." : accessCode ? "Regenerate entry code" : "Generate entry code"}
+        </button>
+      </div>
+
+      <div className="sectionBody">
+        <div className="examAccessGrid">
+          <article className="examAccessCodeBox">
+            <span className="summaryLabel">Active code</span>
+            <strong>{accessCode?.code || (activeExpiresAt ? "Generated" : "No active code")}</strong>
+            <small>{activeExpiresAt ? `Expires ${formatDateTime(activeExpiresAt)}` : "Generate a 3-minute code when students are ready to enter."}</small>
+          </article>
+          <article><span className="summaryLabel">Verified</span><strong>{summary.verified ?? 0}</strong></article>
+          <article><span className="summaryLabel">Active</span><strong>{summary.active ?? 0}</strong></article>
+          <article><span className="summaryLabel">Submitted</span><strong>{summary.submitted ?? 0}</strong></article>
+          <article><span className="summaryLabel">Not joined</span><strong>{summary.notJoined ?? 0}</strong></article>
+          <article><span className="summaryLabel">With violations</span><strong>{summary.withViolations ?? 0}</strong></article>
+        </div>
+
+        <div className="compactTableWrap liveMonitorTableWrap">
+          <table className="compactTable">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Access</th>
+                <th>Attempt</th>
+                <th>Last activity</th>
+                <th>Violations</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No eligible students found for this course offering.</td>
+                </tr>
+              ) : (
+                students.map((student) => (
+                  <tr key={student.studentId}>
+                    <td>
+                      <strong>{student.fullName || student.email}</strong>
+                      <span className="questionRowMeta">{student.email}</span>
+                    </td>
+                    <td><span className="statusPill statusDraft">{student.accessStatus}</span></td>
+                    <td>{student.attemptStatus}</td>
+                    <td>{formatDateTime(student.lastActivityAt)}</td>
+                    <td>
+                      <span className={student.violationCount > 0 ? "statusPill statusWarn" : "statusPill statusPublished"}>
+                        {student.violationCount || 0} {student.integritySeverity || "None"}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="btn btnTiny"
+                        type="button"
+                        onClick={() => onAllowStudent(student)}
+                        disabled={approvingStudentId === student.studentId || student.attemptStatus === "Submitted"}
+                      >
+                        {approvingStudentId === student.studentId ? "Approving..." : "Allow access"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function EditQuestionModal({ draft, error, saving, onChange, onClose, onSave }) {
   const isMcq = draft.type === "MCQ";
 
@@ -1342,10 +1546,10 @@ function formatQuestionType(type) {
 
 function formatLockdownClient(value) {
   if (value === "SafeExamBrowser") return "Safe Exam Browser";
+  if (value === "KioskClient") return "Kiosk client";
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
-  if (value === "KioskClient") return "Kiosk client";
-  return value || "Standard browser";
+  return "Standard browser";
 }
 
 function parseTechnicalQuestion(question) {
@@ -1403,34 +1607,44 @@ function formatOfferingLabel(offering) {
 
 function formatAssessmentType(value) {
   const labels = {
-    FinalExam: "Provim",
-    Provim: "Provim",
-    Colloquium1: "Kollokfium 1",
-    Kollokfium1: "Kollokfium 1",
-    Colloquium2: "Kollokfium 2",
-    Kollokfium2: "Kollokfium 2",
-    RetakeExam: "Provim",
-    PracticeExam: "Ushtrime / practice",
-    Practice: "Ushtrime / practice",
+    FinalExam: "Exam",
+    Provim: "Exam",
+    Exam: "Exam",
+    Colloquium1: "Colloquium 1",
+    "Colloquium 1": "Colloquium 1",
+    Kollokfium1: "Colloquium 1",
+    Colloquium2: "Colloquium 2",
+    "Colloquium 2": "Colloquium 2",
+    Kollokfium2: "Colloquium 2",
+    RetakeExam: "Exam",
+    PracticeExam: "Practice Assessment",
+    Practice: "Practice Assessment",
+    "Practice Assessment": "Practice Assessment",
   };
-  return labels[value] || "Provim";
+  return labels[value] || "Exam";
 }
 
 function formatExamPeriod(value) {
   const labels = {
-    January: "Afati i Janarit",
-    AfatiJanarit: "Afati i Janarit",
-    AfatiPrillit: "Afati i Prillit",
-    June: "Afati i Qershorit",
-    AfatiQershorit: "Afati i Qershorit",
-    September: "Afati i Shtatorit",
-    AfatiShtatorit: "Afati i Shtatorit",
-    AfatiTetorit: "Afati i Tetorit",
-    DuringSemester: "Gjate semestrit",
-    GjateSemestrit: "Gjate semestrit",
+    January: "January Exam Period",
+    "January Exam Period": "January Exam Period",
+    AfatiJanarit: "January Exam Period",
+    AfatiPrillit: "April Exam Period",
+    "April Exam Period": "April Exam Period",
+    June: "June Exam Period",
+    "June Exam Period": "June Exam Period",
+    AfatiQershorit: "June Exam Period",
+    September: "September Exam Period",
+    "September Exam Period": "September Exam Period",
+    AfatiShtatorit: "September Exam Period",
+    AfatiTetorit: "October Exam Period",
+    "October Exam Period": "October Exam Period",
+    DuringSemester: "During semester",
+    GjateSemestrit: "During semester",
+    "During Semester": "During semester",
     Custom: "Custom",
   };
-  return labels[value] || "Afati i Janarit";
+  return labels[value] || "January Exam Period";
 }
 
 function formatDateTime(value) {

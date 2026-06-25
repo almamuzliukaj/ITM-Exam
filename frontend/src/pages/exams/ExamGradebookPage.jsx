@@ -268,104 +268,104 @@ export default function ExamGradebookPage() {
           </section>
         ) : null}
 
-        {!error ? <section className="summaryStrip">
-          <article className="summaryCard">
-            <span className="summaryLabel">Attempts</span>
-            <strong>{attempts.length}</strong>
-          </article>
-          <article className="summaryCard">
-            <span className="summaryLabel">Graded</span>
-            <strong>{gradedCount}</strong>
-          </article>
-          <article className="summaryCard">
-            <span className="summaryLabel">Needs review</span>
-            <strong>{pendingCount}</strong>
-          </article>
-          <article className="summaryCard">
-            <span className="summaryLabel">Integrity flags</span>
-            <strong>{integrityCount}</strong>
-          </article>
-          <article className="summaryCard">
-            <span className="summaryLabel">Ready to publish</span>
-            <strong>{readyToPublishCount}</strong>
-          </article>
-        </section> : null}
+        {!error ? (
+          <section className="summaryStrip">
+            <article className="summaryCard">
+              <span className="summaryLabel">Attempts</span>
+              <strong>{attempts.length}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Graded</span>
+              <strong>{gradedCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Needs review</span>
+              <strong>{pendingCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Integrity flags</span>
+              <strong>{integrityCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Ready to publish</span>
+              <strong>{readyToPublishCount}</strong>
+            </article>
+          </section>
+        ) : null}
 
-        {!error ? <section className="surfaceCard">
-          <div className="sectionHeader">
-            <div>
-              <h3>Human review workflow</h3>
-              <span className="sectionMeta">Review submitted attempts, inspect integrity events, and publish only approved grades.</span>
-            </div>
-            <div className="resourceActionGroup">
-              <span className="statusPill statusDraft">{publishedCount} published</span>
- feature/alma-student-code-workspace
-              <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
-                Export CSV
-              </button>
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
-
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
- main
-                {publishing ? "Publishing..." : "Publish graded results"}
-              </button>
-            </div>
-          </div>
-          <div className="sectionBody stackLg">
-            <div className="gradebookToolbar">
-              {[
-                { key: "all", label: "All attempts", count: attempts.length },
-                { key: "needsReview", label: "Needs review", count: pendingCount },
-                { key: "violations", label: "Violations", count: attempts.filter((attempt) => Number(attempt.integrityViolationCount || 0) > 0).length },
-                { key: "ready", label: "Ready to publish", count: attempts.filter((attempt) => attempt.isGraded && !attempt.isPublished).length },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  className={`filterTab${reviewFilter === item.key ? " filterTabActive" : ""}`}
-                  type="button"
-                  onClick={() => setReviewFilter(item.key)}
-                >
-                  <span>{item.label}</span>
-                  <strong>{item.count}</strong>
+        {!error ? (
+          <section className="surfaceCard">
+            <div className="sectionHeader">
+              <div>
+                <h3>Human review workflow</h3>
+                <span className="sectionMeta">Review submitted attempts, inspect integrity events, and publish only approved grades.</span>
+              </div>
+              <div className="resourceActionGroup">
+                <span className="statusPill statusDraft">{publishedCount} published</span>
+                <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
+                  Export CSV
                 </button>
-              ))}
+                <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
+                  {publishing ? "Publishing..." : "Publish graded results"}
+                </button>
+              </div>
             </div>
+            <div className="sectionBody stackLg">
+              <div className="gradebookToolbar">
+                {[
+                  { key: "all", label: "All attempts", count: attempts.length },
+                  { key: "needsReview", label: "Needs review", count: pendingCount },
+                  { key: "violations", label: "Violations", count: attempts.filter((attempt) => Number(attempt.integrityViolationCount || 0) > 0).length },
+                  { key: "ready", label: "Ready to publish", count: readyToPublishCount },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    className={`filterTab${reviewFilter === item.key ? " filterTabActive" : ""}`}
+                    type="button"
+                    onClick={() => setReviewFilter(item.key)}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </button>
+                ))}
+              </div>
 
-            {loading ? (
-              <div className="pageStateCard">Loading submitted attempts...</div>
-            ) : attempts.length === 0 ? (
-              <div className="emptyState">
-                <strong>No attempts submitted</strong>
-                <span>Gradebook review becomes available after students submit this assessment. Keep this page as the academic review workspace.</span>
-              </div>
-            ) : visibleAttempts.length === 0 ? (
-              <div className="emptyState">
-                <strong>No attempts in this view</strong>
-                <span>Switch filters to see other gradebook queues for this exam.</span>
-              </div>
-            ) : (
-              <>
-                <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} onReview={(attempt) => setSelectedAttemptId(attempt.attemptId)} />
-                {selectedAttempt ? (
-                  <AttemptReviewModal
-                    attempt={selectedAttempt}
-                    draft={drafts[selectedAttempt.attemptId] || {}}
-                    aiReview={aiReviews[selectedAttempt.attemptId]}
-                    reviewing={reviewingId === selectedAttempt.attemptId}
-                    saving={savingId === selectedAttempt.attemptId}
-                    disabled={!canReview}
-                    onClose={() => setSelectedAttemptId("")}
-                    onDraftChange={(nextDraft) =>
-                      setDrafts((current) => ({ ...current, [selectedAttempt.attemptId]: nextDraft }))
-                    }
-                    onAiReview={() => onAiReview(selectedAttempt)}
-                    onSaveGrade={() => onSaveGrade(selectedAttempt)}
-                  />
-                ) : null}
-              </>
-            )}
-          </div>
-        </section> : null}
+              {loading ? (
+                <div className="pageStateCard">Loading submitted attempts...</div>
+              ) : attempts.length === 0 ? (
+                <div className="emptyState">
+                  <strong>No attempts submitted</strong>
+                  <span>Gradebook review becomes available after students submit this assessment. Keep this page as the academic review workspace.</span>
+                </div>
+              ) : visibleAttempts.length === 0 ? (
+                <div className="emptyState">
+                  <strong>No attempts in this view</strong>
+                  <span>Switch filters to see other gradebook queues for this exam.</span>
+                </div>
+              ) : (
+                <>
+                  <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} onReview={(attempt) => setSelectedAttemptId(attempt.attemptId)} />
+                  {selectedAttempt ? (
+                    <AttemptReviewModal
+                      attempt={selectedAttempt}
+                      draft={drafts[selectedAttempt.attemptId] || {}}
+                      aiReview={aiReviews[selectedAttempt.attemptId]}
+                      reviewing={reviewingId === selectedAttempt.attemptId}
+                      saving={savingId === selectedAttempt.attemptId}
+                      disabled={!canReview}
+                      onClose={() => setSelectedAttemptId("")}
+                      onDraftChange={(nextDraft) =>
+                        setDrafts((current) => ({ ...current, [selectedAttempt.attemptId]: nextDraft }))
+                      }
+                      onAiReview={() => onAiReview(selectedAttempt)}
+                      onSaveGrade={() => onSaveGrade(selectedAttempt)}
+                    />
+                  ) : null}
+                </>
+              )}
+            </div>
+          </section>
+        ) : null}
       </div>
     </AppShell>
   );
@@ -834,26 +834,15 @@ function formatDateTime(value) {
 }
 
 function formatAttemptDuration(startedAt, submittedAt) {
- feature/albiona-exam-metadata-validation
-  const start = Date.parse(startedAt || "");
-  const end = Date.parse(submittedAt || "");
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
-
-  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes} min`;
-
   if (!startedAt || !submittedAt) return "-";
   const started = new Date(startedAt);
   const submitted = new Date(submittedAt);
   if (Number.isNaN(started.getTime()) || Number.isNaN(submitted.getTime())) return "-";
 
-  const totalMinutes = Math.max(0, Math.round((submitted.getTime() - started.getTime()) / 60000));
+  const totalMinutes = Math.max(1, Math.round((submitted.getTime() - started.getTime()) / 60000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours <= 0) return `${minutes} min`;
- main
+  if (hours === 0) return `${minutes} min`;
   return `${hours}h ${minutes}m`;
 }
 

@@ -4458,6 +4458,74 @@ input[type="radio"]{
   line-height: 1.6;
 }
 
+.autoSubmitModal{
+  width: min(560px, 100%);
+  border-color: rgba(185, 28, 28, .22);
+}
+
+.autoSubmitCountdown{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(185, 28, 28, .18);
+  border-radius: 12px;
+  background: #fff7f7;
+}
+
+.autoSubmitCountdown span,
+.autoSubmitDetails span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.autoSubmitCountdown strong{
+  color: #b91c1c;
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.autoSubmitDetails{
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.autoSubmitDetails strong{
+  color: var(--heading);
+}
+
+.autoSubmitDetails small{
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.submissionIntegrityNotice{
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.submissionIntegrityNotice strong{
+  color: #991b1b;
+}
+
+.submissionIntegrityNotice span{
+  color: var(--muted);
+}
+
 .confirmationDialog .formActionsBar{
   margin-top: 18px;
 }

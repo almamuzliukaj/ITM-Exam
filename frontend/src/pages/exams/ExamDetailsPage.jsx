@@ -53,6 +53,7 @@ export default function ExamDetailsPage() {
     difficulty: "",
   });
   const [manualSelectorOpen, setManualSelectorOpen] = useState(false);
+  const [questionSetupMode, setQuestionSetupMode] = useState("");
   const [reviewQuestionsOpen, setReviewQuestionsOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -810,13 +811,9 @@ export default function ExamDetailsPage() {
 
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
- feature/albiona-exam-metadata-validation
-                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
-
                       <strong>
                         Rebuilt exam question set: {generationFeedback.createdQuestionCount || questions.length} / {generationFeedback.requestedQuestionCount || generator.numberOfQuestions} questions
                       </strong>
- main
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}

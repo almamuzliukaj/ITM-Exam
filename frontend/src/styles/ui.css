@@ -744,7 +744,6 @@
   line-height: 1.5;
 }
 
- feature/agnesa-exam-access-workflow
 .autoMetadataPanel{
   display: flex;
   flex-direction: column;
@@ -797,11 +796,11 @@
   color: var(--text);
   font-size: 13px;
   line-height: 1.35;
+}
 
 .publishNoticeWarning{
   border-color: #f0c878;
   background: #fff8eb;
- main
 }
 
 .statusPill{

@@ -20,6 +20,11 @@ export async function publishExam(examId, payload = {}) {
   return response.data;
 }
 
+export async function unpublishExam(examId) {
+  const response = await api.post(`/api/exams/${examId}/unpublish`);
+  return response.data;
+}
+
 export async function deleteExam(examId) {
   await api.delete(`/api/exams/${examId}`);
 }
@@ -55,6 +60,11 @@ export async function submitExamAttempt(examId, payload) {
   return response.data;
 }
 
+export async function runTechnicalExamAnswer(examId, questionId, payload) {
+  const response = await api.post(`/api/exams/${examId}/attempt/questions/${questionId}/run`, payload);
+  return response.data;
+}
+
 export async function recordExamIntegrityEvent(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/attempt/integrity-events`, payload);
   return response.data;
@@ -85,13 +95,31 @@ export async function generateRandomQuestions(examId, payload) {
   return response.data;
 }
 
+export async function addSelectedQuestionsFromBank(examId, questionBankQuestionIds) {
+  const response = await api.post(`/api/exams/${examId}/questions/from-bank`, {
+    questionBankQuestionIds,
+  });
+  return response.data;
+}
+
 export async function updateExamQuestion(questionId, payload) {
   const response = await api.put(`/api/questions/${questionId}`, payload);
   return response.data;
 }
 
+export async function deleteExamQuestion(questionId) {
+  await api.delete(`/api/questions/${questionId}`);
+}
+
 export async function replaceExamQuestion(examId, questionId, payload = {}) {
   const response = await api.post(`/api/exams/${examId}/questions/${questionId}/replace`, payload);
+  return response.data;
+}
+
+export async function replaceExamQuestionWithBankQuestion(examId, questionId, questionBankQuestionId) {
+  const response = await api.post(`/api/exams/${examId}/questions/${questionId}/replace-with-bank-question`, {
+    questionBankQuestionId,
+  });
   return response.data;
 }
 

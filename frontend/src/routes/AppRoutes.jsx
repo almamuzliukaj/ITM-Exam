@@ -10,7 +10,11 @@ import ExamsListPage from "../pages/exams/ExamsListPage";
 import ExamCreatePage from "../pages/exams/ExamCreatePage";
 import ExamDetailsPage from "../pages/exams/ExamDetailsPage";
 import ExamGradebookPage from "../pages/exams/ExamGradebookPage";
+ feature/alma-question-generation-ux
 import ExamMonitorPage from "../pages/exams/ExamMonitorPage";
+
+import ProfessorGradebookIndexPage from "../pages/exams/ProfessorGradebookIndexPage";
+ main
 import QuestionCreatePage from "../pages/exams/QuestionCreatePage";
 import StudentExamSessionPage from "../pages/exams/StudentExamSessionPage";
 import StudentResultsPage from "../pages/exams/StudentResultsPage";
@@ -58,6 +62,7 @@ export default function AppRoutes() {
           <Route path="/question-bank/questions/:questionId/edit" element={<QuestionBankEditorPage />} />
           <Route path="/exams/new" element={<ExamCreatePage />} />
           <Route path="/exams/:examId/edit" element={<ExamCreatePage />} />
+          <Route path="/gradebook" element={<ProfessorGradebookIndexPage />} />
           <Route path="/exams/:examId/gradebook" element={<ExamGradebookPage />} />
           <Route path="/exams/:examId/monitor" element={<ExamMonitorPage />} />
         </Route>

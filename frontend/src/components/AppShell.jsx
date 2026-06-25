@@ -29,9 +29,10 @@ const navigationByRole = {
     {
       titleKey: "shell.sections.teaching",
       items: [
-        { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
         { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
+        { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
+        { to: "/gradebook", labelKey: "shell.nav.professorGradebook", icon: "GB", fallbackLabel: "Gradebook" },
         { to: "/reports", labelKey: "shell.nav.professorReports", icon: "RP" },
       ],
     },
@@ -132,7 +133,7 @@ export default function AppShell({
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     <span className="navIcon" aria-hidden="true">{item.icon}</span>
-                    <span className="navText">{t(item.labelKey)}</span>
+                    <span className="navText">{item.fallbackLabel ? t(item.labelKey, item.fallbackLabel) : t(item.labelKey)}</span>
                   </NavLink>
                 ))}
               </div>

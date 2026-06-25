@@ -12,6 +12,16 @@ public class ReplaceExamQuestionDto
     public string? Type { get; set; }
 }
 
+public class AddSelectedExamQuestionsDto
+{
+    public List<Guid> QuestionBankQuestionIds { get; set; } = [];
+}
+
+public class ReplaceWithBankQuestionDto
+{
+    public Guid QuestionBankQuestionId { get; set; }
+}
+
 public class ExamQuestionResponseDto
 {
     public Guid Id { get; set; }
@@ -19,6 +29,8 @@ public class ExamQuestionResponseDto
     public string Text { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string? CorrectAnswer { get; set; }
+    public string? Topic { get; set; }
+    public string? Difficulty { get; set; }
     public int CorrectAnswerCount { get; set; } = 1;
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }

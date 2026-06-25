@@ -3,8 +3,10 @@ import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { getMyExamResults } from "../../lib/examsApi";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export default function StudentResultsPage() {
+  const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +27,7 @@ export default function StudentResultsPage() {
         const data = await getMyExamResults();
         if (active) setResults(Array.isArray(data) ? data : []);
       } catch (err) {
-        if (active) setError(readApiMessage(err) || "Failed to load your exam results.");
+        if (active) setError(readApiMessage(err) || t("studentResults.loadError"));
       } finally {
         if (active) setLoading(false);
       }
@@ -35,7 +37,7 @@ export default function StudentResultsPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, t]);
 
   const published = useMemo(() => results.filter((result) => result.isPublished), [results]);
   const pending = useMemo(() => results.filter((result) => !result.isPublished), [results]);
@@ -65,88 +67,88 @@ export default function StudentResultsPage() {
     setResultPage((current) => Math.min(current, resultPageCount));
   }, [resultPageCount]);
 
-  if (userLoading) return <div className="pageState">Loading results...</div>;
-  if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
+  if (userLoading) return <div className="pageState">{t("studentResults.loading")}</div>;
+  if (!user) return <div className="pageState">{userError || t("studentResults.userRequired")}</div>;
 
   return (
     <AppShell
       user={user}
-      badge="Result experience"
-      title="My exam results"
-      subtitle="Published scores appear here after staff review. Pending attempts stay hidden until the professor publishes them."
-      actions={<Link className="btn" to="/exams">Available exams</Link>}
+      badge={t("studentResults.badge")}
+      title={t("studentResults.title")}
+      subtitle={t("studentResults.subtitle")}
+      actions={<Link className="btn" to="/exams">{t("studentResults.availableExams")}</Link>}
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
 
         <section className="summaryStrip">
           <article className="summaryCard">
-            <span className="summaryLabel">Submitted</span>
+            <span className="summaryLabel">{t("studentResults.submitted")}</span>
             <strong>{results.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Published</span>
+            <span className="summaryLabel">{t("studentResults.published")}</span>
             <strong>{published.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Pending</span>
+            <span className="summaryLabel">{t("studentResults.pending")}</span>
             <strong>{pending.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Average</span>
+            <span className="summaryLabel">{t("studentResults.average")}</span>
             <strong>{averageScore == null ? "--" : formatScore(averageScore)}</strong>
           </article>
         </section>
 
         <section className="resultPolicyStrip">
           <div>
-            <strong>Result visibility rule</strong>
-            <span>Scores stay hidden until staff complete review and publish the result.</span>
+            <strong>{t("studentResults.visibilityTitle")}</strong>
+            <span>{t("studentResults.visibilityText")}</span>
           </div>
           <div>
-            <strong>{latestPublished ? formatDateTime(latestPublished.publishedAt) : "No publication yet"}</strong>
-            <span>Latest published result</span>
+            <strong>{latestPublished ? formatDateTime(latestPublished.publishedAt) : t("studentResults.noPublication")}</strong>
+            <span>{t("studentResults.latestPublished")}</span>
           </div>
         </section>
 
         <section className="surfaceCard">
             <div className="sectionHeader">
               <div>
-                <h3>{activeResultView === "published" ? "Published results" : "Pending review"}</h3>
-                <span className="sectionMeta">Showing {resultStart}-{resultEnd} of {activeResults.length} result{activeResults.length === 1 ? "" : "s"}.</span>
+                <h3>{activeResultView === "published" ? t("studentResults.publishedResults") : t("studentResults.pendingReview")}</h3>
+                <span className="sectionMeta">{t("studentResults.showing", { start: resultStart, end: resultEnd, count: activeResults.length, suffix: activeResults.length === 1 ? "" : "s" })}</span>
               </div>
             </div>
             <div className="sectionBody stackLg">
               <div className="adminToolbar">
-                <div className="segmentedControl" aria-label="Result view">
+                <div className="segmentedControl" aria-label={t("studentResults.resultView")}>
                   <button className={activeResultView === "published" ? "active" : ""} type="button" onClick={() => setActiveResultView("published")}>
-                    Published
+                    {t("studentResults.published")}
                   </button>
                   <button className={activeResultView === "pending" ? "active" : ""} type="button" onClick={() => setActiveResultView("pending")}>
-                    Pending
+                    {t("studentResults.pending")}
                   </button>
                 </div>
                 <div className="adminToolbarStatus">
-                  <span className="statusPill statusLive">{published.length} published</span>
-                  <span className="statusPill statusDraft">{pending.length} pending</span>
-                  <select className="input inputCompact" value={resultPageSize} onChange={(e) => setResultPageSize(Number(e.target.value))} aria-label="Results per page">
-                    <option value={6}>6 rows</option>
-                    <option value={12}>12 rows</option>
-                    <option value={24}>24 rows</option>
+                  <span className="statusPill statusLive">{t("studentResults.publishedCount", { count: published.length })}</span>
+                  <span className="statusPill statusDraft">{t("studentResults.pendingCount", { count: pending.length })}</span>
+                  <select className="input inputCompact" value={resultPageSize} onChange={(e) => setResultPageSize(Number(e.target.value))} aria-label={t("studentResults.rowsAria")}>
+                    <option value={6}>{t("studentResults.rows", { count: 6 })}</option>
+                    <option value={12}>{t("studentResults.rows", { count: 12 })}</option>
+                    <option value={24}>{t("studentResults.rows", { count: 24 })}</option>
                   </select>
                 </div>
               </div>
               {loading ? (
-                <div className="pageStateCard">Loading results...</div>
+                <div className="pageStateCard">{t("studentResults.loadingRecords")}</div>
               ) : activeResults.length === 0 ? (
                 <div className="emptyState">
-                  <p>{activeResultView === "published" ? "No published results yet." : "No pending attempts."}</p>
-                  <p>{activeResultView === "published" ? "After grading and publication, your score and review notes will appear here." : "Submitted attempts waiting for review will appear here."}</p>
+                  <p>{activeResultView === "published" ? t("studentResults.emptyPublishedTitle") : t("studentResults.emptyPendingTitle")}</p>
+                  <p>{activeResultView === "published" ? t("studentResults.emptyPublishedText") : t("studentResults.emptyPendingText")}</p>
                 </div>
               ) : activeResultView === "published" ? (
                 <div className="resultCardStack">
                   {visibleResults.map((result) => (
-                    <ResultCard key={result.attemptId} result={result} />
+                    <ResultCard key={result.attemptId} result={result} t={t} />
                   ))}
                 </div>
               ) : (
@@ -155,19 +157,19 @@ export default function StudentResultsPage() {
                     <div key={result.attemptId} className="studentItemRow">
                       <div>
                         <strong>{result.examTitle}</strong>
-                        <span>Submitted {formatDateTime(result.submittedAt)}</span>
+                        <span>{t("studentResults.submittedAt", { date: formatDateTime(result.submittedAt) })}</span>
                       </div>
-                      <span className="statusPill statusDraft">{formatStatus(result.status)}</span>
+                      <span className="statusPill statusDraft">{formatStatus(result.status, t)}</span>
                     </div>
                   ))}
                 </div>
               )}
               <div className="paginationBar">
-                <span>Showing {resultStart}-{resultEnd} of {activeResults.length}</span>
+                <span>{t("studentResults.showing", { start: resultStart, end: resultEnd, count: activeResults.length, suffix: activeResults.length === 1 ? "" : "s" })}</span>
                 <div className="paginationActions">
-                  <button className="btn" type="button" disabled={resultPage <= 1} onClick={() => setResultPage((current) => Math.max(1, current - 1))}>Previous</button>
-                  <span className="paginationCurrent">Page {resultPage} of {resultPageCount}</span>
-                  <button className="btn" type="button" disabled={resultPage >= resultPageCount} onClick={() => setResultPage((current) => Math.min(resultPageCount, current + 1))}>Next</button>
+                  <button className="btn" type="button" disabled={resultPage <= 1} onClick={() => setResultPage((current) => Math.max(1, current - 1))}>{t("studentResults.previous")}</button>
+                  <span className="paginationCurrent">{t("studentResults.page", { page: resultPage, count: resultPageCount })}</span>
+                  <button className="btn" type="button" disabled={resultPage >= resultPageCount} onClick={() => setResultPage((current) => Math.min(resultPageCount, current + 1))}>{t("studentResults.next")}</button>
                 </div>
               </div>
             </div>
@@ -177,38 +179,38 @@ export default function StudentResultsPage() {
   );
 }
 
-function ResultCard({ result }) {
+function ResultCard({ result, t }) {
   return (
     <article className="resultCard">
       <div>
-        <span className="summaryLabel">Published result</span>
+        <span className="summaryLabel">{t("studentResults.publishedResult")}</span>
         <h4>{result.examTitle}</h4>
-        <p>Submitted {formatDateTime(result.submittedAt)}</p>
+        <p>{t("studentResults.submittedAt", { date: formatDateTime(result.submittedAt) })}</p>
       </div>
       <div className="resultScoreBlock">
         <strong>{formatScore(result.finalScore)}</strong>
-        <span>Final score</span>
+        <span>{t("studentResults.finalScore")}</span>
       </div>
       <dl className="resultMetaList">
         <div>
-          <dt>Grade</dt>
-          <dd>{formatGrade(result.finalGrade, result.isPassed)}</dd>
+          <dt>{t("studentResults.grade")}</dt>
+          <dd>{formatGrade(result.finalGrade, result.isPassed, t)}</dd>
         </div>
         <div>
-          <dt>Percentage</dt>
+          <dt>{t("studentResults.percentage")}</dt>
           <dd>{formatPercentage(result.scorePercentage)}</dd>
         </div>
         <div>
-          <dt>Auto score</dt>
+          <dt>{t("studentResults.autoScore")}</dt>
           <dd>{formatScore(result.autoScore)}</dd>
         </div>
         <div>
-          <dt>Published</dt>
+          <dt>{t("studentResults.publishedAt")}</dt>
           <dd>{formatDateTime(result.publishedAt)}</dd>
         </div>
         <div>
-          <dt>Notes</dt>
-          <dd>{result.gradingNotes || "No notes added."}</dd>
+          <dt>{t("studentResults.notes")}</dt>
+          <dd>{result.gradingNotes || t("studentResults.noNotes")}</dd>
         </div>
       </dl>
     </article>
@@ -228,9 +230,9 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-function formatStatus(status) {
-  if (status === "ReadyToPublish") return "Ready";
-  return status || "Pending";
+function formatStatus(status, t) {
+  if (status === "ReadyToPublish") return t("studentResults.ready");
+  return status || t("studentResults.pending");
 }
 
 function formatPercentage(value) {
@@ -238,9 +240,9 @@ function formatPercentage(value) {
   return `${Number(value).toFixed(2)}%`;
 }
 
-function formatGrade(grade, passed) {
+function formatGrade(grade, passed, t) {
   if (!grade) return "-";
-  return `${grade} ${passed ? "(Pass)" : "(Fail)"}`;
+  return `${grade} (${passed ? t("studentResults.pass") : t("studentResults.fail")})`;
 }
 
 function readApiMessage(err) {

@@ -6,6 +6,7 @@ public class Question
     public Guid ExamId { get; set; }
     public Guid? CourseId { get; set; }
     public string? OptionsJson { get; set; }
+    public string? MetadataJson { get; set; }
     public string Type { get; set; } = null!;
     public string? CorrectAnswer { get; set; }
     public string? Topic { get; set; }

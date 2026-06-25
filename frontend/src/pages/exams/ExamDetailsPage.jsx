@@ -53,6 +53,7 @@ export default function ExamDetailsPage() {
     difficulty: "",
   });
   const [manualSelectorOpen, setManualSelectorOpen] = useState(false);
+  const [questionSetupMode, setQuestionSetupMode] = useState("");
   const [reviewQuestionsOpen, setReviewQuestionsOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editDraft, setEditDraft] = useState(null);

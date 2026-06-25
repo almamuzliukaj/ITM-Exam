@@ -347,22 +347,20 @@ export default function ExamsListPage() {
                             )}
                           </td>
                           <td>
-                            <div className="resourceActionGroup">
+                            <div className="examDirectoryActions">
                               {canCreate && !exam.isPublished ? (
-                                <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
+                                <Link className="btn btnTiny btnPrimary" to={`/exams/${exam.id}`}>Setup</Link>
                               ) : null}
                               {exam.isPublished ? (
-                                <Link className="btn btnPrimary" to={`/exams/${exam.id}/gradebook`}>Open gradebook</Link>
+                                <>
+                                  <Link className="btn btnTiny btnPrimary" to={`/exams/${exam.id}`}>Review</Link>
+                                  <Link className="btn btnTiny" to={`/exams/${exam.id}/gradebook`}>Gradebook</Link>
+                                  <Link className="btn btnTiny" to="/reports">Reports</Link>
+                                </>
                               ) : null}
-                              <Link className="btn" to={`/exams/${exam.id}`}>
-                                {exam.isPublished ? "Review exam" : t("examsList.open")}
-                              </Link>
-                              <Link className="btn" to="/reports">
-                                Reports
-                              </Link>
                               {canCreate && !exam.isPublished ? (
                                 <button
-                                  className="btn btnDanger"
+                                  className="btn btnTiny btnDanger"
                                   type="button"
                                   onClick={() => onDeleteDraft(exam)}
                                   disabled={deletingId === exam.id}

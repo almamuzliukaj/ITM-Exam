@@ -5932,6 +5932,10 @@ body{
   width: 360px;
 }
 
+.examDirectoryTable th:nth-child(7){
+  width: 240px;
+}
+
 .gradebookAttemptTableWrap{
   border-radius: 4px;
 }
@@ -5976,6 +5980,25 @@ body{
 .examDirectoryMeta span{
   color: var(--muted);
   font-size: 13px;
+}
+
+.examDirectoryActions{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.examDirectoryActions .btn{
+  min-width: 0;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.examDirectoryActions .btn:hover{
+  box-shadow: 0 6px 14px rgba(11, 30, 55, .08);
 }
 
 .publishAssessmentModal,

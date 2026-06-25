@@ -10,5 +10,6 @@ namespace OnlineExam.Api.DTOs
         public string? Topic { get; set; }
         public string? Difficulty { get; set; }
         public int Points { get; set; }
+        public QuestionTechnicalMetadataDto? TechnicalMetadata { get; set; }
     }
 }

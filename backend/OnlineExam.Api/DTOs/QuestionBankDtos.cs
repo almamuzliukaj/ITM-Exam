@@ -9,6 +9,7 @@ public class UpsertQuestionBankQuestionDto
     public string? Difficulty { get; set; }
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }
+    public QuestionTechnicalMetadataDto? TechnicalMetadata { get; set; }
 }
 
 public class QuestionBankQuestionResponseDto
@@ -23,4 +24,5 @@ public class QuestionBankQuestionResponseDto
     public string? Difficulty { get; set; }
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }
+    public QuestionTechnicalMetadataDto? TechnicalMetadata { get; set; }
 }

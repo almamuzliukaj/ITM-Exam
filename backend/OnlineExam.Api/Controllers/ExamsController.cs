@@ -2373,6 +2373,7 @@ public class ExamsController : ControllerBase
         existingQuestion.Topic = selectedReplacement.Topic;
         existingQuestion.Difficulty = selectedReplacement.Difficulty;
         existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.MetadataJson = selectedReplacement.MetadataJson;
         existingQuestion.Points = selectedReplacement.Points;
         existingQuestion.CourseId = selectedReplacement.CourseId;
 
@@ -2433,6 +2434,7 @@ public class ExamsController : ControllerBase
         existingQuestion.Topic = selectedReplacement.Topic;
         existingQuestion.Difficulty = selectedReplacement.Difficulty;
         existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.MetadataJson = selectedReplacement.MetadataJson;
         existingQuestion.Points = selectedReplacement.Points;
         existingQuestion.CourseId = selectedReplacement.CourseId;
 
@@ -2553,6 +2555,7 @@ public class ExamsController : ControllerBase
             Topic = source.Topic,
             Difficulty = source.Difficulty,
             OptionsJson = source.OptionsJson,
+            MetadataJson = source.MetadataJson,
             Points = source.Points
         };
     }
@@ -2600,7 +2603,8 @@ public class ExamsController : ControllerBase
             Difficulty = question.Difficulty,
             CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
-            Points = question.Points
+            Points = question.Points,
+            TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(question, includePrivateFields: true)
         };
     }
 
@@ -3168,22 +3172,12 @@ public class ExamsController : ControllerBase
 
     private static string ResolveQuestionPrompt(Question question)
     {
-        if (!string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase))
-        {
-            return question.Text;
-        }
-
-        return ExtractStructuredQuestionSection(question.Text, "Prompt") ?? question.Text;
+        return QuestionTechnicalMetadataMapper.ResolvePrompt(question);
     }
 
     private static string? ResolveExpectedAnswer(Question question)
     {
-        var directAnswer = NormalizeOptionalValue(question.CorrectAnswer);
-        if (!string.IsNullOrWhiteSpace(directAnswer))
-            return directAnswer;
-
-        return ExtractStructuredQuestionSection(question.Text, "Expected answer / grading note");
+        return QuestionTechnicalMetadataMapper.ResolveExpectedAnswerOrNotes(question);
     }
 
     private static string? ExtractStructuredQuestionSection(string value, string label)

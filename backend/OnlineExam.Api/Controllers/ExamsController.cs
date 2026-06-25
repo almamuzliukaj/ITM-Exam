@@ -1627,7 +1627,11 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/albiona-exam-metadata-validation
 feature/albiona-exam-metadata-validation
+ main
+
+
  main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
@@ -2224,6 +2228,8 @@ feature/albiona-exam-metadata-validation
         if (selectedCandidates.Count == 0)
             return BadRequest(new { message = "No valid question combination could be created for the remaining exam points." });
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
         if (replaceExisting && existingQuestions.Count > 0)
         {
             _context.Questions.RemoveRange(existingQuestions);
@@ -2234,7 +2240,9 @@ feature/albiona-exam-metadata-validation
             .ToList();
 
         _context.Questions.AddRange(createdQuestions);
+        exam.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         var createdPoints = createdQuestions.Sum(question => question.Points);
         var difference = createdPoints - targetPoints;
@@ -3065,7 +3073,9 @@ feature/albiona-exam-metadata-validation
         var normalized = NormalizeOptionalValue(value);
         return normalized?.Length > 120 ? normalized[..120] : normalized;
     }
+ feature/albiona-exam-metadata-validation
 feature/albiona-exam-metadata-validation
+ main
 
     private static string BuildExamTitle(string? requestedTitle, CourseOffering offering, string assessmentType, string examPeriod)
     {
@@ -3157,7 +3167,9 @@ feature/albiona-exam-metadata-validation
             _ => null
         };
     }
+ feature/albiona-exam-metadata-validation
 main
+ main
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -3521,6 +3533,7 @@ main
         var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
         var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
 
+ feature/albiona-exam-metadata-validation
 feature/albiona-exam-metadata-validation
         if (!requiresLockdown)
             return null;
@@ -3535,6 +3548,12 @@ feature/albiona-exam-metadata-validation
         if (!validMode)
             return "LockdownMode must be Advisory or Strict.";
         var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+
+        if (!requiresLockdown)
+            return null;
+
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient", "InstitutionalKiosk" };
+ main
         var allowedModes = new[] { "Advisory", "Strict" };
 
         if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))

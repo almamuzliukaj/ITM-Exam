@@ -369,6 +369,7 @@ feature/albiona-exam-metadata-validation
             ) AS points
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
+
             UPDATE "Exams"
             SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
             WHERE "Status" IS NULL OR "Status" = '';
@@ -417,6 +418,8 @@ feature/albiona-exam-metadata-validation
             WHERE "ExamPeriod" IS NULL OR "ExamPeriod" = '';
 
  feature/albiona-exam-metadata-validation
+ feature/albiona-exam-metadata-validation
+ main
             UPDATE "Exams" AS exams
             SET "MaximumPoints" = COALESCE(points.total_points, exams."MaximumPoints", 100)
             FROM (
@@ -427,6 +430,8 @@ feature/albiona-exam-metadata-validation
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
 
+ feature/albiona-exam-metadata-validation
+ main
  main
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';

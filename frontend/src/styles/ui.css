@@ -281,18 +281,26 @@
 
 .mainPanel{
   min-width: 0;
-  padding: 26px 32px 34px;
+  padding: 136px 32px 34px;
   font-size: 15px;
 }
 
 .topbar{
+  position: fixed;
+  top: 0;
+  left: 304px;
+  right: 0;
+  z-index: 80;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 26px;
-  padding: 0 0 20px;
+  margin: 0;
+  padding: 20px 32px 18px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 97%, white);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, .04);
 }
 
 .topbarIntro{
@@ -311,6 +319,7 @@
   align-items: flex-start;
   gap: 16px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .topbarActions{
@@ -3274,6 +3283,86 @@ input[type="radio"]{
   min-height: 0;
 }
 
+.technicalAnswerWorkspace{
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .34fr);
+  gap: 12px;
+}
+
+.technicalEditorShell,
+.technicalRunPanel{
+  min-width: 0;
+  border: 1px solid #d7e2ef;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.technicalEditorToolbar{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e3ebf5;
+  background: #f7faff;
+}
+
+.technicalEditorToolbar strong{
+  display: block;
+  margin-top: 3px;
+  color: var(--heading);
+  font-size: 14px;
+}
+
+.technicalRunPanel{
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #f9fbfe;
+}
+
+.technicalRunHeader{
+  padding: 12px;
+  border-bottom: 1px solid #e3ebf5;
+}
+
+.technicalRunHeader strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--heading);
+}
+
+.technicalRunPanel pre{
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #314155;
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.technicalRunPanelSuccess{
+  border-color: rgba(17,122,81,.32);
+  background: #f6fcf8;
+}
+
+.technicalRunPanelSuccess .technicalRunHeader{
+  background: #edf8f1;
+}
+
+.technicalRunPanelError{
+  border-color: rgba(185,28,28,.28);
+  background: #fff8f8;
+}
+
+.technicalRunPanelError .technicalRunHeader{
+  background: #fff1f1;
+}
+
 .secureExamShell .examQuestionStepper{
   margin-top: 8px;
   padding-top: 8px;
@@ -4650,7 +4739,8 @@ input[type="radio"]{
 
   .examBriefingHero,
   .secureExamCommandBar,
-  .secureExamHeader{
+  .secureExamHeader,
+  .technicalAnswerWorkspace{
     grid-template-columns: 1fr;
   }
 
@@ -4915,8 +5005,19 @@ input[type="radio"]{
     padding: 16px;
   }
 
+  .mainPanel{
+    padding-top: 174px;
+  }
+
   .contentArea{
     gap: 16px;
+  }
+
+  .topbar{
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 16px;
   }
 
   .topbar,
@@ -5192,14 +5293,13 @@ body{
 }
 
 .mainPanel{
-  padding: 20px 26px 28px;
+  padding: 118px 26px 28px;
   font-size: 14px;
 }
 
 .topbar{
   gap: 18px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  padding: 16px 26px 14px;
 }
 
 .contentArea,

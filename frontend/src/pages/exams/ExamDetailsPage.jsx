@@ -53,7 +53,6 @@ export default function ExamDetailsPage() {
     difficulty: "",
   });
   const [manualSelectorOpen, setManualSelectorOpen] = useState(false);
-  const [questionSetupMode, setQuestionSetupMode] = useState("");
   const [reviewQuestionsOpen, setReviewQuestionsOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -324,10 +323,23 @@ export default function ExamDetailsPage() {
         type: generator.type || null,
         replaceExisting: true,
       });
-      const newQuestions = Array.isArray(created?.questions) ? created.questions : [];
+      const refreshedQuestions = await listQuestions(examId);
+      const newQuestions = Array.isArray(refreshedQuestions)
+        ? refreshedQuestions
+        : Array.isArray(created?.questions)
+          ? created.questions
+          : [];
       setQuestions(newQuestions);
       setPointDrafts(buildPointDrafts(newQuestions));
-      setGenerationFeedback(created);
+      setSelectedBankQuestionIds([]);
+      setGenerationFeedback({
+        ...created,
+        createdQuestionCount: newQuestions.length,
+        requestedQuestionCount: Number(generator.numberOfQuestions),
+        message:
+          created?.message ||
+          `Rebuilt this draft with ${newQuestions.length} question${newQuestions.length === 1 ? "" : "s"}.`,
+      });
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -735,7 +747,7 @@ export default function ExamDetailsPage() {
                     <div className="questionSetupBody">
                       <div className="questionBankFormGrid">
                         <div className="field">
-                          <label className="label">Maximum generated questions</label>
+                          <label className="label">Question count</label>
                           <input
                             className="input"
                             type="number"
@@ -744,7 +756,7 @@ export default function ExamDetailsPage() {
                             onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
                             disabled={generating}
                           />
-                          <span className="fieldHint">The generator targets the remaining exam points and avoids questions already in this exam.</span>
+                          <span className="fieldHint">Generate 5 creates 5 questions. Changing to 3 rebuilds the draft to 3 questions.</span>
                         </div>
                         <div className="field">
                           <label className="label">{t("questionBank.type")}</label>
@@ -770,7 +782,7 @@ export default function ExamDetailsPage() {
                           onClick={onGenerateRandomQuestions}
                           disabled={!canGenerate || generating}
                         >
-                          {generating ? t("examDetails.generator.generating") : t("examDetails.generator.generate")}
+                          {generating ? "Rebuilding..." : `Generate ${Number(generator.numberOfQuestions) || ""}`}
                         </button>
                       </div>
                     </div>
@@ -798,7 +810,13 @@ export default function ExamDetailsPage() {
 
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
+ feature/albiona-exam-metadata-validation
                       <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
+
+                      <strong>
+                        Rebuilt exam question set: {generationFeedback.createdQuestionCount || questions.length} / {generationFeedback.requestedQuestionCount || generator.numberOfQuestions} questions
+                      </strong>
+ main
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}

@@ -16,7 +16,7 @@ public class Exam
     public DateTime? UnpublishedAt { get; set; }
     public bool IsPublished { get; set; }
     public string Status { get; set; } = "Draft";
-    public string AssessmentType { get; set; } = "Provim";
+    public string AssessmentType { get; set; } = "Exam";
     public string ExamPeriod { get; set; } = "Custom";
     public string AcademicYear { get; set; } = string.Empty;
     public string SemesterLabel { get; set; } = string.Empty;

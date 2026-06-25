@@ -9,7 +9,7 @@ import {
   gradeExamAttempt,
   publishExamResults,
 } from "../../lib/examsApi";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function ExamGradebookPage() {
   const { examId } = useParams();
@@ -28,33 +28,32 @@ export default function ExamGradebookPage() {
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
   const canReview = canManageExams(user?.role);
 
-  useEffect(() => {
+  const loadGradebook = useCallback(async () => {
     if (!examId) return;
 
-    let active = true;
-
-    (async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const [examData, gradebookData] = await Promise.all([getExam(examId), getExamGradebook(examId)]);
-        if (!active) return;
-
-        const rows = Array.isArray(gradebookData) ? gradebookData : [];
-        setExam(examData);
-        setAttempts(rows);
-        setDrafts(buildDrafts(rows));
-      } catch (err) {
-        if (active) setError(readApiMessage(err) || "Failed to load gradebook.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
+    try {
+      setLoading(true);
+      setError("");
+      const [examData, gradebookData] = await Promise.all([getExam(examId), getExamGradebook(examId)]);
+      const rows = normalizeGradebookRows(gradebookData);
+      setExam(examData || null);
+      setAttempts(rows);
+      setDrafts(buildDrafts(rows));
+      setSelectedAttemptId((current) => (rows.some((row) => row.attemptId === current) ? current : ""));
+    } catch (err) {
+      setExam(null);
+      setAttempts([]);
+      setDrafts({});
+      setSelectedAttemptId("");
+      setError(readApiMessage(err) || "Failed to load gradebook.");
+    } finally {
+      setLoading(false);
+    }
   }, [examId]);
+
+  useEffect(() => {
+    loadGradebook();
+  }, [loadGradebook]);
 
   useEffect(() => {
     const pendingAiAttempts = attempts.filter(
@@ -116,6 +115,10 @@ export default function ExamGradebookPage() {
     [attempts],
   );
   const publishedCount = useMemo(() => attempts.filter((attempt) => attempt.isPublished).length, [attempts]);
+  const readyToPublishCount = useMemo(
+    () => attempts.filter((attempt) => attempt.isGraded && !attempt.isPublished).length,
+    [attempts],
+  );
   const visibleAttempts = useMemo(
     () => attempts.filter((attempt) => matchesReviewFilter(attempt, reviewFilter)),
     [attempts, reviewFilter],
@@ -131,6 +134,10 @@ export default function ExamGradebookPage() {
 
   if (!user) {
     return <div className="pageState">{userError || "User session could not be loaded."}</div>;
+  }
+
+  if (!canReview) {
+    return <div className="pageState">You do not have permission to open this gradebook.</div>;
   }
 
   async function onAiReview(attempt) {
@@ -217,13 +224,37 @@ export default function ExamGradebookPage() {
       badge="Gradebook"
       title={exam?.title ? `${exam.title} gradebook` : "Exam gradebook"}
       subtitle="Review submitted attempts, use AI assistance for text answers, and publish results only after human approval."
-      actions={<Link className="btn" to={`/exams/${examId}`}>Back to exam</Link>}
+      actions={
+        <>
+          <button className="btn" type="button" onClick={loadGradebook} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+          <Link className="btn" to={`/exams/${examId}`}>Back to exam</Link>
+        </>
+      }
     >
       <div className="stackXl">
-        {error ? <div className="alert">{error}</div> : null}
+        {error ? (
+          <div className="alert">
+            <strong>Gradebook could not be loaded.</strong>
+            <span>{error}</span>
+          </div>
+        ) : null}
         {success ? <div className="successBanner">{success}</div> : null}
 
-        <section className="summaryStrip">
+        {!loading && error ? (
+          <section className="surfaceCard">
+            <div className="sectionHeader">
+              <div>
+                <h3>Gradebook unavailable</h3>
+                <span className="sectionMeta">The route is working, but the assessment data could not be loaded. Retry after checking the backend session or permissions.</span>
+              </div>
+              <button className="btn btnPrimary" type="button" onClick={loadGradebook}>Retry loading</button>
+            </div>
+          </section>
+        ) : null}
+
+        {!error ? <section className="summaryStrip">
           <article className="summaryCard">
             <span className="summaryLabel">Attempts</span>
             <strong>{attempts.length}</strong>
@@ -240,9 +271,13 @@ export default function ExamGradebookPage() {
             <span className="summaryLabel">Integrity flags</span>
             <strong>{integrityCount}</strong>
           </article>
-        </section>
+          <article className="summaryCard">
+            <span className="summaryLabel">Ready to publish</span>
+            <strong>{readyToPublishCount}</strong>
+          </article>
+        </section> : null}
 
-        <section className="surfaceCard">
+        {!error ? <section className="surfaceCard">
           <div className="sectionHeader">
             <div>
               <h3>Human review workflow</h3>
@@ -250,7 +285,7 @@ export default function ExamGradebookPage() {
             </div>
             <div className="resourceActionGroup">
               <span className="statusPill statusDraft">{publishedCount} published</span>
-              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || attempts.length === 0 || !canReview}>
+              <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
                 {publishing ? "Publishing..." : "Publish graded results"}
               </button>
             </div>
@@ -280,7 +315,7 @@ export default function ExamGradebookPage() {
             ) : attempts.length === 0 ? (
               <div className="emptyState">
                 <strong>No attempts submitted</strong>
-                <span>AI-assisted review becomes available after students submit text answers.</span>
+                <span>Gradebook review becomes available after students submit this assessment. Keep this page as the academic review workspace.</span>
               </div>
             ) : visibleAttempts.length === 0 ? (
               <div className="emptyState">
@@ -309,7 +344,7 @@ export default function ExamGradebookPage() {
               </>
             )}
           </div>
-        </section>
+        </section> : null}
       </div>
     </AppShell>
   );
@@ -375,6 +410,33 @@ function GradebookAttemptTable({ attempts, drafts, onReview }) {
       </table>
     </div>
   );
+}
+
+function normalizeGradebookRows(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter(Boolean)
+    .map((attempt) => {
+      const attemptId = attempt.attemptId || attempt.id || attempt.examAttemptId || "";
+      return {
+        ...attempt,
+        attemptId,
+        studentName: attempt.studentName || attempt.fullName || "Student",
+        studentEmail: attempt.studentEmail || attempt.email || "",
+        status: attempt.status || "Submitted",
+        autoScore: Number(attempt.autoScore || 0),
+        manualScore: Number(attempt.manualScore || 0),
+        finalScore: Number(attempt.finalScore || attempt.autoScore || 0),
+        examMaxPoints: Number(attempt.examMaxPoints || 0),
+        scorePercentage: Number(attempt.scorePercentage || 0),
+        finalGrade: Number(attempt.finalGrade || 0),
+        integrityViolationCount: Number(attempt.integrityViolationCount || 0),
+        answers: Array.isArray(attempt.answers) ? attempt.answers : [],
+        integrityEvents: Array.isArray(attempt.integrityEvents) ? attempt.integrityEvents : [],
+      };
+    })
+    .filter((attempt) => attempt.attemptId);
 }
 
 function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disabled, onClose, onDraftChange, onAiReview, onSaveGrade }) {

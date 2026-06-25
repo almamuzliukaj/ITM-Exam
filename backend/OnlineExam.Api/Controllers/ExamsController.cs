@@ -2223,6 +2223,8 @@ public class ExamsController : ControllerBase
         if (selectedCandidates.Count == 0)
             return BadRequest(new { message = "No valid question combination could be created for the remaining exam points." });
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
         if (replaceExisting && existingQuestions.Count > 0)
         {
             _context.Questions.RemoveRange(existingQuestions);
@@ -2233,7 +2235,9 @@ public class ExamsController : ControllerBase
             .ToList();
 
         _context.Questions.AddRange(createdQuestions);
+        exam.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         var createdPoints = createdQuestions.Sum(question => question.Points);
         var difference = createdPoints - targetPoints;

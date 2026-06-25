@@ -323,10 +323,23 @@ export default function ExamDetailsPage() {
         type: generator.type || null,
         replaceExisting: true,
       });
-      const newQuestions = Array.isArray(created?.questions) ? created.questions : [];
+      const refreshedQuestions = await listQuestions(examId);
+      const newQuestions = Array.isArray(refreshedQuestions)
+        ? refreshedQuestions
+        : Array.isArray(created?.questions)
+          ? created.questions
+          : [];
       setQuestions(newQuestions);
       setPointDrafts(buildPointDrafts(newQuestions));
-      setGenerationFeedback(created);
+      setSelectedBankQuestionIds([]);
+      setGenerationFeedback({
+        ...created,
+        createdQuestionCount: newQuestions.length,
+        requestedQuestionCount: Number(generator.numberOfQuestions),
+        message:
+          created?.message ||
+          `Rebuilt this draft with ${newQuestions.length} question${newQuestions.length === 1 ? "" : "s"}.`,
+      });
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -797,7 +810,9 @@ export default function ExamDetailsPage() {
 
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
-                      <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
+                      <strong>
+                        Rebuilt exam question set: {generationFeedback.createdQuestionCount || questions.length} / {generationFeedback.requestedQuestionCount || generator.numberOfQuestions} questions
+                      </strong>
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}

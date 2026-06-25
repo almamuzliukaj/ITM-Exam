@@ -53,7 +53,6 @@ export default function ExamDetailsPage() {
     difficulty: "",
   });
   const [manualSelectorOpen, setManualSelectorOpen] = useState(false);
-  const [questionSetupMode, setQuestionSetupMode] = useState("");
   const [reviewQuestionsOpen, setReviewQuestionsOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -697,6 +696,7 @@ export default function ExamDetailsPage() {
             ) : null}
 
             {isDraft && exam?.courseOfferingId ? (
+ fix/exam-workflow-merge-artifacts
               <section className="surfaceCard questionSetupPanel">
                 <div className="sectionHeader">
                   <div>
@@ -799,6 +799,98 @@ export default function ExamDetailsPage() {
                   {generationFeedback ? (
                     <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
                       <strong>{generationFeedback.isExactMatch ? "Exact point match generated" : "Question setup feedback"}</strong>
+
+              <section className="surfaceCard generationPanel">
+                <div className="sectionHeader">
+                  <div>
+                    <h3>{t("examDetails.generator.title")}</h3>
+                    <span className="small">Rebuild this draft from the course question bank with an exact question count.</span>
+                  </div>
+                  <span className="statusPill statusDraft">{questions.length} current</span>
+                </div>
+                <div className="sectionBody stackLg">
+                  <div className="generationSummaryGrid">
+                    <article>
+                      <span className="summaryLabel">Mode</span>
+                      <strong>Replace current set</strong>
+                      <small>Old draft questions are removed before the new set is saved.</small>
+                    </article>
+                    <article>
+                      <span className="summaryLabel">Target points</span>
+                      <strong>{examMaximumPoints || "-"}</strong>
+                      <small>The closest matching point total is selected from the bank.</small>
+                    </article>
+                    <article>
+                      <span className="summaryLabel">After generate</span>
+                      <strong>{Number(generator.numberOfQuestions) || 0} questions</strong>
+                      <small>Generate 5 creates 5. Generate 3 rebuilds the set to 3.</small>
+                    </article>
+                  </div>
+
+                  <div className="generationControls">
+                    <div className="field">
+                      <label className="label">Question count</label>
+                      <input
+                        className="input inputCompact"
+                        type="number"
+                        min="1"
+                        value={generator.numberOfQuestions}
+                        onChange={(e) => setGenerator((current) => ({ ...current, numberOfQuestions: Number(e.target.value) }))}
+                        disabled={generating}
+                      />
+                      <span className="fieldHint">This is the final number of generated questions in the exam.</span>
+                    </div>
+                    <div className="field generationQuickPick">
+                      <span className="label">Quick count</span>
+                      <div className="segmentedControl">
+                        {[3, 5, 10].map((count) => (
+                          <button
+                            key={count}
+                            className={Number(generator.numberOfQuestions) === count ? "active" : ""}
+                            type="button"
+                            onClick={() => setGenerator((current) => ({ ...current, numberOfQuestions: count }))}
+                            disabled={generating}
+                          >
+                            {count}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label className="label">{t("questionBank.type")}</label>
+                      <select
+                        className="input inputCompact"
+                        value={generator.type}
+                        onChange={(e) => setGenerator((current) => ({ ...current, type: e.target.value }))}
+                        disabled={generating}
+                      >
+                        <option value="">{t("questionBank.allTypes")}</option>
+                        <option value="MCQ">MCQ</option>
+                        <option value="Text">{t("common.text")}</option>
+                        <option value="CSharp">C#</option>
+                        <option value="SQL">SQL</option>
+                      </select>
+                    </div>
+                    <div className="field generationSubmitField">
+                      <span className="label">Action</span>
+                      <button
+                        className="btn btnPrimary"
+                        type="button"
+                        onClick={onGenerateRandomQuestions}
+                        disabled={!canGenerate || generating}
+                      >
+                        {generating ? "Rebuilding..." : `Generate ${Number(generator.numberOfQuestions) || ""}`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {generationFeedback ? (
+                    <div className={`publishNotice${generationFeedback.isExactMatch ? "" : " publishNoticeWarning"}`}>
+                      <strong>
+                        {generationFeedback.createdQuestionCount || generationFeedback.questions?.length || 0} questions generated
+                        {generationFeedback.replacedQuestionCount ? `, ${generationFeedback.replacedQuestionCount} replaced` : ""}
+                      </strong>
+main
                       <span>{generationFeedback.message}</span>
                     </div>
                   ) : null}
@@ -1528,10 +1620,17 @@ function formatQuestionType(type) {
 
 function formatLockdownClient(value) {
   if (value === "SafeExamBrowser") return "Safe Exam Browser";
+ feature/alma-question-generation-ux
+  if (value === "InstitutionalKiosk") return "Institutional kiosk";
+  if (value === "StandardBrowser") return "Standard browser";
+  if (value === "KioskClient") return "Kiosk client";
+  return value || "Standard browser";
+
   if (value === "KioskClient") return "Kiosk client";
   if (value === "InstitutionalKiosk") return "Institutional kiosk";
   if (value === "StandardBrowser") return "Standard browser";
   return "Standard browser";
+ main
 }
 
 function parseTechnicalQuestion(question) {

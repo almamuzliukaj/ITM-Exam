@@ -211,9 +211,6 @@ public class ExamsController : ControllerBase
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<ActionResult<Exam>> PostExam([FromBody] CreateExamDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Title))
-            return BadRequest(new { message = "Title is required." });
-
         if (dto.MaximumPoints <= 0)
             return BadRequest(new { message = "MaximumPoints must be greater than 0." });
 
@@ -235,30 +232,22 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
-            return BadRequest(new { message = "Assistant exams must be linked to an assigned course offering." });
+        if (!dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "CourseOfferingId is required." });
 
-        if (dto.CourseOfferingId.HasValue)
-        {
-            var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
-            if (!offeringExists)
-                return BadRequest(new { message = "CourseOfferingId is invalid." });
+        var offering = await GetAuthorizedCourseOfferingAsync(dto.CourseOfferingId.Value, userId.Value);
+        if (offering == null)
+            return Forbid();
 
-            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-            var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == dto.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive &&
-                a.RoleInOffering == assignmentRole);
-
-            if (!hasAssignment)
-                return Forbid();
-        }
+        var title = BuildExamTitle(dto.Title, offering, assessmentType, examPeriod);
+        var academicYear = ResolveAcademicYear(offering, dto.AcademicYear);
+        var semesterLabel = ResolveSemesterLabel(offering, dto.SemesterLabel);
+        var cohortLabel = ResolveCohortLabel(offering, dto.CohortLabel);
 
         var exam = new Exam
         {
             Id = Guid.NewGuid(),
-            Title = dto.Title.Trim(),
+            Title = title,
             Description = dto.Description?.Trim() ?? string.Empty,
             StartsAt = startsAt,
             EndsAt = endsAt,
@@ -275,10 +264,10 @@ public class ExamsController : ControllerBase
             UnpublishedAt = null,
             AssessmentType = assessmentType,
             ExamPeriod = examPeriod,
-            AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty,
-            SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty,
-            CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty,
-            CourseOfferingId = dto.CourseOfferingId,
+            AcademicYear = academicYear,
+            SemesterLabel = semesterLabel,
+            CohortLabel = cohortLabel,
+            CourseOfferingId = offering.Id,
             MaximumPoints = dto.MaximumPoints
         };
 
@@ -318,11 +307,8 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        if (exam.CreatedByUserId != userId.Value)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
-
-        if (string.IsNullOrWhiteSpace(dto.Title))
-            return BadRequest(new { message = "Title is required." });
 
         if (dto.MaximumPoints <= 0)
             return BadRequest(new { message = "MaximumPoints must be greater than 0." });
@@ -341,27 +327,14 @@ public class ExamsController : ControllerBase
         if (endsAt <= startsAt)
             return BadRequest(new { message = "EndsAt must be later than StartsAt." });
 
-        if (User.IsInRole("Assistant") && !dto.CourseOfferingId.HasValue)
-            return BadRequest(new { message = "Assistant exams must stay linked to an assigned course offering." });
+        if (!dto.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "CourseOfferingId is required." });
 
-        if (dto.CourseOfferingId.HasValue)
-        {
-            var offeringExists = await _context.CourseOfferings.AnyAsync(x => x.Id == dto.CourseOfferingId.Value);
-            if (!offeringExists)
-                return BadRequest(new { message = "CourseOfferingId is invalid." });
+        var offering = await GetAuthorizedCourseOfferingAsync(dto.CourseOfferingId.Value, userId.Value);
+        if (offering == null)
+            return Forbid();
 
-            var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-            var hasAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == dto.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive &&
-                a.RoleInOffering == assignmentRole);
-
-            if (!hasAssignment)
-                return Forbid();
-        }
-
-        exam.Title = dto.Title.Trim();
+        exam.Title = BuildExamTitle(dto.Title, offering, assessmentType, examPeriod);
         exam.Description = dto.Description?.Trim() ?? string.Empty;
         exam.StartsAt = startsAt;
         exam.EndsAt = endsAt;
@@ -373,11 +346,11 @@ public class ExamsController : ControllerBase
         exam.UnpublishedAt = exam.UnpublishedAt ?? DateTime.UtcNow;
         exam.AssessmentType = assessmentType;
         exam.ExamPeriod = examPeriod;
-        exam.AcademicYear = NormalizeOptionalText(dto.AcademicYear) ?? string.Empty;
-        exam.SemesterLabel = NormalizeOptionalText(dto.SemesterLabel) ?? string.Empty;
-        exam.CohortLabel = NormalizeOptionalText(dto.CohortLabel) ?? string.Empty;
+        exam.AcademicYear = ResolveAcademicYear(offering, dto.AcademicYear);
+        exam.SemesterLabel = ResolveSemesterLabel(offering, dto.SemesterLabel);
+        exam.CohortLabel = ResolveCohortLabel(offering, dto.CohortLabel);
         exam.MaximumPoints = dto.MaximumPoints;
-        exam.CourseOfferingId = dto.CourseOfferingId;
+        exam.CourseOfferingId = offering.Id;
         exam.RequiresLockdown = false;
         exam.AllowedClient = "StandardBrowser";
         exam.LockdownMode = "Advisory";
@@ -1654,6 +1627,12 @@ public class ExamsController : ControllerBase
                 })
             .OrderByDescending(x => x.Attempt.SubmittedAt)
             .ToListAsync();
+ feature/alma-question-generation-ux
+
+
+feature/albiona-exam-metadata-validation
+ main
+ main
         var questionTotal = await _context.Questions
             .Where(x => x.ExamId == id)
             .SumAsync(x => (double)x.Points);
@@ -2498,11 +2477,49 @@ public class ExamsController : ControllerBase
         if (string.IsNullOrWhiteSpace(assignmentRole))
             return false;
 
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
+        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
+    }
+
+    private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)
+    {
+        var assignmentRole = User.IsInRole("Professor")
+            ? "Professor"
+            : User.IsInRole("Assistant")
+                ? "Assistant"
+                : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(assignmentRole))
+            return null;
+
+        var offering = await _context.CourseOfferings
+            .Include(x => x.Course)
+            .Include(x => x.Term)
+            .FirstOrDefaultAsync(x => x.Id == offeringId);
+
+        if (offering == null)
+            return null;
+
+        var hasAccess = await UserHasOfferingAccessAsync(offeringId, userId, assignmentRole);
+        return hasAccess ? offering : null;
+    }
+
+    private async Task<bool> UserHasOfferingAccessAsync(Guid offeringId, Guid userId, string assignmentRole)
+    {
+        var hasStaffAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == offeringId &&
+            a.UserId == userId &&
             a.IsActive &&
             a.RoleInOffering == assignmentRole);
+
+        if (hasStaffAssignment)
+            return true;
+
+        return assignmentRole switch
+        {
+            "Professor" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.PrimaryProfessorId == userId),
+            "Assistant" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.AssistantId == userId),
+            _ => false
+        };
     }
 
     private async Task<Exam?> FindQuestionBankContainerAsync(Guid offeringId)
@@ -3052,6 +3069,102 @@ public class ExamsController : ControllerBase
         var normalized = NormalizeOptionalValue(value);
         return normalized?.Length > 120 ? normalized[..120] : normalized;
     }
+feature/albiona-exam-metadata-validation
+
+    private static string BuildExamTitle(string? requestedTitle, CourseOffering offering, string assessmentType, string examPeriod)
+    {
+        var normalizedTitle = NormalizeOptionalText(requestedTitle);
+        if (!string.IsNullOrWhiteSpace(normalizedTitle))
+            return normalizedTitle;
+
+        var courseCode = NormalizeOptionalText(offering.Course?.Code);
+        var courseName = NormalizeOptionalText(offering.Course?.Name);
+        var courseLabel = string.Join(" - ", new[] { courseCode, courseName }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        if (string.IsNullOrWhiteSpace(courseLabel))
+            courseLabel = "Course";
+
+        var parts = new List<string>
+        {
+            courseLabel,
+            FormatAssessmentTypeLabel(assessmentType)
+        };
+
+        var periodLabel = FormatExamPeriodLabel(assessmentType, examPeriod);
+        if (!string.IsNullOrWhiteSpace(periodLabel))
+            parts.Add(periodLabel);
+
+        var academicYear = ResolveAcademicYear(offering, null);
+        if (!string.IsNullOrWhiteSpace(academicYear))
+            parts.Add(academicYear);
+
+        return string.Join(" - ", parts);
+    }
+
+    private static string ResolveAcademicYear(CourseOffering offering, string? fallbackAcademicYear)
+    {
+        return NormalizeOptionalText(offering.Term?.AcademicYearLabel) ??
+               NormalizeOptionalText(offering.Term?.Code) ??
+               NormalizeOptionalText(fallbackAcademicYear) ??
+               string.Empty;
+    }
+
+    private static string ResolveSemesterLabel(CourseOffering offering, string? fallbackSemesterLabel)
+    {
+        if (offering.SemesterNo > 0)
+            return $"Semester {offering.SemesterNo}";
+
+        return NormalizeOptionalText(offering.Term?.Season) ??
+               NormalizeOptionalText(fallbackSemesterLabel) ??
+               string.Empty;
+    }
+
+    private static string ResolveCohortLabel(CourseOffering offering, string? fallbackCohortLabel)
+    {
+        var parts = new List<string>();
+        if (offering.YearOfStudy > 0)
+            parts.Add($"Year {offering.YearOfStudy}");
+
+        var sectionCode = NormalizeOptionalText(offering.SectionCode);
+        if (!string.IsNullOrWhiteSpace(sectionCode))
+            parts.Add($"Section {sectionCode}");
+
+ feature/alma-question-generation-ux
+
+        if (parts.Count > 0)
+            return string.Join(" / ", parts);
+
+        return NormalizeOptionalText(fallbackCohortLabel) ?? string.Empty;
+    }
+
+    private static string FormatAssessmentTypeLabel(string assessmentType)
+    {
+        return assessmentType switch
+        {
+            "Kollokfium1" => "Kollokfium 1",
+            "Kollokfium2" => "Kollokfium 2",
+            "Practice" => "Ushtrime / practice",
+            _ => "Provim"
+        };
+    }
+
+    private static string? FormatExamPeriodLabel(string assessmentType, string examPeriod)
+    {
+        if (!string.Equals(assessmentType, "Provim", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return examPeriod switch
+        {
+            "AfatiJanarit" => "Afati i Janarit",
+            "AfatiPrillit" => "Afati i Prillit",
+            "AfatiQershorit" => "Afati i Qershorit",
+            "AfatiShtatorit" => "Afati i Shtatorit",
+            "AfatiTetorit" => "Afati i Tetorit",
+            "GjateSemestrit" => "Gjate semestrit",
+            _ => null
+        };
+    }
+main
+main
     private static bool RequiresAiReview(Question question)
     {
         return string.Equals(question.Type, "Text", StringComparison.OrdinalIgnoreCase) ||
@@ -3415,7 +3528,24 @@ public class ExamsController : ControllerBase
         var normalizedClient = NormalizeOptionalValue(allowedClient) ?? "StandardBrowser";
         var normalizedMode = NormalizeOptionalValue(lockdownMode) ?? "Advisory";
 
+feature/albiona-exam-metadata-validation
+        if (!requiresLockdown)
+            return null;
+
+ feature/alma-question-generation-ux
+        var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient", "InstitutionalKiosk" };
+
+        var validClient = string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(normalizedClient, "SafeExamBrowser", StringComparison.OrdinalIgnoreCase);
+        if (!validClient)
+            return "AllowedClient must be StandardBrowser or SafeExamBrowser.";
+
+        var validMode = string.Equals(normalizedMode, "Advisory", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalizedMode, "Strict", StringComparison.OrdinalIgnoreCase);
+        if (!validMode)
+            return "LockdownMode must be Advisory or Strict.";
         var allowedClients = new[] { "StandardBrowser", "SafeExamBrowser", "KioskClient" };
+ main
         var allowedModes = new[] { "Advisory", "Strict" };
 
         if (!allowedClients.Contains(normalizedClient, StringComparer.OrdinalIgnoreCase))
@@ -3423,9 +3553,13 @@ public class ExamsController : ControllerBase
 
         if (!allowedModes.Contains(normalizedMode, StringComparer.OrdinalIgnoreCase))
             return "Invalid lockdown mode.";
+ feature/alma-question-generation-ux
+
+     main
 
         if (requiresLockdown && string.Equals(normalizedClient, "StandardBrowser", StringComparison.OrdinalIgnoreCase))
             return "A lockdown exam must require SafeExamBrowser or KioskClient.";
+ main
 
         return null;
     }

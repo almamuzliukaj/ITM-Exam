@@ -3274,6 +3274,86 @@ input[type="radio"]{
   min-height: 0;
 }
 
+.technicalAnswerWorkspace{
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .34fr);
+  gap: 12px;
+}
+
+.technicalEditorShell,
+.technicalRunPanel{
+  min-width: 0;
+  border: 1px solid #d7e2ef;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.technicalEditorToolbar{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e3ebf5;
+  background: #f7faff;
+}
+
+.technicalEditorToolbar strong{
+  display: block;
+  margin-top: 3px;
+  color: var(--heading);
+  font-size: 14px;
+}
+
+.technicalRunPanel{
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #f9fbfe;
+}
+
+.technicalRunHeader{
+  padding: 12px;
+  border-bottom: 1px solid #e3ebf5;
+}
+
+.technicalRunHeader strong{
+  display: block;
+  margin-top: 4px;
+  color: var(--heading);
+}
+
+.technicalRunPanel pre{
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #314155;
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.technicalRunPanelSuccess{
+  border-color: rgba(17,122,81,.32);
+  background: #f6fcf8;
+}
+
+.technicalRunPanelSuccess .technicalRunHeader{
+  background: #edf8f1;
+}
+
+.technicalRunPanelError{
+  border-color: rgba(185,28,28,.28);
+  background: #fff8f8;
+}
+
+.technicalRunPanelError .technicalRunHeader{
+  background: #fff1f1;
+}
+
 .secureExamShell .examQuestionStepper{
   margin-top: 8px;
   padding-top: 8px;
@@ -4650,7 +4730,8 @@ input[type="radio"]{
 
   .examBriefingHero,
   .secureExamCommandBar,
-  .secureExamHeader{
+  .secureExamHeader,
+  .technicalAnswerWorkspace{
     grid-template-columns: 1fr;
   }
 

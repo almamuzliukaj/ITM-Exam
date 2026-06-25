@@ -332,7 +332,10 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
 
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "MaximumPoints" integer NOT NULL DEFAULT 100;
+feature/albiona-exam-metadata-validation
 
+
+ main
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
 
@@ -370,7 +373,10 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             UPDATE "Exams"
             SET "Status" = CASE WHEN "IsPublished" THEN 'Published' ELSE 'Draft' END
             WHERE "Status" IS NULL OR "Status" = '';
+ feature/albiona-exam-metadata-validation
 
+
+ main
             UPDATE "Exams"
             SET "AssessmentType" = 'Exam'
             WHERE "AssessmentType" IS NULL OR "AssessmentType" = '';
@@ -411,6 +417,9 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             SET "ExamPeriod" = 'Custom'
             WHERE "ExamPeriod" IS NULL OR "ExamPeriod" = '';
 
+ feature/albiona-exam-metadata-validation
+ feature/albiona-exam-metadata-validation
+ main
             UPDATE "Exams" AS exams
             SET "MaximumPoints" = COALESCE(points.total_points, exams."MaximumPoints", 100)
             FROM (
@@ -421,6 +430,9 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             WHERE exams."Id" = points."ExamId"
               AND (exams."MaximumPoints" IS NULL OR exams."MaximumPoints" <= 0);
 
+ feature/albiona-exam-metadata-validation
+ main
+ main
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'InProgress';
 

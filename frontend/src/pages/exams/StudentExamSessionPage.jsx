@@ -28,9 +28,7 @@ export default function StudentExamSessionPage() {
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
-  const [savedAt, setSavedAt] = useState("");
-  const [loadedDraftAt, setLoadedDraftAt] = useState("");
-  const [draftRestored, setDraftRestored] = useState(false);
+  const [, setSavedAt] = useState("");
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
@@ -131,8 +129,6 @@ export default function StudentExamSessionPage() {
         }
         if (restored?.savedAt) {
           setSavedAt(restored.savedAt);
-          setLoadedDraftAt(restored.savedAt);
-          setDraftRestored(true);
         }
       } catch (err) {
         if (active) setError(getApiMessage(err, "Failed to load the exam session."));
@@ -549,18 +545,6 @@ export default function StudentExamSessionPage() {
     } finally {
       setVerifyingEntryCode(false);
     }
-  }
-
-  function discardRestoredDraft() {
-    if (!storageKey) return;
-    localStorage.removeItem(storageKey);
-    setAnswers({});
-    setFlaggedQuestions({});
-    setTechnicalRunResults({});
-    setLoadedDraftAt("");
-    setSavedAt("");
-    setDraftRestored(false);
-    setSaveState("idle");
   }
 
   async function runTechnicalAnswer(question) {

@@ -736,6 +736,16 @@ function formatDateTime(value) {
 }
 
 function formatAttemptDuration(startedAt, submittedAt) {
+ feature/albiona-exam-metadata-validation
+  const start = Date.parse(startedAt || "");
+  const end = Date.parse(submittedAt || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
+
+  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+
   if (!startedAt || !submittedAt) return "-";
   const started = new Date(startedAt);
   const submitted = new Date(submittedAt);
@@ -745,6 +755,7 @@ function formatAttemptDuration(startedAt, submittedAt) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   if (hours <= 0) return `${minutes} min`;
+ main
   return `${hours}h ${minutes}m`;
 }
 

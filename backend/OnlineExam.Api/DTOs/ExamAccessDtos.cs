@@ -10,6 +10,11 @@ public class AllowExamStudentAccessDto
     public string? Reason { get; set; }
 }
 
+public class RequestExamAccessApprovalDto
+{
+    public string? Reason { get; set; }
+}
+
 public class ExamAccessCodeResponseDto
 {
     public Guid Id { get; set; }
@@ -29,8 +34,16 @@ public class ExamAccessStatusDto
     public DateTime? ActiveCodeExpiresAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
+ feature/agnesa-access-code-security
     public DateTime ServerTimeUtc { get; set; }
+
+ feature/alma-manual-admission-workflow
+    public DateTime? RequestedAt { get; set; }
+    public string ApprovalReason { get; set; } = string.Empty;
+
+ main
     public int CodeLifetimeSeconds { get; set; }
+ main
     public string Message { get; set; } = string.Empty;
 }
 

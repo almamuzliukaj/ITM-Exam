@@ -3,7 +3,7 @@ import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, runTechnicalExamAnswer, sendExamHeartbeat, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -32,6 +32,7 @@ export default function StudentExamSessionPage() {
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
+  const [requestingApproval, setRequestingApproval] = useState(false);
   const [integrityEvents, setIntegrityEvents] = useState([]);
   const [integrityPolicy, setIntegrityPolicy] = useState(null);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -39,6 +40,7 @@ export default function StudentExamSessionPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [sessionControlState, setSessionControlState] = useState(null);
   const submittedRef = useRef(false);
   const autoSubmitAttemptedRef = useRef(false);
   const autoSubmitSummaryRef = useRef(null);
@@ -52,6 +54,10 @@ export default function StudentExamSessionPage() {
   const shouldShowFinalWarning = Boolean(integrityPolicy?.shouldShowFinalWarning) || effectiveViolationCount >= finalWarningThreshold;
   const shouldAutoSubmit = Boolean(integrityPolicy?.shouldAutoSubmit) || effectiveViolationCount >= autoActionThreshold;
   const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
+  const waitingForApproval = accessStatus?.accessStatus === "ApprovalRequested";
+  const approvalRejected = accessStatus?.accessStatus === "Rejected";
+  const sessionRemoved = sessionControlState?.accessStatus === "Removed";
+  const sessionRejected = sessionControlState?.accessStatus === "Rejected";
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -512,6 +518,69 @@ export default function StudentExamSessionPage() {
     setActiveQuestionIndex((current) => Math.min(current, questions.length - 1));
   }, [questions.length]);
 
+  useEffect(() => {
+    if (!examId || !isLiveSession || result || submitting || sessionControlState) return;
+
+    let active = true;
+    const syncSession = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setNetworkOnline(false);
+        return;
+      }
+
+      try {
+        const updated = await sendExamHeartbeat(examId);
+        if (!active) return;
+        setAccessStatus(updated);
+        setNetworkOnline(true);
+
+        if (updated?.requiresCode && !updated?.hasAccess) {
+          setSessionControlState(updated);
+          setShowSubmitReview(false);
+          setShowFinalWarning(false);
+          if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen().catch(() => {});
+          }
+        }
+      } catch (err) {
+        if (!active) return;
+        if (!err?.response) {
+          setNetworkOnline(false);
+        } else {
+          setError(getApiMessage(err, "Live session synchronization failed."));
+        }
+      }
+    };
+
+    syncSession();
+    const timer = window.setInterval(syncSession, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [examId, isLiveSession, result, sessionControlState, submitting]);
+
+  useEffect(() => {
+    if (!examId || isLiveSession || !accessStatus?.requiresCode || accessStatus?.hasAccess) return;
+    if (!["ApprovalRequested", "Rejected"].includes(accessStatus?.accessStatus)) return;
+
+    let active = true;
+    const refreshAccessStatus = async () => {
+      try {
+        const updated = await getExamAccessStatus(examId);
+        if (active) setAccessStatus(updated);
+      } catch {
+        // Keep the waiting screen stable; the next poll will retry.
+      }
+    };
+
+    const timer = window.setInterval(refreshAccessStatus, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [accessStatus?.accessStatus, accessStatus?.hasAccess, accessStatus?.requiresCode, examId, isLiveSession]);
+
   if (userLoading) return <div className="pageState">Loading session...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
   if (user.role !== "Student") return <div className="pageState">Only students can open an exam session.</div>;
@@ -527,7 +596,7 @@ export default function StudentExamSessionPage() {
   async function startLiveSession() {
     setError("");
     if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
-      setError("Enter the exam access code before starting this exam.");
+      setError(waitingForApproval ? "Wait for professor approval before starting this exam." : "Enter the exam access code or request professor approval before starting this exam.");
       return;
     }
 
@@ -564,6 +633,21 @@ export default function StudentExamSessionPage() {
       setError(getApiMessage(err, "The entry code could not be verified."));
     } finally {
       setVerifyingEntryCode(false);
+    }
+  }
+
+  async function requestProfessorApproval() {
+    if (!examId || requestingApproval) return;
+
+    try {
+      setRequestingApproval(true);
+      setError("");
+      const updatedAccess = await requestExamApproval(examId, "Student requested manual admission from the exam briefing page.");
+      setAccessStatus(updatedAccess);
+    } catch (err) {
+      setError(getApiMessage(err, "Approval request could not be sent."));
+    } finally {
+      setRequestingApproval(false);
     }
   }
 
@@ -630,9 +714,17 @@ export default function StudentExamSessionPage() {
                   accessStatus={accessStatus}
                   entryCode={entryCode}
                   verifying={verifyingEntryCode}
+                  requestingApproval={requestingApproval}
                   onEntryCodeChange={setEntryCode}
                   onVerify={verifyEntryCode}
+                  onRequestApproval={requestProfessorApproval}
                 />
+              ) : null}
+              {waitingForApproval ? (
+                <ApprovalWaitingPanel accessStatus={accessStatus} />
+              ) : null}
+              {approvalRejected ? (
+                <ApprovalRejectedPanel accessStatus={accessStatus} onRequestAgain={requestProfessorApproval} requesting={requestingApproval} />
               ) : null}
               <section className="examBriefingHero">
                 <div>
@@ -733,6 +825,26 @@ export default function StudentExamSessionPage() {
       <main className="secureExamMain">
         {error ? <div className="alert">{error}</div> : null}
 
+        {!networkOnline && !result ? (
+          <LiveSessionStatePanel
+            tone="warning"
+            title="Temporarily offline"
+            message="Your connection is offline. Stay on this screen; saved answers remain on this device and synchronization will retry automatically."
+            detail="Do not close the exam window."
+          />
+        ) : null}
+
+        {sessionControlState ? (
+          <LiveSessionStatePanel
+            tone={sessionRemoved || sessionRejected ? "danger" : "warning"}
+            title={sessionRemoved ? "Removed by professor" : sessionRejected ? "Admission rejected" : "Session paused"}
+            message={sessionControlState.message || "Your live exam access changed. The exam workspace has been closed for review."}
+            detail={sessionControlState.approvalReason || "Contact your professor before trying to re-enter."}
+            actionLabel="Return to exams"
+            onAction={() => navigate("/exams")}
+          />
+        ) : null}
+
         {showSubmitReview ? (
           <SubmitReviewPanel
             answeredCount={answeredCount}
@@ -764,7 +876,7 @@ export default function StudentExamSessionPage() {
           />
         ) : null}
 
-        {loading ? (
+        {sessionControlState ? null : loading ? (
           <div className="pageStateCard">Loading questions...</div>
         ) : result ? (
           <SubmissionResult
@@ -1236,8 +1348,10 @@ function AutoSubmitNoticeModal({ notice, countdown, submitting, onSubmitNow }) {
   );
 }
 
-function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeChange, onVerify }) {
+function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingApproval, onEntryCodeChange, onVerify, onRequestApproval }) {
   const verified = Boolean(accessStatus?.hasAccess);
+  const waiting = accessStatus?.accessStatus === "ApprovalRequested";
+  const rejected = accessStatus?.accessStatus === "Rejected";
 
   return (
     <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
@@ -1247,30 +1361,100 @@ function ExamEntryCodePanel({ accessStatus, entryCode, verifying, onEntryCodeCha
           <span className="small">
             {verified
               ? "You can now start the monitored exam session."
-              : "The professor provides this short code in the exam room. Codes expire after a few minutes."}
+              : "Use the short code from the professor, or request manual admission if you cannot use the active code."}
           </span>
         </div>
-        <span className={`statusPill ${verified ? "statusPublished" : "statusDraft"}`}>
-          {verified ? accessStatus.accessStatus || "Verified" : "Code required"}
+        <span className={`statusPill ${verified ? "statusPublished" : rejected ? "statusWarn" : waiting ? "statusDraft" : "statusDraft"}`}>
+          {verified ? accessStatus.accessStatus || "Verified" : waiting ? "Waiting approval" : rejected ? "Rejected" : "Code required"}
         </span>
       </div>
       {!verified ? (
-        <div className="sectionBody examEntryCodeForm">
-          <label className="field">
-            <span>Access code</span>
-            <input
-              className="input"
-              value={entryCode}
-              onChange={(event) => onEntryCodeChange(event.target.value)}
-              placeholder="Enter code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-            />
-          </label>
-          <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
-            {verifying ? "Verifying..." : "Verify code"}
-          </button>
+        <div className="sectionBody stackLg">
+          <div className="examEntryCodeForm">
+            <label className="field">
+              <span>Access code</span>
+              <input
+                className="input"
+                value={entryCode}
+                onChange={(event) => onEntryCodeChange(event.target.value)}
+                placeholder="Enter code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+              />
+            </label>
+            <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
+              {verifying ? "Verifying..." : "Verify code"}
+            </button>
+          </div>
+          <div className="manualAdmissionActions">
+            <div>
+              <strong>Need manual admission?</strong>
+              <span>{waiting ? "Your request is visible to the professor. This page refreshes the status automatically." : "Ask the professor to approve your entry from the live monitor."}</span>
+            </div>
+            <button className="btn" type="button" onClick={onRequestApproval} disabled={requestingApproval || waiting}>
+              {requestingApproval ? "Sending..." : waiting ? "Request sent" : rejected ? "Request again" : "Request approval"}
+            </button>
+          </div>
         </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ApprovalWaitingPanel({ accessStatus }) {
+  return (
+    <section className="surfaceCard manualAdmissionPanel manualAdmissionWaiting">
+      <div className="sectionHeader">
+        <div>
+          <h3>Waiting for professor approval</h3>
+          <span className="small">Do not refresh or start the exam yet. The timer has not started.</span>
+        </div>
+        <span className="statusPill statusDraft">Pending</span>
+      </div>
+      <div className="sectionBody">
+        <p>{accessStatus?.message || "Your manual admission request has been sent to the professor."}</p>
+        <div className="manualAdmissionTimeline">
+          <span>Request sent</span>
+          <strong>{formatSavedAt(accessStatus?.requestedAt)}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ApprovalRejectedPanel({ accessStatus, requesting, onRequestAgain }) {
+  return (
+    <section className="surfaceCard manualAdmissionPanel manualAdmissionRejected">
+      <div className="sectionHeader">
+        <div>
+          <h3>Manual admission rejected</h3>
+          <span className="small">You can still enter a valid code or send another request after speaking with staff.</span>
+        </div>
+        <span className="statusPill statusWarn">Rejected</span>
+      </div>
+      <div className="sectionBody manualAdmissionRejectedBody">
+        <p>{accessStatus?.approvalReason || accessStatus?.message || "Your professor rejected this manual admission request."}</p>
+        <button className="btn" type="button" onClick={onRequestAgain} disabled={requesting}>
+          {requesting ? "Sending..." : "Request approval again"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function LiveSessionStatePanel({ tone = "warning", title, message, detail, actionLabel, onAction }) {
+  return (
+    <section className={`liveSessionStatePanel liveSessionStatePanel-${tone}`} role="status" aria-live="assertive">
+      <div>
+        <span className="summaryLabel">Live session state</span>
+        <h3>{title}</h3>
+        <p>{message}</p>
+        {detail ? <small>{detail}</small> : null}
+      </div>
+      {onAction ? (
+        <button className="btn btnPrimary" type="button" onClick={onAction}>
+          {actionLabel || "Continue"}
+        </button>
       ) : null}
     </section>
   );

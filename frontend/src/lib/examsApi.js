@@ -75,6 +75,11 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
+export async function sendExamHeartbeat(examId) {
+  const response = await api.post(`/api/exams/${examId}/attempt/heartbeat`);
+  return response.data;
+}
+
 export async function getExamAccessStatus(examId) {
   const response = await api.get(`/api/exams/${examId}/access-status`);
   return response.data;
@@ -82,6 +87,11 @@ export async function getExamAccessStatus(examId) {
 
 export async function verifyExamEntryCode(examId, code) {
   const response = await api.post(`/api/exams/${examId}/verify-entry-code`, { code });
+  return response.data;
+}
+
+export async function requestExamApproval(examId, reason = "Student requested professor approval.") {
+  const response = await api.post(`/api/exams/${examId}/request-approval`, { reason });
   return response.data;
 }
 
@@ -97,6 +107,11 @@ export async function getExamLiveMonitor(examId) {
 
 export async function allowExamStudentAccess(examId, studentId, reason = "Professor approval") {
   const response = await api.post(`/api/exams/${examId}/students/${studentId}/allow-access`, { reason });
+  return response.data;
+}
+
+export async function rejectExamStudentAccess(examId, studentId, reason = "Professor rejected manual admission.") {
+  const response = await api.post(`/api/exams/${examId}/students/${studentId}/reject-access`, { reason });
   return response.data;
 }
 

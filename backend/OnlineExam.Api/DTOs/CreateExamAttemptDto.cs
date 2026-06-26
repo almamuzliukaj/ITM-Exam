@@ -7,6 +7,7 @@ namespace OnlineExam.Api.DTOs
     {
         public Guid ExamId { get; set; }
         public List<AnswerDto> Answers { get; set; } = new();
+        public string? ClientSessionId { get; set; }
     }
 
     public class AnswerDto
@@ -20,6 +21,11 @@ namespace OnlineExam.Api.DTOs
         public Guid AttemptId { get; set; }
         public Guid QuestionId { get; set; }
         public string Response { get; set; } = string.Empty;
+        public string? ClientSessionId { get; set; }
+    }
+
+    public class ExamSessionHeartbeatDto
+    {
         public string? ClientSessionId { get; set; }
     }
 

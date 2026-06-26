@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<ExamIntegrityEvent> ExamIntegrityEvents { get; set; }
     public DbSet<ExamAccessCode> ExamAccessCodes { get; set; }
     public DbSet<ExamStudentAccess> ExamStudentAccesses { get; set; }
+    public DbSet<ExamSessionBinding> ExamSessionBindings { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Question> Questions { get; set; }
     public DbSet<Term> Terms { get; set; }
@@ -150,6 +151,33 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ExamStudentAccess>()
             .HasIndex(x => new { x.ExamId, x.StudentId })
             .IsUnique();
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.Exam)
+            .WithMany()
+            .HasForeignKey(x => x.ExamId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.Attempt)
+            .WithMany()
+            .HasForeignKey(x => x.AttemptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.ExamStudentAccess)
+            .WithMany()
+            .HasForeignKey(x => x.ExamStudentAccessId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => x.AttemptId);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => new { x.ExamId, x.StudentId, x.Status });
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => new { x.ExamId, x.StudentId, x.SessionReferenceHash });
 
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)

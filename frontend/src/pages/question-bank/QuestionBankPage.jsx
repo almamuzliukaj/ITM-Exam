@@ -310,6 +310,12 @@ export default function QuestionBankPage() {
             <div className="resourceActionGroup">
               <Link
                 className="btn"
+                to={`/question-bank/ai-materials${selectedOfferingId ? `?offeringId=${selectedOfferingId}` : ""}`}
+              >
+                Generate from material
+              </Link>
+              <Link
+                className="btn"
                 to={`/question-bank/generated-review${selectedOfferingId ? `?offeringId=${selectedOfferingId}` : ""}`}
               >
                 Review generated

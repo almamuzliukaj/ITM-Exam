@@ -21,6 +21,7 @@ import AdminSmuIntegrationPage from "../pages/admin/AdminSmuIntegrationPage";
 import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
 import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
 import GeneratedQuestionReviewPage from "../pages/question-bank/GeneratedQuestionReviewPage";
+import AiMaterialUploadPage from "../pages/question-bank/AiMaterialUploadPage";
 import AdminEnrollmentsPage from "../pages/admin/AdminEnrollmentsPage";
 import ReportsPage from "../pages/reports/ReportsPage";
 
@@ -56,6 +57,7 @@ export default function AppRoutes() {
 
         <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>
           <Route path="/question-bank" element={<QuestionBankPage />} />
+          <Route path="/question-bank/ai-materials" element={<AiMaterialUploadPage />} />
           <Route path="/question-bank/generated-review" element={<GeneratedQuestionReviewPage />} />
           <Route path="/question-bank/new" element={<QuestionBankEditorPage />} />
           <Route path="/question-bank/questions/:questionId/edit" element={<QuestionBankEditorPage />} />

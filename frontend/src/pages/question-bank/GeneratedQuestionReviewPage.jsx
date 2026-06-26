@@ -213,7 +213,16 @@ export default function GeneratedQuestionReviewPage() {
       badge="AI review"
       title="Generated question review"
       subtitle="Review AI-generated drafts, edit academic content, approve only reliable questions, and add them to the selected Question Bank."
-      actions={<Link className="btn" to={selectedOfferingId ? `/question-bank?offeringId=${selectedOfferingId}` : "/question-bank"}>Question bank</Link>}
+      actions={
+        <div className="resourceActionGroup">
+          <Link className="btn" to={selectedOfferingId ? `/question-bank/ai-materials?offeringId=${selectedOfferingId}` : "/question-bank/ai-materials"}>
+            Generate from material
+          </Link>
+          <Link className="btn" to={selectedOfferingId ? `/question-bank?offeringId=${selectedOfferingId}` : "/question-bank"}>
+            Question bank
+          </Link>
+        </div>
+      }
     >
       <div className="stackXl generatedReviewWorkspace">
         {error ? <div className="alert">{error}</div> : null}

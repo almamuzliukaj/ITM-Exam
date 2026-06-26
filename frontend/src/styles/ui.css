@@ -6919,11 +6919,200 @@ body{
   margin-left: auto;
 }
 
+.aiMaterialWorkspace{
+  --ai-accent: #17446f;
+  --ai-soft: #eef6f2;
+}
+
+.aiMaterialHero{
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 22px;
+  border-left: 4px solid var(--ai-accent);
+  background:
+    radial-gradient(circle at top right, rgba(23, 68, 111, .12), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #f7fbf9 100%);
+}
+
+.aiMaterialHero h3{
+  margin: 4px 0 6px;
+}
+
+.aiMaterialHero p{
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.aiMaterialHeroActions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.aiMaterialLayout{
+  display: grid;
+  grid-template-columns: minmax(320px, .95fr) minmax(360px, 1.05fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.aiMaterialModeTabs{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.aiMaterialModeTabs button{
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiMaterialModeTabs button.active{
+  border-color: rgba(23, 68, 111, .55);
+  background: #edf5fb;
+  color: var(--heading);
+  box-shadow: 0 0 0 3px rgba(23, 68, 111, .08);
+}
+
+.aiMaterialDropzone{
+  display: grid;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed rgba(23, 68, 111, .45);
+  border-radius: 8px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+
+.aiMaterialDropzone span,
+.aiMaterialDropzone small{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.aiMaterialDropzone strong{
+  color: var(--heading);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.aiMaterialDropzone input{
+  max-width: 100%;
+}
+
+.aiMaterialSummary,
+.aiProgressPanel{
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.aiMaterialSummary strong,
+.aiProgressPanel strong{
+  color: var(--heading);
+  font-size: 16px;
+}
+
+.aiMaterialSummary p,
+.aiProgressPanel p{
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.aiMaterialSummary em{
+  color: #0d6b48;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.aiConfigGrid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.aiProgressPanel{
+  border-left: 4px solid var(--ai-accent);
+  background: linear-gradient(135deg, #ffffff 0%, var(--ai-soft) 100%);
+}
+
+.aiProgressPanel.timeout,
+.aiProgressPanel.error{
+  border-left-color: #a33a2f;
+  background: #fff7f5;
+}
+
+.aiProgressPanel.ready{
+  border-left-color: #0d6b48;
+  background: #f2faf5;
+}
+
+.aiProgressHeader{
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.aiProgressHeader > span{
+  color: var(--heading);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.aiProgressTrack{
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce7ef;
+}
+
+.aiProgressTrack span{
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #17446f, #2e7d5b);
+  transition: width .25s ease;
+}
+
+.aiMaterialActions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btnDisabled{
+  opacity: .55;
+  pointer-events: none;
+}
+
 @media (max-width: 1100px){
   .questionBankFilters,
   .questionTypeSelector,
   .questionBankSummaryGrid,
-  .generatedReviewStats{
+  .generatedReviewStats,
+  .aiConfigGrid{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -6932,7 +7121,8 @@ body{
   }
 
   .generatedReviewScopeGrid,
-  .generatedReviewLayout{
+  .generatedReviewLayout,
+  .aiMaterialLayout{
     grid-template-columns: 1fr;
   }
 
@@ -6946,8 +7136,15 @@ body{
   .questionBankFilters,
   .questionTypeSelector,
   .questionBankSummaryGrid,
-  .generatedReviewStats{
+  .generatedReviewStats,
+  .aiConfigGrid,
+  .aiMaterialModeTabs{
     grid-template-columns: 1fr;
+  }
+
+  .aiMaterialHero{
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .questionSetupChoices{

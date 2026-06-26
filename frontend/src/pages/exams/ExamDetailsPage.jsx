@@ -37,6 +37,8 @@ export default function ExamDetailsPage() {
   const [accessCode, setAccessCode] = useState(null);
   const [liveMonitor, setLiveMonitor] = useState(null);
   const [generatingAccessCode, setGeneratingAccessCode] = useState(false);
+  const [accessCodeError, setAccessCodeError] = useState("");
+  const [refreshingAccessPanel, setRefreshingAccessPanel] = useState(false);
   const [approvingStudentId, setApprovingStudentId] = useState("");
   const [rejectingStudentId, setRejectingStudentId] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -275,6 +277,7 @@ export default function ExamDetailsPage() {
 
     try {
       setGeneratingAccessCode(true);
+      setAccessCodeError("");
       setError("");
       const generated = await generateExamAccessCode(examId);
       setAccessCode(generated);
@@ -285,9 +288,29 @@ export default function ExamDetailsPage() {
         err?.response?.data?.message ||
         (typeof err?.response?.data === "string" ? err.response.data : null) ||
         err?.message;
+      setAccessCodeError(apiMessage || "Failed to generate exam access code.");
       setError(apiMessage || "Failed to generate exam access code.");
     } finally {
       setGeneratingAccessCode(false);
+    }
+  }
+
+  async function onRefreshAccessPanel() {
+    if (!examId || !canEdit || !exam?.isPublished) return;
+
+    try {
+      setRefreshingAccessPanel(true);
+      setAccessCodeError("");
+      const monitor = await getExamLiveMonitor(examId);
+      setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setAccessCodeError(apiMessage || "Failed to refresh access code status.");
+    } finally {
+      setRefreshingAccessPanel(false);
     }
   }
 
@@ -650,9 +673,12 @@ export default function ExamDetailsPage() {
                 accessCode={accessCode}
                 liveMonitor={liveMonitor}
                 generating={generatingAccessCode}
+                refreshing={refreshingAccessPanel}
+                error={accessCodeError}
                 approvingStudentId={approvingStudentId}
                 rejectingStudentId={rejectingStudentId}
                 onGenerate={onGenerateAccessCode}
+                onRefresh={onRefreshAccessPanel}
                 onAllowStudent={onAllowStudentAccess}
                 onRejectStudent={onRejectStudentAccess}
               />
@@ -1214,10 +1240,50 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
   );
 }
 
-function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudentId, rejectingStudentId, onGenerate, onAllowStudent, onRejectStudent }) {
+function ExamAccessPanel({
+  accessCode,
+  liveMonitor,
+  generating,
+  refreshing,
+  error,
+  approvingStudentId,
+  rejectingStudentId,
+  onGenerate,
+  onRefresh,
+  onAllowStudent,
+  onRejectStudent,
+}) {
   const summary = liveMonitor?.summary || {};
   const students = Array.isArray(liveMonitor?.students) ? liveMonitor.students : [];
   const activeExpiresAt = accessCode?.expiresAt || liveMonitor?.activeCodeExpiresAt;
+  const [now, setNow] = useState(() => Date.now());
+  const [copyState, setCopyState] = useState("");
+  const expiresAtMs = activeExpiresAt ? Date.parse(activeExpiresAt) : 0;
+  const remainingSeconds = expiresAtMs ? Math.max(0, Math.floor((expiresAtMs - now) / 1000)) : 0;
+  const hasGeneratedCode = Boolean(accessCode?.code || activeExpiresAt);
+  const canCopyCode = Boolean(accessCode?.code);
+  const isExpired = hasGeneratedCode && remainingSeconds <= 0;
+  const statusLabel = error ? "Generation failed" : isExpired ? "Expired" : hasGeneratedCode ? "Active" : "Not generated";
+  const statusClass = error ? "statusWarn" : isExpired ? "statusDraft" : hasGeneratedCode ? "statusLive" : "statusDraft";
+  const displayCode = accessCode?.code || (hasGeneratedCode ? "Active code generated" : "No active code");
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function onCopyCode() {
+    if (!accessCode?.code) return;
+
+    try {
+      await navigator.clipboard.writeText(accessCode.code);
+      setCopyState("Copied");
+    } catch {
+      setCopyState("Copy failed");
+    }
+
+    window.setTimeout(() => setCopyState(""), 2000);
+  }
 
   return (
     <section className="surfaceCard examAccessPanel">
@@ -1226,17 +1292,50 @@ function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudent
           <h3>Exam access and live monitoring</h3>
           <span className="small">Control classroom entry with a short code and monitor student activity during the exam.</span>
         </div>
-        <button className="btn btnPrimary" type="button" onClick={onGenerate} disabled={generating}>
-          {generating ? "Generating..." : accessCode ? "Regenerate entry code" : "Generate entry code"}
-        </button>
+        <div className="resourceActionGroup">
+          <button className="btn" type="button" onClick={onRefresh} disabled={refreshing || generating}>
+            {refreshing ? "Refreshing..." : "Refresh status"}
+          </button>
+          <button className="btn btnPrimary" type="button" onClick={onGenerate} disabled={generating || refreshing}>
+            {generating ? "Generating..." : hasGeneratedCode ? "Regenerate entry code" : "Generate entry code"}
+          </button>
+        </div>
       </div>
 
       <div className="sectionBody">
+        {error ? <div className="alert">{error}</div> : null}
+
+        <div className={`accessCodeControl ${isExpired ? "accessCodeExpired" : ""}`}>
+          <div>
+            <span className={`statusPill ${statusClass}`}>{statusLabel}</span>
+            <h4 className={canCopyCode ? "" : "accessCodeStatusText"}>{displayCode}</h4>
+            <p>
+              {hasGeneratedCode
+                ? isExpired
+                  ? "This entry code has expired. Regenerate a new 3-minute code before admitting more students."
+                  : canCopyCode
+                    ? `Expires in ${formatCountdown(remainingSeconds)}. Countdown is based on the server expiry time.`
+                    : `A code is active until ${formatDateTime(activeExpiresAt)}. Generate a new code if you need to copy/share it again.`
+                : "Generate a 3-minute code when students are ready to enter the room."}
+            </p>
+          </div>
+          <div className="accessCodeActions">
+            {canCopyCode ? (
+              <button className="btn btnTiny" type="button" onClick={onCopyCode} disabled={isExpired}>
+                {copyState || "Copy code"}
+              </button>
+            ) : (
+              <span className="statusPill statusDraft">Code visible only after generation</span>
+            )}
+            <span className="small">{activeExpiresAt ? `Expires ${formatDateTime(activeExpiresAt)}` : "Waiting for generation"}</span>
+          </div>
+        </div>
+
         <div className="examAccessGrid">
           <article className="examAccessCodeBox">
-            <span className="summaryLabel">Active code</span>
-            <strong>{accessCode?.code || (activeExpiresAt ? "Generated" : "No active code")}</strong>
-            <small>{activeExpiresAt ? `Expires ${formatDateTime(activeExpiresAt)}` : "Generate a 3-minute code when students are ready to enter."}</small>
+            <span className="summaryLabel">Code status</span>
+            <strong>{statusLabel}</strong>
+            <small>{hasGeneratedCode && !isExpired ? `${formatCountdown(remainingSeconds)} left` : "Regenerate when ready."}</small>
           </article>
           <article><span className="summaryLabel">Verified</span><strong>{summary.verified ?? 0}</strong></article>
           <article><span className="summaryLabel">Active</span><strong>{summary.active ?? 0}</strong></article>
@@ -1691,6 +1790,13 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatCountdown(totalSeconds) {
+  const safeSeconds = Math.max(0, Number(totalSeconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function isPositiveNumber(value) {

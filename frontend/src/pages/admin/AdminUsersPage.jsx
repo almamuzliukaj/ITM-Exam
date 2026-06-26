@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
 import SmuSourceBanner from "../../components/SmuSourceBanner";
+import StudentIdentityCard from "../../components/StudentIdentityCard";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useSmuIntegrationStatus } from "../../hooks/useSmuIntegrationStatus";
 import {
@@ -12,18 +13,20 @@ import {
   resetUserPassword,
   updateUser,
   updateUserStatus,
+  uploadOfficialStudentPhoto,
 } from "../../lib/usersApi";
 
 const ROLE_OPTIONS = ["Student", "Professor", "Assistant", "Admin"];
-const CSV_TEMPLATE = `FullName,Email,Role,IsActive,Password
-Alice Student,alice@student.edu,Student,true,
-Bob Professor,bob@university.edu,Professor,true,Welcome123
-Sara Assistant,sara@university.edu,Assistant,true,`;
+const CSV_TEMPLATE = `FullName,Email,Role,StudentNumber,IsActive,Password
+Alice Student,alice@student.edu,Student,STU-2026-001,true,
+Bob Professor,bob@university.edu,Professor,,true,Welcome123
+Sara Assistant,sara@university.edu,Assistant,,true,`;
 
 const initialCreateForm = {
   fullName: "",
   email: "",
   role: "Student",
+  studentNumber: "",
   password: "",
   isActive: true,
 };
@@ -46,8 +49,9 @@ export default function AdminUsersPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ fullName: "", role: "Student", isActive: true });
+  const [editForm, setEditForm] = useState({ fullName: "", role: "Student", studentNumber: "", isActive: true });
   const [passwordDrafts, setPasswordDrafts] = useState({});
+  const [photoUploadingId, setPhotoUploadingId] = useState("");
   const [activeUserTool, setActiveUserTool] = useState("");
   const [directoryPage, setDirectoryPage] = useState(1);
   const [directoryPageSize, setDirectoryPageSize] = useState(10);
@@ -169,6 +173,7 @@ export default function AdminUsersPage() {
     setEditForm({
       fullName: account.fullName,
       role: account.role,
+      studentNumber: account.studentNumber || "",
       isActive: account.isActive,
     });
   }
@@ -223,6 +228,27 @@ export default function AdminUsersPage() {
       setPageSuccess(t("adminUsers.resetSuccess"));
     } catch (error) {
       setPageError(readError(error, t("adminUsers.resetError")));
+    }
+  }
+
+  async function handlePhotoUpload(account, file) {
+    if (!file) return;
+    if (account.role !== "Student") {
+      setPageError("Official photographs are managed only for student accounts.");
+      return;
+    }
+
+    try {
+      setPhotoUploadingId(account.id);
+      setPageError("");
+      setPageSuccess("");
+      await uploadOfficialStudentPhoto(account.id, file);
+      setPageSuccess("Official student photograph saved.");
+      await loadUsers();
+    } catch (error) {
+      setPageError(readError(error, "Official photograph could not be saved."));
+    } finally {
+      setPhotoUploadingId("");
     }
   }
 
@@ -331,10 +357,16 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="field">
                   <label className="label">{t("adminUsers.role")}</label>
-                  <select className="input" value={createForm.role} onChange={(e) => setCreateForm((c) => ({ ...c, role: e.target.value }))}>
+                  <select className="input" value={createForm.role} onChange={(e) => setCreateForm((c) => ({ ...c, role: e.target.value, studentNumber: e.target.value === "Student" ? c.studentNumber : "" }))}>
                     {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
                   </select>
                 </div>
+                {createForm.role === "Student" ? (
+                  <div className="field">
+                    <label className="label">Student ID number</label>
+                    <input className="input" value={createForm.studentNumber} onChange={(e) => setCreateForm((c) => ({ ...c, studentNumber: e.target.value }))} required />
+                  </div>
+                ) : null}
                 <div className="field">
                   <label className="label">{t("adminUsers.temporaryPassword")}</label>
                   <input className="input" value={createForm.password} onChange={(e) => setCreateForm((c) => ({ ...c, password: e.target.value }))} required />
@@ -401,6 +433,7 @@ export default function AdminUsersPage() {
                       <th>{t("adminUsers.fullName")}</th>
                       <th>{t("adminUsers.email")}</th>
                       <th>{t("adminUsers.role")}</th>
+                      <th>Student ID</th>
                       <th>{t("adminUsers.status")}</th>
                       <th>{t("adminUsers.validation")}</th>
                     </tr>
@@ -412,6 +445,7 @@ export default function AdminUsersPage() {
                         <td>{row.fullName}</td>
                         <td>{row.email}</td>
                         <td>{t(`adminUsers.roles.${row.role}`) || row.role}</td>
+                        <td>{row.studentNumber || "-"}</td>
                         <td>{row.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</td>
                         <td>{row.error || t("adminUsers.ready")}</td>
                       </tr>
@@ -448,6 +482,7 @@ export default function AdminUsersPage() {
                           <th>{t("adminUsers.fullName")}</th>
                           <th>{t("adminUsers.email")}</th>
                           <th>{t("adminUsers.role")}</th>
+                          <th>Student ID</th>
                           <th>{t("adminUsers.temporaryPassword")}</th>
                         </tr>
                       </thead>
@@ -457,6 +492,7 @@ export default function AdminUsersPage() {
                             <td>{account.fullName}</td>
                             <td>{account.email}</td>
                             <td>{t(`adminUsers.roles.${account.role}`) || account.role}</td>
+                            <td>{account.studentNumber || "-"}</td>
                             <td>{account.temporaryPassword || "-"}</td>
                           </tr>
                         ))}
@@ -531,9 +567,10 @@ export default function AdminUsersPage() {
                   <table className="dataTable">
                     <thead>
                       <tr>
-                        <th>{t("adminUsers.fullName")}</th>
+                        <th>Identity</th>
                         <th>{t("adminUsers.email")}</th>
                         <th>{t("adminUsers.role")}</th>
+                        <th>Student ID</th>
                         <th>{t("adminUsers.status")}</th>
                         <th>Source</th>
                         <th>{t("adminUsers.created")}</th>
@@ -543,20 +580,31 @@ export default function AdminUsersPage() {
                     <tbody>
                       {users.length === 0 ? (
                         <tr>
-                          <td colSpan={7}>No users match the current filters.</td>
+                          <td colSpan={8}>No users match the current filters.</td>
                         </tr>
                       ) : visibleUsers.map((account) => {
                         const isEditing = editingId === account.id;
                         const smuLockedAccount = isSmuManagedAccount(account, smuManaged);
                         return (
                           <tr key={account.id}>
-                            <td>{isEditing ? <input className="input" value={editForm.fullName} onChange={(e) => setEditForm((c) => ({ ...c, fullName: e.target.value }))} /> : account.fullName}</td>
+                            <td>
+                              {isEditing ? (
+                                <input className="input" value={editForm.fullName} onChange={(e) => setEditForm((c) => ({ ...c, fullName: e.target.value }))} />
+                              ) : account.role === "Student" ? (
+                                <StudentIdentityCard identity={account} compact />
+                              ) : account.fullName}
+                            </td>
                             <td>{account.email}</td>
                             <td>{isEditing ? (
-                              <select className="input" value={editForm.role} onChange={(e) => setEditForm((c) => ({ ...c, role: e.target.value }))}>
+                              <select className="input" value={editForm.role} onChange={(e) => setEditForm((c) => ({ ...c, role: e.target.value, studentNumber: e.target.value === "Student" ? c.studentNumber : "" }))}>
                                 {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{t(`adminUsers.roles.${role}`)}</option>)}
                               </select>
                             ) : t(`adminUsers.roles.${account.role}`) || account.role}</td>
+                            <td>
+                              {isEditing && editForm.role === "Student" ? (
+                                <input className="input inputCompact" value={editForm.studentNumber} onChange={(e) => setEditForm((c) => ({ ...c, studentNumber: e.target.value }))} />
+                              ) : account.studentNumber || "-"}
+                            </td>
                             <td><span className={`statusPill ${account.isActive ? "statusLive" : "statusDraft"}`}>{account.isActive ? t("adminUsers.active") : t("adminUsers.inactive")}</span></td>
                             <td><span className={`statusPill ${smuLockedAccount ? "statusLive" : "statusDraft"}`}>{smuLockedAccount ? "SMU sync" : "Local"}</span></td>
                             <td>{new Date(account.createdAt).toLocaleDateString()}</td>
@@ -588,6 +636,17 @@ export default function AdminUsersPage() {
                                       <input className="input" placeholder={t("adminUsers.newPassword")} value={passwordDrafts[account.id] || ""} onChange={(e) => setPasswordDrafts((c) => ({ ...c, [account.id]: e.target.value }))} />
                                       <button className="btn" type="button" onClick={() => handleResetPassword(account.id)}>{t("adminUsers.reset")}</button>
                                     </div> : null}
+                                    {account.role === "Student" ? (
+                                      <label className="btn officialPhotoUploadButton">
+                                        {photoUploadingId === account.id ? "Uploading..." : account.hasOfficialPhoto ? "Replace photo" : "Upload photo"}
+                                        <input
+                                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                          type="file"
+                                          disabled={photoUploadingId === account.id}
+                                          onChange={(event) => handlePhotoUpload(account, event.target.files?.[0])}
+                                        />
+                                      </label>
+                                    ) : null}
                                   </>
                                 )}
                               </div>
@@ -633,7 +692,7 @@ function parseCsvRows(rawText, t) {
 
   for (let index = 1; index < lines.length; index += 1) {
     const parts = parseCsvLine(lines[index]).map((part) => part.trim());
-    const [fullName = "", email = "", role = "", isActive = "true", password = ""] = parts;
+    const [fullName = "", email = "", role = "", studentNumber = "", isActive = "true", password = ""] = parts;
     const normalizedRole = normalizeRole(role);
     const key = email.toLowerCase();
     const lineNumber = index + 1;
@@ -643,6 +702,8 @@ function parseCsvRows(rawText, t) {
       error = t("adminUsers.csvErrors.required");
     } else if (!normalizedRole) {
       error = t("adminUsers.csvErrors.invalidRole");
+    } else if (normalizedRole === "Student" && !studentNumber.trim()) {
+      error = "Student ID number is required for student accounts.";
     } else if (seenEmails.has(key)) {
       error = t("adminUsers.csvErrors.duplicate");
     } else if (password && !isStrongPassword(password)) {
@@ -660,6 +721,7 @@ function parseCsvRows(rawText, t) {
       fullName,
       email,
       role: normalizedRole || role,
+      studentNumber,
       isActive: isActive.toLowerCase() !== "false",
       password,
     });

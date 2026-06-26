@@ -1699,7 +1699,7 @@ public class ExamsController : ControllerBase
                 FullName = item.Student.FullName,
                 Email = item.Student.Email,
                 StudentNumber = BuildStudentNumber(item.Student),
-                PhotoUrl = string.Empty,
+                PhotoUrl = BuildStudentPhotoUrl(item.Student, exam.Id),
                 Initials = BuildInitials(item.Student.FullName, item.Student.Email),
                 EnrollmentStatus = item.Enrollment.Status,
                 AccessStatus = ResolveLiveAccessStatus(access, attempt, lastActivityAt, now),
@@ -1870,18 +1870,29 @@ public class ExamsController : ControllerBase
             FullName = student.FullName,
             Email = student.Email,
             StudentNumber = BuildStudentNumber(student),
-            PhotoUrl = string.Empty,
+            PhotoUrl = BuildStudentPhotoUrl(student),
             Initials = BuildInitials(student.FullName, student.Email)
         };
     }
 
     private static string BuildStudentNumber(User student)
     {
+        if (!string.IsNullOrWhiteSpace(student.StudentNumber))
+            return student.StudentNumber.Trim();
+
         var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
             return localPart.Trim();
 
         return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
+    }
+
+    private string BuildStudentPhotoUrl(User student, Guid? examId = null)
+    {
+        if (string.IsNullOrWhiteSpace(student.OfficialPhotoFileName))
+            return string.Empty;
+
+        return Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = student.Id, examId }) ?? string.Empty;
     }
 
     private static string BuildInitials(string? fullName, string? email)

@@ -27,7 +27,7 @@ namespace OnlineExam.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
         {
-            var validationError = ValidateCreateOrUpdate(dto.FullName, dto.Email, dto.Role, dto.Password, requirePassword: true);
+            var validationError = ValidateCreateOrUpdate(dto.FullName, dto.Email, dto.Role, dto.Password, dto.StudentNumber, requirePassword: true);
             if (validationError != null)
                 return validationError;
 
@@ -35,13 +35,19 @@ namespace OnlineExam.Api.Controllers
             if (await _context.Users.AnyAsync(x => x.Email == normalizedEmail))
                 return Conflict(new { message = "Email already exists." });
 
-            var user = BuildUser(normalizedEmail, dto.FullName, dto.Role, dto.Password, dto.IsActive);
+            var normalizedRole = NormalizeRole(dto.Role);
+            var studentNumber = NormalizeStudentNumber(dto.StudentNumber, normalizedRole);
+            if (await StudentNumberExistsAsync(studentNumber))
+                return Conflict(new { message = "Student ID number already exists." });
+
+            var user = BuildUser(normalizedEmail, dto.FullName, normalizedRole, dto.Password, dto.IsActive, studentNumber);
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
             await _auditLogService.LogAsync("User.Created", "User", user.Id, new
             {
                 user.Email,
                 user.Role,
+                user.StudentNumber,
                 user.IsActive
             }, "UserManagement");
 
@@ -57,6 +63,7 @@ namespace OnlineExam.Api.Controllers
             var importedUsers = new List<object>();
             var errors = new List<object>();
             var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenStudentNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var row in dto.Users)
             {
@@ -77,7 +84,8 @@ namespace OnlineExam.Api.Controllers
                     continue;
                 }
 
-                var validationError = ValidateCreateOrUpdate(fullName, normalizedEmail, role, password, requirePassword: true);
+                var studentNumber = NormalizeStudentNumber(row.StudentNumber, role);
+                var validationError = ValidateCreateOrUpdate(fullName, normalizedEmail, role, password, studentNumber, requirePassword: true);
                 if (validationError is BadRequestObjectResult badRequest)
                 {
                     errors.Add(new { email = normalizedEmail, message = ExtractMessage(badRequest.Value) });
@@ -90,7 +98,19 @@ namespace OnlineExam.Api.Controllers
                     continue;
                 }
 
-                var user = BuildUser(normalizedEmail, fullName, role, password, row.IsActive);
+                if (!string.IsNullOrWhiteSpace(studentNumber) && !seenStudentNumbers.Add(studentNumber))
+                {
+                    errors.Add(new { email = normalizedEmail, message = "Duplicate student ID number in import file." });
+                    continue;
+                }
+
+                if (await StudentNumberExistsAsync(studentNumber))
+                {
+                    errors.Add(new { email = normalizedEmail, message = "Student ID number already exists." });
+                    continue;
+                }
+
+                var user = BuildUser(normalizedEmail, fullName, role, password, row.IsActive, studentNumber);
                 _context.Users.Add(user);
 
                 importedUsers.Add(new
@@ -99,6 +119,7 @@ namespace OnlineExam.Api.Controllers
                     user.Email,
                     user.FullName,
                     user.Role,
+                    user.StudentNumber,
                     TemporaryPassword = row.Password.IsNullOrWhiteSpace() && dto.DefaultPassword.IsNullOrWhiteSpace() ? password : null
                 });
             }
@@ -145,18 +166,9 @@ namespace OnlineExam.Api.Controllers
 
             var users = await query
                 .OrderBy(x => x.FullName)
-                .Select(user => new UserResponseDto
-                {
-                    Id = user.Id,
-                    Email = user.Email,
-                    FullName = user.FullName,
-                    Role = user.Role,
-                    IsActive = user.IsActive,
-                    CreatedAt = user.CreatedAt
-                })
                 .ToListAsync();
 
-            return Ok(users);
+            return Ok(users.Select(ToResponse).ToList());
         }
 
         [HttpGet("{id}")]
@@ -176,12 +188,18 @@ namespace OnlineExam.Api.Controllers
             if (user == null)
                 return NotFound();
 
-            var validationError = ValidateUpdate(dto.FullName, dto.Role);
+            var validationError = ValidateUpdate(dto.FullName, dto.Role, dto.StudentNumber);
             if (validationError != null)
                 return validationError;
 
+            var normalizedRole = NormalizeRole(dto.Role);
+            var studentNumber = NormalizeStudentNumber(dto.StudentNumber, normalizedRole);
+            if (await StudentNumberExistsAsync(studentNumber, user.Id))
+                return Conflict(new { message = "Student ID number already exists." });
+
             user.FullName = dto.FullName.Trim();
-            user.Role = NormalizeRole(dto.Role);
+            user.Role = normalizedRole;
+            user.StudentNumber = studentNumber;
             user.IsActive = dto.IsActive;
 
             await _context.SaveChangesAsync();
@@ -189,6 +207,7 @@ namespace OnlineExam.Api.Controllers
             {
                 user.Email,
                 user.Role,
+                user.StudentNumber,
                 user.IsActive
             }, "UserManagement");
             return Ok(ToResponse(user));
@@ -232,7 +251,7 @@ namespace OnlineExam.Api.Controllers
             return Ok(new { message = "Password reset successfully." });
         }
 
-        private IActionResult? ValidateCreateOrUpdate(string? fullName, string? email, string? role, string? password, bool requirePassword)
+        private IActionResult? ValidateCreateOrUpdate(string? fullName, string? email, string? role, string? password, string? studentNumber, bool requirePassword)
         {
             if (string.IsNullOrWhiteSpace(fullName) || fullName.Trim().Length < 2 || fullName.Trim().Length > 120)
                 return BadRequest(new { message = "Full name must be between 2 and 120 characters." });
@@ -247,19 +266,35 @@ namespace OnlineExam.Api.Controllers
             if (!IsRoleAllowed(role))
                 return BadRequest(new { message = "Role must be Student, Professor, Assistant, or Admin." });
 
+            var normalizedRole = NormalizeRole(role);
+            var normalizedStudentNumber = NormalizeStudentNumber(studentNumber, normalizedRole);
+            if (normalizedRole == "Student" && string.IsNullOrWhiteSpace(normalizedStudentNumber))
+                return BadRequest(new { message = "Student ID number is required for student accounts." });
+
+            if (!string.IsNullOrWhiteSpace(normalizedStudentNumber) && !IsValidStudentNumber(normalizedStudentNumber))
+                return BadRequest(new { message = "Student ID number can contain letters, numbers, dash, underscore, dot, or slash only." });
+
             if (requirePassword && !IsValidPassword(password))
                 return BadRequest(new { message = "Password must be at least 8 characters and include upper, lower, and number." });
 
             return null;
         }
 
-        private IActionResult? ValidateUpdate(string? fullName, string? role)
+        private IActionResult? ValidateUpdate(string? fullName, string? role, string? studentNumber)
         {
             if (string.IsNullOrWhiteSpace(fullName) || fullName.Trim().Length < 2 || fullName.Trim().Length > 120)
                 return BadRequest(new { message = "Full name must be between 2 and 120 characters." });
 
             if (!IsRoleAllowed(role))
                 return BadRequest(new { message = "Role must be Student, Professor, Assistant, or Admin." });
+
+            var normalizedRole = NormalizeRole(role);
+            var normalizedStudentNumber = NormalizeStudentNumber(studentNumber, normalizedRole);
+            if (normalizedRole == "Student" && string.IsNullOrWhiteSpace(normalizedStudentNumber))
+                return BadRequest(new { message = "Student ID number is required for student accounts." });
+
+            if (!string.IsNullOrWhiteSpace(normalizedStudentNumber) && !IsValidStudentNumber(normalizedStudentNumber))
+                return BadRequest(new { message = "Student ID number can contain letters, numbers, dash, underscore, dot, or slash only." });
 
             return null;
         }
@@ -284,7 +319,7 @@ namespace OnlineExam.Api.Controllers
         private static string NormalizeEmail(string? email) =>
             email?.Trim().ToLowerInvariant() ?? string.Empty;
 
-        private static User BuildUser(string email, string fullName, string role, string password, bool isActive)
+        private static User BuildUser(string email, string fullName, string role, string password, bool isActive, string studentNumber)
         {
             return new User
             {
@@ -292,6 +327,7 @@ namespace OnlineExam.Api.Controllers
                 Email = email,
                 FullName = fullName.Trim(),
                 Role = NormalizeRole(role),
+                StudentNumber = NormalizeStudentNumber(studentNumber, role),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
                 IsActive = isActive,
                 CreatedAt = DateTime.UtcNow
@@ -309,7 +345,7 @@ namespace OnlineExam.Api.Controllers
             return dto.GeneratePasswords ? $"Temp1{Guid.NewGuid():N}"[..12] : string.Empty;
         }
 
-        private static UserResponseDto ToResponse(User user)
+        private UserResponseDto ToResponse(User user)
         {
             return new UserResponseDto
             {
@@ -317,9 +353,50 @@ namespace OnlineExam.Api.Controllers
                 Email = user.Email,
                 FullName = user.FullName,
                 Role = user.Role,
+                StudentNumber = user.Role == "Student" ? BuildStudentNumber(user) : string.Empty,
+                HasOfficialPhoto = !string.IsNullOrWhiteSpace(user.OfficialPhotoFileName),
+                PhotoUrl = user.Role == "Student" && !string.IsNullOrWhiteSpace(user.OfficialPhotoFileName)
+                    ? Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = user.Id }) ?? string.Empty
+                    : string.Empty,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt
             };
+        }
+
+        private async Task<bool> StudentNumberExistsAsync(string studentNumber, Guid? exceptUserId = null)
+        {
+            if (string.IsNullOrWhiteSpace(studentNumber))
+                return false;
+
+            return await _context.Users.AnyAsync(x =>
+                x.StudentNumber == studentNumber &&
+                (!exceptUserId.HasValue || x.Id != exceptUserId.Value));
+        }
+
+        private static string NormalizeStudentNumber(string? studentNumber, string? role)
+        {
+            if (!string.Equals(NormalizeRole(role), "Student", StringComparison.Ordinal))
+                return string.Empty;
+
+            return studentNumber?.Trim().ToUpperInvariant() ?? string.Empty;
+        }
+
+        private static bool IsValidStudentNumber(string studentNumber)
+        {
+            return studentNumber.Length is >= 2 and <= 40 &&
+                   studentNumber.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' or '/');
+        }
+
+        private static string BuildStudentNumber(User student)
+        {
+            if (!string.IsNullOrWhiteSpace(student.StudentNumber))
+                return student.StudentNumber.Trim();
+
+            var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
+                return localPart.Trim();
+
+            return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
         }
 
         private static string ExtractMessage(object? value)

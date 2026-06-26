@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">Student photo placeholder</title>
+  <desc id="desc">Neutral placeholder for a student without an official photograph.</desc>
+  <rect width="240" height="240" rx="28" fill="#edf4f1"/>
+  <circle cx="120" cy="86" r="42" fill="#17446f"/>
+  <path d="M42 202c10-44 39-70 78-70s68 26 78 70" fill="#17446f"/>
+  <path d="M64 206c14-30 34-45 56-45s42 15 56 45" fill="#2e7d5b" opacity=".35"/>
+</svg>

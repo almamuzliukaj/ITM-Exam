@@ -94,10 +94,14 @@ export default function ExamGradebookPage() {
         const next = { ...current };
         for (const item of successful) {
           const suggestedManualScore = Number(item.review?.suggestedManualScore || 0);
+          const existingDraft = current[item.attemptId] || {};
+          const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(item.attempt);
           next[item.attemptId] = {
+            ...existingDraft,
             manualScore: String(suggestedManualScore),
             finalScore: String(Number(item.attempt.autoScore || 0) + suggestedManualScore),
-            notes: item.review?.reviewReminder || current[item.attemptId]?.notes || "",
+            notes: item.review?.reviewReminder || existingDraft.notes || "",
+            questionScores: existingQuestionScores,
           };
         }
         return next;
@@ -154,12 +158,16 @@ export default function ExamGradebookPage() {
       setAiReviews((current) => ({ ...current, [attempt.attemptId]: review }));
       setDrafts((current) => {
         const suggestedManualScore = Number(review?.suggestedManualScore || 0);
+        const existingDraft = current[attempt.attemptId] || {};
+        const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(attempt);
         return {
           ...current,
           [attempt.attemptId]: {
+            ...existingDraft,
             manualScore: String(suggestedManualScore),
             finalScore: String(Number(attempt.autoScore || 0) + suggestedManualScore),
-            notes: review?.reviewReminder || current[attempt.attemptId]?.notes || "",
+            notes: review?.reviewReminder || existingDraft.notes || "",
+            questionScores: existingQuestionScores,
           },
         };
       });
@@ -196,8 +204,8 @@ export default function ExamGradebookPage() {
                 ...updated,
                 studentName: item.studentName,
                 studentEmail: item.studentEmail,
-                answers: updated.answers || item.answers,
-                questionScores: updated.questionScores || item.questionScores,
+                answers: Array.isArray(updated.answers) && updated.answers.length > 0 ? updated.answers : item.answers,
+                questionScores: Array.isArray(updated.questionScores) && updated.questionScores.length > 0 ? updated.questionScores : item.questionScores,
               }
             : item,
         ),
@@ -208,7 +216,12 @@ export default function ExamGradebookPage() {
           manualScore: String(updated.manualScore ?? 0),
           finalScore: String(updated.finalScore ?? updated.autoScore ?? 0),
           notes: updated.gradingNotes || "",
-          questionScores: normalizeQuestionScoreDrafts(updated),
+          questionScores: normalizeQuestionScoreDrafts({
+            ...attempt,
+            ...updated,
+            answers: Array.isArray(updated.answers) && updated.answers.length > 0 ? updated.answers : attempt.answers,
+            questionScores: Array.isArray(updated.questionScores) && updated.questionScores.length > 0 ? updated.questionScores : attempt.questionScores,
+          }),
         },
       }));
       setSuccess("Grade saved. The result remains hidden from students until published.");

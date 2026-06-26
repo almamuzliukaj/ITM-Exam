@@ -26,11 +26,14 @@ public class ExamsController : ControllerBase
     private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
     private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusRemoved = "Removed";
+    private const string StudentAccessStatusTemporarilyOffline = "TemporarilyOffline";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
     private const string StudentAccessStatusSubmitted = "Submitted";
+    private const string ExamAttemptRemovedStatus = "Removed";
     private const int ExamAccessCodeLifetimeMinutes = 3;
+    private const int LivePresenceOfflineSeconds = 30;
     private const int IntegrityFinalWarningThreshold = 2;
     private const int IntegrityAutoActionThreshold = 3;
     private const string IntegrityPolicyActionNone = "None";
@@ -1042,7 +1045,7 @@ public class ExamsController : ControllerBase
         if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
             return NotFound(new { message = "Exam not found." });
 
-        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: true, enforceEntryCode: false);
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: true, enforceEntryCode: false, enforceRemoval: false);
         if (baseAccessError != null)
         {
             if (baseAccessError == StudentExamNotEligibleMessage)
@@ -1090,7 +1093,7 @@ public class ExamsController : ControllerBase
         if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
             return NotFound(new { message = "Exam not found." });
 
-        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceEntryCode: false);
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceEntryCode: false, enforceRemoval: false);
         if (baseAccessError != null)
         {
             if (baseAccessError == StudentExamNotEligibleMessage)
@@ -1464,6 +1467,69 @@ public class ExamsController : ControllerBase
         });
     }
 
+    [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+        var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRemoved;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovedAt = null;
+        access.ApprovalReason = reason;
+        access.LastActivityAt = now;
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
+        if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+        {
+            attempt.Status = ExamAttemptRemovedStatus;
+            attempt.LastSavedAt = now;
+        }
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.StudentRemoved", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            removedByUserId = userId.Value,
+            removedAt = now,
+            reason,
+            attemptId = attempt?.Id,
+            preservedAnswers = attempt?.AnswersJson?.Length > 0
+        }, "ExamDelivery");
+
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = requiresCode,
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            ServerTimeUtc = now,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
+        });
+    }
+
     [HttpGet("{examId:guid}/live-monitor")]
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<ActionResult<ExamLiveMonitorDto>> GetLiveMonitor(Guid examId)
@@ -1511,10 +1577,10 @@ public class ExamsController : ControllerBase
             attempts.TryGetValue(item.Student.Id, out var attempt);
             latestEvents.TryGetValue(item.Student.Id, out var latestEvent);
 
-            var lastActivityAt = attempt?.LastSavedAt ?? attempt?.SubmittedAt ?? access?.LastActivityAt ?? access?.VerifiedAt ?? access?.ApprovedAt;
+            var lastActivityAt = GetLatestActivityAt(access, attempt);
             var durationUsed = attempt?.SubmittedAt is not null
                 ? Math.Max(0, (int)Math.Round((attempt.SubmittedAt.Value - attempt.StartedAt).TotalMinutes))
-                : attempt is not null
+                : attempt is not null && attempt.Status != ExamAttemptRemovedStatus
                     ? Math.Max(0, (int)Math.Round((now - attempt.StartedAt).TotalMinutes))
                     : 0;
 
@@ -1524,7 +1590,7 @@ public class ExamsController : ControllerBase
                 FullName = item.Student.FullName,
                 Email = item.Student.Email,
                 EnrollmentStatus = item.Enrollment.Status,
-                AccessStatus = ResolveLiveAccessStatus(access, attempt),
+                AccessStatus = ResolveLiveAccessStatus(access, attempt, lastActivityAt, now),
                 AttemptStatus = attempt?.Status ?? "NotStarted",
                 VerifiedAt = access?.VerifiedAt,
                 ApprovedAt = access?.ApprovedAt,
@@ -1548,7 +1614,7 @@ public class ExamsController : ControllerBase
             Summary = new ExamLiveMonitorSummaryDto
             {
                 TotalEnrolled = rows.Count,
-                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
+                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted or StudentAccessStatusTemporarilyOffline),
                 Active = rows.Count(x => x.AttemptStatus == ExamAttemptInProgressStatus),
                 Submitted = rows.Count(x => x.AttemptStatus == ExamAttemptSubmittedStatus),
                 NotJoined = rows.Count(x => x.AttemptStatus == "NotStarted"),
@@ -1560,7 +1626,7 @@ public class ExamsController : ControllerBase
 
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
-    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission, bool enforceEntryCode = true)
+    private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission, bool enforceEntryCode = true, bool enforceRemoval = true)
     {
         if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
             return "This exam is not available for students.";
@@ -1577,6 +1643,16 @@ public class ExamsController : ControllerBase
 
         if (!hasEligibleEnrollment)
             return StudentExamNotEligibleMessage;
+
+        if (enforceRemoval)
+        {
+            var removedAccess = await _context.ExamStudentAccesses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId && x.AccessStatus == StudentAccessStatusRemoved);
+
+            if (removedAccess != null)
+                return BuildAccessStatusMessage(false, StudentAccessStatusRemoved, await RequiresEntryCodeAsync(exam.Id));
+        }
 
         if (blockResubmission)
         {
@@ -1677,7 +1753,7 @@ public class ExamsController : ControllerBase
             return;
 
         var access = await GetOrCreateStudentAccessAsync(examId, studentId);
-        if (access.AccessStatus != StudentAccessStatusSubmitted)
+        if (access.AccessStatus is not StudentAccessStatusSubmitted and not StudentAccessStatusRemoved)
             access.AccessStatus = StudentAccessStatusStarted;
         access.LastActivityAt = now;
     }
@@ -1704,13 +1780,41 @@ public class ExamsController : ControllerBase
             x.Status == "Eligible");
     }
 
-    private static string ResolveLiveAccessStatus(ExamStudentAccess? access, ExamAttempt? attempt)
+    private static DateTime? GetLatestActivityAt(ExamStudentAccess? access, ExamAttempt? attempt)
     {
+        var values = new[]
+        {
+            attempt?.LastSavedAt,
+            attempt?.SubmittedAt,
+            access?.LastActivityAt,
+            access?.VerifiedAt,
+            access?.ApprovedAt,
+            attempt?.StartedAt
+        };
+
+        var activityValues = values
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToList();
+
+        return activityValues.Count == 0 ? null : activityValues.Max();
+    }
+
+    private static string ResolveLiveAccessStatus(ExamStudentAccess? access, ExamAttempt? attempt, DateTime? lastActivityAt, DateTime now)
+    {
+        if (access?.AccessStatus == StudentAccessStatusRemoved || attempt?.Status == ExamAttemptRemovedStatus)
+            return StudentAccessStatusRemoved;
+
         if (attempt?.Status == ExamAttemptSubmittedStatus)
             return StudentAccessStatusSubmitted;
 
         if (attempt?.Status == ExamAttemptInProgressStatus)
+        {
+            if (lastActivityAt.HasValue && (now - lastActivityAt.Value).TotalSeconds > LivePresenceOfflineSeconds)
+                return StudentAccessStatusTemporarilyOffline;
+
             return StudentAccessStatusStarted;
+        }
 
         return access?.AccessStatus ?? StudentAccessStatusNotVerified;
     }

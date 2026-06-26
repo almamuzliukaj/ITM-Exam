@@ -307,9 +307,17 @@ export default function QuestionBankPage() {
                 Select an offering, filter the bank, and add questions in place.
               </span>
             </div>
-            <button className="btn btnPrimary" type="button" onClick={() => openAuthoringPanel()} disabled={!selectedOfferingId}>
-              Add question
-            </button>
+            <div className="resourceActionGroup">
+              <Link
+                className="btn"
+                to={`/question-bank/generated-review${selectedOfferingId ? `?offeringId=${selectedOfferingId}` : ""}`}
+              >
+                Review generated
+              </Link>
+              <button className="btn btnPrimary" type="button" onClick={() => openAuthoringPanel()} disabled={!selectedOfferingId}>
+                Add question
+              </button>
+            </div>
           </div>
           <div className="sectionBody stackLg">
             <div className="filtersRow questionBankFilters">

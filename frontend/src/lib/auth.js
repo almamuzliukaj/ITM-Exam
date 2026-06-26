@@ -43,6 +43,9 @@ export async function me() {
       fullName: storedUser?.fullName || response.data?.fullName || "",
       email: response.data?.email || storedUser?.email || "",
       role: response.data?.role || storedUser?.role || "",
+      studentNumber: response.data?.studentNumber || storedUser?.studentNumber || "",
+      photoUrl: response.data?.photoUrl || storedUser?.photoUrl || "",
+      initials: response.data?.initials || storedUser?.initials || "",
     };
     saveUser(mergedUser);
     return mergedUser;
@@ -65,6 +68,9 @@ export async function login(email, password) {
       fullName: data.fullName,
       email: data.email,
       role: data.role,
+      studentNumber: data.studentNumber || "",
+      photoUrl: data.photoUrl || "",
+      initials: data.initials || "",
     });
   }
 

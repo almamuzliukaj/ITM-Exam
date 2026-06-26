@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
                 Email = "admin@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Admin",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = adminCreatedAt
             },
@@ -51,6 +52,7 @@ public class AppDbContext : DbContext
                 Email = "prof@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Professor",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = professorCreatedAt
             },
@@ -61,6 +63,7 @@ public class AppDbContext : DbContext
                 Email = "assistant@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Assistant",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = assistantCreatedAt
             },
@@ -71,10 +74,27 @@ public class AppDbContext : DbContext
                 Email = "student@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Student",
+                StudentNumber = "STU-DEMO-001",
                 IsActive = true,
                 CreatedAt = studentCreatedAt
             }
         );
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.StudentNumber)
+            .HasMaxLength(40)
+            .HasDefaultValue(string.Empty);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.OfficialPhotoFileName)
+            .HasMaxLength(180);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.OfficialPhotoContentType)
+            .HasMaxLength(80);
+
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.StudentNumber);
 
         modelBuilder.Entity<Question>()
             .HasOne(q => q.Exam)

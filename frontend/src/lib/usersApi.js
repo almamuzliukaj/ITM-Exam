@@ -29,3 +29,12 @@ export async function resetUserPassword(userId, newPassword) {
   const response = await api.put(`/api/Users/${userId}/reset-password`, { newPassword });
   return response.data;
 }
+
+export async function uploadOfficialStudentPhoto(userId, file) {
+  const formData = new FormData();
+  formData.append("photo", file);
+  const response = await api.post(`/api/student-identities/${userId}/photo`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}

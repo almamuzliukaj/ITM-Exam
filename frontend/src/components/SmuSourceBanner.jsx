@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 export default function SmuSourceBanner({
   title,
@@ -6,20 +7,23 @@ export default function SmuSourceBanner({
   isConfigured,
   loading,
   error,
-  actionLabel = "Review SMU contract",
+  actionLabel,
 }) {
+  const { t } = useTranslation();
+  const resolvedActionLabel = actionLabel || t("smuSource.review");
+
   return (
     <section className={`smuNotice ${isConfigured ? "smuNoticeActive" : "smuNoticeFallback"}`}>
       <div>
-        <span className="summaryLabel">{loading ? "Checking SMU" : isConfigured ? "SMU source active" : "Manual fallback"}</span>
+        <span className="summaryLabel">{loading ? t("smuSource.checking") : isConfigured ? t("smuSource.active") : t("smuSource.manual")}</span>
         <strong>{title}</strong>
         <p>{error || description}</p>
       </div>
       <div className="resourceActionGroup">
         <span className={`statusPill ${isConfigured ? "statusLive" : "statusDraft"}`}>
-          {isConfigured ? "Synced data" : "Fallback mode"}
+          {isConfigured ? t("smuSource.synced") : t("smuSource.fallback")}
         </span>
-        <Link className="btn" to="/admin/smu">{actionLabel}</Link>
+        <Link className="btn" to="/admin/smu">{resolvedActionLabel}</Link>
       </div>
     </section>
   );

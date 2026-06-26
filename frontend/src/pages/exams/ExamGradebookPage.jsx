@@ -268,6 +268,32 @@ export default function ExamGradebookPage() {
           </section>
         ) : null}
 
+        {!error ? (
+          <section className="summaryStrip">
+            <article className="summaryCard">
+              <span className="summaryLabel">Attempts</span>
+              <strong>{attempts.length}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Graded</span>
+              <strong>{gradedCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Needs review</span>
+              <strong>{pendingCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Integrity flags</span>
+              <strong>{integrityCount}</strong>
+            </article>
+            <article className="summaryCard">
+              <span className="summaryLabel">Ready to publish</span>
+              <strong>{readyToPublishCount}</strong>
+            </article>
+          </section>
+        ) : null}
+        main
+
         {!error ? <section className="summaryStrip">
           <article className="summaryCard">
             <span className="summaryLabel">Attempts</span>

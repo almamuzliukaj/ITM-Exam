@@ -401,6 +401,7 @@ export default function QuestionBankPage() {
             form={questionForm}
             errors={formErrors}
             saving={savingQuestion}
+            success={success}
             selectedOffering={selectedOffering}
             onClose={() => {
               setAuthoringOpen(false);
@@ -501,6 +502,7 @@ function QuestionAuthoringPanel({
   form,
   errors,
   saving,
+  success,
   selectedOffering,
   onClose,
   onChange,
@@ -734,6 +736,7 @@ function QuestionAuthoringPanel({
           </button>
           <span className="small">Saved questions stay attached to the selected offering.</span>
         </div>
+        {success ? <div className="successBanner">{success}</div> : null}
       </div>
     </section>
   );

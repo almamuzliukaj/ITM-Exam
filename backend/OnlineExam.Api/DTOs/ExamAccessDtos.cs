@@ -26,18 +26,23 @@ public class ExamAccessCodeResponseDto
     public string Code { get; set; } = string.Empty;
     public DateTime GeneratedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
+    public DateTime ServerTimeUtc { get; set; }
     public bool IsActive { get; set; }
 }
 
 public class ExamAccessStatusDto
 {
     public bool RequiresCode { get; set; }
+    public bool HasActiveCode { get; set; }
     public bool HasAccess { get; set; }
     public string AccessStatus { get; set; } = "NotVerified";
+    public DateTime? ActiveCodeExpiresAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
+    public DateTime ServerTimeUtc { get; set; }
     public DateTime? RequestedAt { get; set; }
     public string ApprovalReason { get; set; } = string.Empty;
+    public int CodeLifetimeSeconds { get; set; }
     public string Message { get; set; } = string.Empty;
     public StudentIdentityDto? StudentIdentity { get; set; }
 }
@@ -57,6 +62,7 @@ public class ExamLiveMonitorDto
     public Guid ExamId { get; set; }
     public string ExamTitle { get; set; } = string.Empty;
     public DateTime? ActiveCodeExpiresAt { get; set; }
+    public DateTime ServerTimeUtc { get; set; }
     public ExamLiveMonitorSummaryDto Summary { get; set; } = new();
     public List<ExamLiveMonitorStudentDto> Students { get; set; } = [];
 }

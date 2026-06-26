@@ -267,7 +267,6 @@ export default function ExamGradebookPage() {
             </div>
           </section>
         ) : null}
- feature/alma-manual-admission-workflow
 
         {!error ? (
           <section className="summaryStrip">

@@ -25,6 +25,7 @@ public class ExamsController : ControllerBase
     private const string StudentAccessStatusNotVerified = "NotVerified";
     private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
     private const string StudentAccessStatusRejected = "Rejected";
+    private const string StudentAccessStatusRemoved = "Removed";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
@@ -1073,6 +1074,53 @@ public class ExamsController : ControllerBase
         });
     }
 
+    [HttpPost("{examId:guid}/attempt/heartbeat")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RecordStudentExamHeartbeat(Guid examId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var now = DateTime.UtcNow;
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        var hasAccess = !requiresCode || IsStudentAccessGranted(access);
+
+        if (hasAccess)
+        {
+            if (requiresCode && access.AccessStatus != StudentAccessStatusSubmitted)
+                access.AccessStatus = StudentAccessStatusStarted;
+            access.LastActivityAt = now;
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = requiresCode,
+            HasAccess = hasAccess,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            ApprovalReason = access.ApprovalReason,
+            Message = BuildAccessStatusMessage(hasAccess, access.AccessStatus, requiresCode)
+        });
+    }
+
     [HttpPost("{examId:guid}/request-approval")]
     [Authorize(Roles = "Student")]
     public async Task<ActionResult<ExamAccessStatusDto>> RequestExamAccessApproval(Guid examId, [FromBody] RequestExamAccessApprovalDto? dto = null)
@@ -1585,6 +1633,7 @@ public class ExamsController : ControllerBase
         {
             StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor before starting the exam.",
             StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or enter a valid code.",
+            StudentAccessStatusRemoved => "You were removed from this live exam session by staff.",
             _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
             _ => "Access is available."
         };

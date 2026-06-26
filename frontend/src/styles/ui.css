@@ -6411,6 +6411,50 @@ body{
   line-height: 1.5;
 }
 
+.liveSessionStatePanel{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.liveSessionStatePanel h3,
+.liveSessionStatePanel p{
+  margin: 0;
+}
+
+.liveSessionStatePanel h3{
+  margin-top: 4px;
+  color: var(--heading);
+}
+
+.liveSessionStatePanel p{
+  margin-top: 6px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.liveSessionStatePanel small{
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.liveSessionStatePanel-warning{
+  border-color: rgba(180, 83, 9, .26);
+  background: #fffbeb;
+}
+
+.liveSessionStatePanel-danger{
+  border-color: rgba(180, 35, 24, .28);
+  background: #fff5f3;
+}
+
 .questionSetupBody{
   display: grid;
   gap: 14px;

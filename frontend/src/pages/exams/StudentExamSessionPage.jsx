@@ -3,7 +3,7 @@ import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, runTechnicalExamAnswer, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, runTechnicalExamAnswer, sendExamHeartbeat, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -40,6 +40,7 @@ export default function StudentExamSessionPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [sessionControlState, setSessionControlState] = useState(null);
   const submittedRef = useRef(false);
   const autoSubmitAttemptedRef = useRef(false);
   const autoSubmitSummaryRef = useRef(null);
@@ -55,6 +56,8 @@ export default function StudentExamSessionPage() {
   const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
   const waitingForApproval = accessStatus?.accessStatus === "ApprovalRequested";
   const approvalRejected = accessStatus?.accessStatus === "Rejected";
+  const sessionRemoved = sessionControlState?.accessStatus === "Removed";
+  const sessionRejected = sessionControlState?.accessStatus === "Rejected";
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -516,6 +519,48 @@ export default function StudentExamSessionPage() {
   }, [questions.length]);
 
   useEffect(() => {
+    if (!examId || !isLiveSession || result || submitting || sessionControlState) return;
+
+    let active = true;
+    const syncSession = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setNetworkOnline(false);
+        return;
+      }
+
+      try {
+        const updated = await sendExamHeartbeat(examId);
+        if (!active) return;
+        setAccessStatus(updated);
+        setNetworkOnline(true);
+
+        if (updated?.requiresCode && !updated?.hasAccess) {
+          setSessionControlState(updated);
+          setShowSubmitReview(false);
+          setShowFinalWarning(false);
+          if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen().catch(() => {});
+          }
+        }
+      } catch (err) {
+        if (!active) return;
+        if (!err?.response) {
+          setNetworkOnline(false);
+        } else {
+          setError(getApiMessage(err, "Live session synchronization failed."));
+        }
+      }
+    };
+
+    syncSession();
+    const timer = window.setInterval(syncSession, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [examId, isLiveSession, result, sessionControlState, submitting]);
+
+  useEffect(() => {
     if (!examId || isLiveSession || !accessStatus?.requiresCode || accessStatus?.hasAccess) return;
     if (!["ApprovalRequested", "Rejected"].includes(accessStatus?.accessStatus)) return;
 
@@ -780,6 +825,26 @@ export default function StudentExamSessionPage() {
       <main className="secureExamMain">
         {error ? <div className="alert">{error}</div> : null}
 
+        {!networkOnline && !result ? (
+          <LiveSessionStatePanel
+            tone="warning"
+            title="Temporarily offline"
+            message="Your connection is offline. Stay on this screen; saved answers remain on this device and synchronization will retry automatically."
+            detail="Do not close the exam window."
+          />
+        ) : null}
+
+        {sessionControlState ? (
+          <LiveSessionStatePanel
+            tone={sessionRemoved || sessionRejected ? "danger" : "warning"}
+            title={sessionRemoved ? "Removed by professor" : sessionRejected ? "Admission rejected" : "Session paused"}
+            message={sessionControlState.message || "Your live exam access changed. The exam workspace has been closed for review."}
+            detail={sessionControlState.approvalReason || "Contact your professor before trying to re-enter."}
+            actionLabel="Return to exams"
+            onAction={() => navigate("/exams")}
+          />
+        ) : null}
+
         {showSubmitReview ? (
           <SubmitReviewPanel
             answeredCount={answeredCount}
@@ -811,7 +876,7 @@ export default function StudentExamSessionPage() {
           />
         ) : null}
 
-        {loading ? (
+        {sessionControlState ? null : loading ? (
           <div className="pageStateCard">Loading questions...</div>
         ) : result ? (
           <SubmissionResult
@@ -1373,6 +1438,24 @@ function ApprovalRejectedPanel({ accessStatus, requesting, onRequestAgain }) {
           {requesting ? "Sending..." : "Request approval again"}
         </button>
       </div>
+    </section>
+  );
+}
+
+function LiveSessionStatePanel({ tone = "warning", title, message, detail, actionLabel, onAction }) {
+  return (
+    <section className={`liveSessionStatePanel liveSessionStatePanel-${tone}`} role="status" aria-live="assertive">
+      <div>
+        <span className="summaryLabel">Live session state</span>
+        <h3>{title}</h3>
+        <p>{message}</p>
+        {detail ? <small>{detail}</small> : null}
+      </div>
+      {onAction ? (
+        <button className="btn btnPrimary" type="button" onClick={onAction}>
+          {actionLabel || "Continue"}
+        </button>
+      ) : null}
     </section>
   );
 }

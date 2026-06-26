@@ -280,27 +280,30 @@
 }
 
 .mainPanel{
+  height: 100vh;
   min-width: 0;
-  padding: 136px 32px 34px;
+  padding: 0 32px 34px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-size: 15px;
 }
 
 .topbar{
-  position: fixed;
+  position: relative;
   top: 0;
-  left: 304px;
-  right: 0;
   z-index: 80;
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-  margin: 0;
-  padding: 20px 32px 18px;
+  align-items: center;
+  gap: 18px;
+  margin: 0 -32px 24px;
+  padding: 14px 32px 12px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 97%, white);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, .04);
+  background: color-mix(in srgb, var(--bg) 94%, white);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, .06);
 }
 
 .topbarIntro{
@@ -316,22 +319,30 @@
 
 .topbarTools{
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
   flex-shrink: 0;
 }
 
 .topbarActions{
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
 }
 
+.topbarActions .btn{
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .eyebrow{
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   color: var(--primary);
   font-size: 12px;
   letter-spacing: .14em;
@@ -349,18 +360,18 @@
 }
 
 .pageTitle{
-  font-size: clamp(28px, 3.2vw, 40px);
+  font-size: clamp(25px, 2.5vw, 34px);
   line-height: 1.08;
 }
 
 .pageSubtitle,
 .loginText,
 .heroText{
-  margin-top: 10px;
+  margin-top: 7px;
   max-width: 760px;
   color: var(--muted);
-  line-height: 1.7;
-  font-size: 16px;
+  line-height: 1.55;
+  font-size: 15px;
 }
 
 .contentArea{
@@ -368,6 +379,12 @@
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 34px;
+  scrollbar-gutter: stable;
 }
 
 .stackLg{
@@ -662,6 +679,57 @@
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.studentExamsWorkspace .resourceGrid{
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
+}
+
+.studentExamsWorkspace .resourceCard{
+  gap: 10px;
+  padding: 15px;
+}
+
+.studentExamsWorkspace .resourceCard h3{
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.studentExamsWorkspace .resourceCard p{
+  display: -webkit-box;
+  min-height: 40px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.studentExamsWorkspace .resourceMetaRow{
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.studentExamsWorkspace .resourceFooter{
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.studentExamsWorkspace .resourceFooter .small{
+  max-width: 150px;
+  line-height: 1.35;
+}
+
+.studentExamsWorkspace .resourceActionGroup{
+  gap: 8px;
+}
+
+.studentExamsWorkspace .resourceActionGroup .btn{
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 .smuNotice,
@@ -5074,7 +5142,7 @@ input[type="radio"]{
   }
 
   .mainPanel{
-    padding-top: 174px;
+    padding-top: 0;
   }
 
   .contentArea{
@@ -5082,9 +5150,7 @@ input[type="radio"]{
   }
 
   .topbar{
-    left: 0;
-    right: 0;
-    margin: 0;
+    margin: 0 -16px 16px;
     padding: 16px;
   }
 
@@ -5185,6 +5251,22 @@ input[type="radio"]{
   .resourceActionGroup .btn,
   .formActionsBar .btn{
     width: 100%;
+  }
+
+  .studentExamsWorkspace .resourceMetaRow,
+  .studentExamsWorkspace .resourceFooter{
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .studentExamsWorkspace .resourceActionGroup{
+    justify-content: flex-end;
+  }
+
+  .studentExamsWorkspace .resourceActionGroup .btn{
+    width: auto;
+    min-width: 92px;
+    flex: 0 0 auto;
   }
 
   .dashboardHeaderBtn{
@@ -5361,13 +5443,14 @@ body{
 }
 
 .mainPanel{
-  padding: 118px 26px 28px;
+  padding: 0 26px 28px;
   font-size: 14px;
 }
 
 .topbar{
-  gap: 18px;
-  padding: 16px 26px 14px;
+  gap: 14px;
+  margin: 0 -26px 18px;
+  padding: 13px 26px 12px;
 }
 
 .contentArea,
@@ -6259,6 +6342,73 @@ body{
 
 .examEntryCodePanelReady{
   border-color: rgba(29, 121, 74, 0.35);
+}
+
+.manualAdmissionActions{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.manualAdmissionActions strong,
+.manualAdmissionActions span{
+  display: block;
+}
+
+.manualAdmissionActions span{
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.manualAdmissionPanel{
+  border-radius: 4px;
+}
+
+.manualAdmissionWaiting{
+  border-color: rgba(22, 58, 99, .24);
+}
+
+.manualAdmissionRejected{
+  border-color: rgba(180, 35, 24, .24);
+}
+
+.manualAdmissionTimeline{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.manualAdmissionTimeline span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.manualAdmissionRejectedBody{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.manualAdmissionRejectedBody p{
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .questionSetupBody{

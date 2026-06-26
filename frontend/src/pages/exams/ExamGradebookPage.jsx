@@ -267,6 +267,8 @@ export default function ExamGradebookPage() {
             </div>
           </section>
         ) : null}
+ feature/alma-manual-admission-workflow
+
         {!error ? (
           <section className="summaryStrip">
             <article className="summaryCard">
@@ -291,6 +293,7 @@ export default function ExamGradebookPage() {
             </article>
           </section>
         ) : null}
+        main
 
         {!error ? <section className="summaryStrip">
           <article className="summaryCard">

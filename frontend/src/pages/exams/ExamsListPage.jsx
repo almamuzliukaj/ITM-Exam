@@ -235,7 +235,7 @@ export default function ExamsListPage() {
             <p>{t("examsList.emptyText")}</p>
           </div>
         ) : isStudent ? (
-          <section className="stackLg">
+          <section className="stackLg studentExamsWorkspace">
             <div className="resourceGrid">
               {visibleExams.map((exam) => (
                 <article key={exam.id} className="resourceCard">

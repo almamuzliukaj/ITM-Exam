@@ -23,6 +23,8 @@ public class ExamsController : ControllerBase
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
     private const string StudentAccessStatusNotVerified = "NotVerified";
+    private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
+    private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
@@ -1064,8 +1066,77 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
+ feature/alma-manual-admission-workflow
+            RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            ApprovalReason = access?.ApprovalReason ?? string.Empty,
+            Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
+        });
+    }
+
+    [HttpPost("{examId:guid}/request-approval")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RequestExamAccessApproval(Guid examId, [FromBody] RequestExamAccessApprovalDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: true, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        if (IsStudentAccessGranted(access))
+        {
+            return Ok(new ExamAccessStatusDto
+            {
+                RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+                HasAccess = true,
+                AccessStatus = access.AccessStatus,
+                VerifiedAt = access.VerifiedAt,
+                ApprovedAt = access.ApprovedAt,
+                RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+                ApprovalReason = access.ApprovalReason,
+                Message = "Access confirmed. You can continue to the rules screen."
+            });
+        }
+
+        access.AccessStatus = StudentAccessStatusApprovalRequested;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested professor approval.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.ApprovalRequested", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            requestedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = access.LastActivityAt,
+            ApprovalReason = access.ApprovalReason,
+            Message = "Approval request sent. Wait for your professor before starting the exam."
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = BuildAccessStatusMessage(requiresCode, activeCode != null, hasAccess)
+            main
         });
     }
 
@@ -1145,7 +1216,12 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+ feature/alma-manual-admission-workflow
+            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            ApprovalReason = access.ApprovalReason,
+
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+            main
             Message = "Access confirmed. You can start the exam."
         });
     }
@@ -1259,8 +1335,62 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+ feature/alma-manual-admission-workflow
+            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            ApprovalReason = access.ApprovalReason,
+
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+ main
             Message = "Student access approved."
+        });
+    }
+
+    [HttpPost("{examId:guid}/students/{studentId:guid}/reject-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RejectStudentExamAccess(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRejected;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovedAt = null;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Professor rejected manual admission.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.ManualRejection", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            rejectedByUserId = userId.Value,
+            rejectedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = "Student access request rejected."
         });
     }
 
@@ -1445,6 +1575,20 @@ public class ExamsController : ControllerBase
         return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
     }
 
+ feature/alma-manual-admission-workflow
+    private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
+    {
+        if (hasAccess)
+            return "Access confirmed. Review the rules before starting the exam.";
+
+        return accessStatus switch
+        {
+            StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor before starting the exam.",
+            StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or enter a valid code.",
+            _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
+            _ => "Access is available."
+        };
+
     private static string BuildAccessStatusMessage(bool requiresCode, bool hasActiveCode, bool hasAccess)
     {
         if (hasAccess)
@@ -1456,6 +1600,7 @@ public class ExamsController : ControllerBase
         return hasActiveCode
             ? "Enter the exam access code provided by the professor."
             : "A new entry code is required. Please ask the professor to generate one.";
+ main
     }
 
     private async Task MarkStudentAccessStartedAsync(Guid examId, Guid studentId, DateTime now)

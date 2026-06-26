@@ -85,6 +85,11 @@ export async function verifyExamEntryCode(examId, code) {
   return response.data;
 }
 
+export async function requestExamApproval(examId, reason = "Student requested professor approval.") {
+  const response = await api.post(`/api/exams/${examId}/request-approval`, { reason });
+  return response.data;
+}
+
 export async function generateExamAccessCode(examId) {
   const response = await api.post(`/api/exams/${examId}/access-codes`);
   return response.data;
@@ -97,6 +102,11 @@ export async function getExamLiveMonitor(examId) {
 
 export async function allowExamStudentAccess(examId, studentId, reason = "Professor approval") {
   const response = await api.post(`/api/exams/${examId}/students/${studentId}/allow-access`, { reason });
+  return response.data;
+}
+
+export async function rejectExamStudentAccess(examId, studentId, reason = "Professor rejected manual admission.") {
+  const response = await api.post(`/api/exams/${examId}/students/${studentId}/reject-access`, { reason });
   return response.data;
 }
 

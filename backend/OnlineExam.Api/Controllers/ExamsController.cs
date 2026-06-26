@@ -1071,10 +1071,7 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
- feature/agnesa-access-code-security
             ServerTimeUtc = now,
-
- feature/alma-manual-admission-workflow
             RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access?.ApprovalReason ?? string.Empty,
             Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
@@ -1188,11 +1185,8 @@ public class ExamsController : ControllerBase
             ApprovedAt = access.ApprovedAt,
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
-            Message = "Approval request sent. Wait for your professor before starting the exam."
- main
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            Message = BuildAccessStatusMessage(requiresCode, activeCode != null, hasAccess)
-            main
+            Message = "Approval request sent. Wait for your professor before starting the exam."
         });
     }
 
@@ -1275,16 +1269,10 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-feature/agnesa-access-code-security
             ServerTimeUtc = now,
-
- feature/alma-manual-admission-workflow
             RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
-
- main
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            main
             Message = "Access confirmed. You can start the exam."
         });
     }
@@ -1419,16 +1407,10 @@ feature/agnesa-access-code-security
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
- feature/agnesa-access-code-security
             ServerTimeUtc = now,
-
- feature/alma-manual-admission-workflow
             RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
-
- main
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
- main
             Message = "Student access approved."
         });
     }
@@ -1674,7 +1656,6 @@ feature/agnesa-access-code-security
         return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
     }
 
- feature/alma-manual-admission-workflow
     private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
     {
         if (hasAccess)
@@ -1688,19 +1669,6 @@ feature/agnesa-access-code-security
             _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
             _ => "Access is available."
         };
-
-    private static string BuildAccessStatusMessage(bool requiresCode, bool hasActiveCode, bool hasAccess)
-    {
-        if (hasAccess)
-            return "Access confirmed.";
-
-        if (!requiresCode)
-            return "This exam does not require an entry code yet.";
-
-        return hasActiveCode
-            ? "Enter the exam access code provided by the professor."
-            : "A new entry code is required. Please ask the professor to generate one.";
- main
     }
 
     private async Task MarkStudentAccessStartedAsync(Guid examId, Guid studentId, DateTime now)

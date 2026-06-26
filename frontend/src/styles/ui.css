@@ -4777,6 +4777,27 @@ input[type="radio"]{
   font-size: 13px;
 }
 
+.monitorTable td:first-child small{
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.monitorToolbar{
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(200px, 280px);
+  gap: 12px;
+  align-items: end;
+}
+
+.monitorTimeStack{
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .monitorFlaggedRow{
   background: #fffaf3;
 }
@@ -4835,6 +4856,27 @@ input[type="radio"]{
 .monitorEventList small{
   color: var(--muted);
   font-weight: 700;
+}
+
+.accessActionModal{
+  width: min(560px, 100%);
+  border-radius: 4px;
+}
+
+.accessActionModal .modalHeader,
+.accessActionModal .modalFooter{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accessActionModal .modalHeader{
+  margin-bottom: 16px;
+}
+
+.accessActionModal .modalFooter{
+  margin-top: 18px;
 }
 
 @media (max-width: 1180px){

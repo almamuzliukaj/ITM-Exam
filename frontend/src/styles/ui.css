@@ -6344,6 +6344,73 @@ body{
   border-color: rgba(29, 121, 74, 0.35);
 }
 
+.manualAdmissionActions{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.manualAdmissionActions strong,
+.manualAdmissionActions span{
+  display: block;
+}
+
+.manualAdmissionActions span{
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.manualAdmissionPanel{
+  border-radius: 4px;
+}
+
+.manualAdmissionWaiting{
+  border-color: rgba(22, 58, 99, .24);
+}
+
+.manualAdmissionRejected{
+  border-color: rgba(180, 35, 24, .24);
+}
+
+.manualAdmissionTimeline{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.manualAdmissionTimeline span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.manualAdmissionRejectedBody{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.manualAdmissionRejectedBody p{
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .questionSetupBody{
   display: grid;
   gap: 14px;

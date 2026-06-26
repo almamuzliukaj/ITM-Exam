@@ -9,6 +9,7 @@ import {
   getExamLiveMonitor,
   listQuestions,
   publishExam,
+  rejectExamStudentAccess,
   replaceExamQuestionWithBankQuestion,
   unpublishExam,
   updateExamQuestion,
@@ -37,6 +38,7 @@ export default function ExamDetailsPage() {
   const [liveMonitor, setLiveMonitor] = useState(null);
   const [generatingAccessCode, setGeneratingAccessCode] = useState(false);
   const [approvingStudentId, setApprovingStudentId] = useState("");
+  const [rejectingStudentId, setRejectingStudentId] = useState("");
   const [generating, setGenerating] = useState(false);
   const [replacingId, setReplacingId] = useState("");
   const [savingPointsId, setSavingPointsId] = useState("");
@@ -309,6 +311,29 @@ export default function ExamDetailsPage() {
       setError(apiMessage || "Failed to approve student access.");
     } finally {
       setApprovingStudentId("");
+    }
+  }
+
+  async function onRejectStudentAccess(student) {
+    if (!examId || !student?.studentId) return;
+
+    const confirmed = window.confirm(`Reject manual admission for ${student.fullName || student.email}?`);
+    if (!confirmed) return;
+
+    try {
+      setRejectingStudentId(student.studentId);
+      setError("");
+      await rejectExamStudentAccess(examId, student.studentId, "Professor rejected manual admission.");
+      const monitor = await getExamLiveMonitor(examId);
+      setLiveMonitor(monitor);
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message;
+      setError(apiMessage || "Failed to reject student access.");
+    } finally {
+      setRejectingStudentId("");
     }
   }
 
@@ -626,8 +651,10 @@ export default function ExamDetailsPage() {
                 liveMonitor={liveMonitor}
                 generating={generatingAccessCode}
                 approvingStudentId={approvingStudentId}
+                rejectingStudentId={rejectingStudentId}
                 onGenerate={onGenerateAccessCode}
                 onAllowStudent={onAllowStudentAccess}
+                onRejectStudent={onRejectStudentAccess}
               />
             ) : null}
 
@@ -1187,7 +1214,7 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
   );
 }
 
-function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudentId, onGenerate, onAllowStudent }) {
+function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudentId, rejectingStudentId, onGenerate, onAllowStudent, onRejectStudent }) {
   const summary = liveMonitor?.summary || {};
   const students = Array.isArray(liveMonitor?.students) ? liveMonitor.students : [];
   const activeExpiresAt = accessCode?.expiresAt || liveMonitor?.activeCodeExpiresAt;
@@ -1251,14 +1278,26 @@ function ExamAccessPanel({ accessCode, liveMonitor, generating, approvingStudent
                       </span>
                     </td>
                     <td>
-                      <button
-                        className="btn btnTiny"
-                        type="button"
-                        onClick={() => onAllowStudent(student)}
-                        disabled={approvingStudentId === student.studentId || student.attemptStatus === "Submitted"}
-                      >
-                        {approvingStudentId === student.studentId ? "Approving..." : "Allow access"}
-                      </button>
+                      <div className="resourceActionGroup">
+                        <button
+                          className="btn btnTiny"
+                          type="button"
+                          onClick={() => onAllowStudent(student)}
+                          disabled={approvingStudentId === student.studentId || rejectingStudentId === student.studentId || student.attemptStatus === "Submitted"}
+                        >
+                          {approvingStudentId === student.studentId ? "Approving..." : student.accessStatus === "ApprovalRequested" ? "Approve" : "Allow"}
+                        </button>
+                        {student.accessStatus === "ApprovalRequested" ? (
+                          <button
+                            className="btn btnTiny btnDangerSoft"
+                            type="button"
+                            onClick={() => onRejectStudent(student)}
+                            disabled={approvingStudentId === student.studentId || rejectingStudentId === student.studentId || student.attemptStatus === "Submitted"}
+                          >
+                            {rejectingStudentId === student.studentId ? "Rejecting..." : "Reject"}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))

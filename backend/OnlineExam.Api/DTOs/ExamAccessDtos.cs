@@ -10,6 +10,11 @@ public class AllowExamStudentAccessDto
     public string? Reason { get; set; }
 }
 
+public class RequestExamAccessApprovalDto
+{
+    public string? Reason { get; set; }
+}
+
 public class ExamAccessCodeResponseDto
 {
     public Guid Id { get; set; }
@@ -26,6 +31,8 @@ public class ExamAccessStatusDto
     public string AccessStatus { get; set; } = "NotVerified";
     public DateTime? VerifiedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
+    public DateTime? RequestedAt { get; set; }
+    public string ApprovalReason { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
 }
 

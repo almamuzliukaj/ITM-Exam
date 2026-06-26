@@ -449,6 +449,7 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = validationError });
 
         var (details, autoScore, _, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
+        var questionScores = BuildQuestionScoreBreakdown(exam.Questions, submittedAnswers);
         var now = DateTime.UtcNow;
         var createdNewAttempt = false;
 
@@ -464,6 +465,7 @@ public class ExamsController : ControllerBase
                 LastSavedAt = now,
                 SubmittedAt = now,
                 AnswersJson = JsonSerializer.Serialize(submittedAnswers),
+                QuestionScoresJson = SerializeQuestionScores(questionScores),
                 AutoScore = autoScore,
                 ManualScore = 0,
                 FinalScore = autoScore,
@@ -484,6 +486,7 @@ public class ExamsController : ControllerBase
             attempt.LastSavedAt = now;
             attempt.SubmittedAt = now;
             attempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
+            attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
             attempt.AutoScore = autoScore;
             attempt.ManualScore = 0;
             attempt.FinalScore = autoScore;
@@ -1048,7 +1051,12 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = baseAccessError });
         }
 
+        var now = DateTime.UtcNow;
+        await DeactivateExpiredAccessCodesAsync(exam.Id, now);
+        await _context.SaveChangesAsync();
+
         var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var activeCode = requiresCode ? await GetActiveExamAccessCodeAsync(exam.Id) : null;
         var access = await _context.ExamStudentAccesses
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId.Value);
@@ -1057,10 +1065,16 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = requiresCode,
+            HasActiveCode = activeCode != null,
             HasAccess = hasAccess,
             AccessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified,
+            ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
+ feature/agnesa-access-code-security
+            ServerTimeUtc = now,
+
+ feature/alma-manual-admission-workflow
             RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access?.ApprovalReason ?? string.Empty,
             Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
@@ -1175,6 +1189,10 @@ public class ExamsController : ControllerBase
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             Message = "Approval request sent. Wait for your professor before starting the exam."
+ main
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+            Message = BuildAccessStatusMessage(requiresCode, activeCode != null, hasAccess)
+            main
         });
     }
 
@@ -1204,17 +1222,36 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "Entry code is required." });
 
         var now = DateTime.UtcNow;
-        var activeCode = await _context.ExamAccessCodes
-            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
-            .OrderByDescending(x => x.GeneratedAt)
-            .FirstOrDefaultAsync();
+        await DeactivateExpiredAccessCodesAsync(exam.Id, now);
+        await _context.SaveChangesAsync();
 
-        if (activeCode == null || activeCode.ExpiresAt <= now)
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        if (!requiresCode)
+            return BadRequest(new { message = "Entry code is not enabled for this exam yet." });
+
+        var activeCode = await GetActiveExamAccessCodeAsync(exam.Id, now);
+        if (activeCode == null)
+        {
+            await _auditLogService.LogAsync("ExamAccess.CodeExpired", "Exam", exam.Id, new
+            {
+                examId = exam.Id,
+                studentId = userId.Value
+            }, "ExamDelivery");
+
             return BadRequest(new { message = "This entry code has expired. Please ask the professor for a new code." });
+        }
 
-        var codeHash = HashAccessCode(submittedCode);
+        var codeHash = HashAccessCode(submittedCode, exam.Id);
         if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(activeCode.CodeHash), Encoding.UTF8.GetBytes(codeHash)))
+        {
+            await _auditLogService.LogAsync("ExamAccess.CodeRejected", "Exam", exam.Id, new
+            {
+                examId = exam.Id,
+                studentId = userId.Value
+            }, "ExamDelivery");
+
             return BadRequest(new { message = "The entry code is not valid for this exam." });
+        }
 
         var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
         access.AccessStatus = StudentAccessStatusCodeVerified;
@@ -1232,12 +1269,22 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = true,
+            HasActiveCode = true,
             HasAccess = true,
             AccessStatus = access.AccessStatus,
+            ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+feature/agnesa-access-code-security
+            ServerTimeUtc = now,
+
+ feature/alma-manual-admission-workflow
             RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
+
+ main
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+            main
             Message = "Access confirmed. You can start the exam."
         });
     }
@@ -1260,7 +1307,13 @@ public class ExamsController : ControllerBase
         if (!exam.IsPublished || exam.Status != "Published")
             return BadRequest(new { message = "Entry codes can be generated only after the assessment is published." });
 
+        if (!exam.CourseOfferingId.HasValue)
+            return BadRequest(new { message = "Entry codes require an assessment linked to a course offering." });
+
         var now = DateTime.UtcNow;
+        await DeactivateExpiredAccessCodesAsync(exam.Id, now);
+        await _context.SaveChangesAsync();
+
         var activeCodes = await _context.ExamAccessCodes
             .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
             .ToListAsync();
@@ -1273,11 +1326,12 @@ public class ExamsController : ControllerBase
         }
 
         var plainCode = GenerateAccessCode();
+        var isRegeneration = activeCodes.Count > 0 || await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == exam.Id);
         var created = new ExamAccessCode
         {
             Id = Guid.NewGuid(),
             ExamId = exam.Id,
-            CodeHash = HashAccessCode(plainCode),
+            CodeHash = HashAccessCode(plainCode, exam.Id),
             GeneratedByUserId = userId.Value,
             GeneratedAt = now,
             ExpiresAt = now.AddMinutes(ExamAccessCodeLifetimeMinutes),
@@ -1290,8 +1344,21 @@ public class ExamsController : ControllerBase
         {
             examId = exam.Id,
             created.GeneratedAt,
-            created.ExpiresAt
+            created.ExpiresAt,
+            isRegeneration,
+            revokedCodeCount = activeCodes.Count
         }, "ExamDelivery");
+
+        if (isRegeneration)
+        {
+            await _auditLogService.LogAsync("ExamAccess.CodeRegenerated", "Exam", exam.Id, new
+            {
+                examId = exam.Id,
+                generatedAt = created.GeneratedAt,
+                expiresAt = created.ExpiresAt,
+                revokedCodeCount = activeCodes.Count
+            }, "ExamDelivery");
+        }
 
         return Ok(new ExamAccessCodeResponseDto
         {
@@ -1299,6 +1366,7 @@ public class ExamsController : ControllerBase
             Code = plainCode,
             GeneratedAt = created.GeneratedAt,
             ExpiresAt = created.ExpiresAt,
+            ServerTimeUtc = now,
             IsActive = created.IsActive
         });
     }
@@ -1339,15 +1407,28 @@ public class ExamsController : ControllerBase
             access.ApprovalReason
         }, "ExamDelivery");
 
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        var activeCode = requiresCode ? await GetActiveExamAccessCodeAsync(exam.Id) : null;
+
         return Ok(new ExamAccessStatusDto
         {
-            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            RequiresCode = requiresCode,
+            HasActiveCode = activeCode != null,
             HasAccess = true,
             AccessStatus = access.AccessStatus,
+            ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+ feature/agnesa-access-code-security
+            ServerTimeUtc = now,
+
+ feature/alma-manual-admission-workflow
             RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
+
+ main
+            CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
+ main
             Message = "Student access approved."
         });
     }
@@ -1437,10 +1518,10 @@ public class ExamsController : ControllerBase
             .GroupBy(x => x.StudentId)
             .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
             .ToDictionaryAsync(x => x.StudentId);
-        var activeCode = await _context.ExamAccessCodes
-            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null && x.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(x => x.GeneratedAt)
-            .FirstOrDefaultAsync();
+        var now = DateTime.UtcNow;
+        await DeactivateExpiredAccessCodesAsync(exam.Id, now);
+        await _context.SaveChangesAsync();
+        var activeCode = await GetActiveExamAccessCodeAsync(exam.Id);
 
         var rows = students.Select(item =>
         {
@@ -1452,7 +1533,7 @@ public class ExamsController : ControllerBase
             var durationUsed = attempt?.SubmittedAt is not null
                 ? Math.Max(0, (int)Math.Round((attempt.SubmittedAt.Value - attempt.StartedAt).TotalMinutes))
                 : attempt is not null
-                    ? Math.Max(0, (int)Math.Round((DateTime.UtcNow - attempt.StartedAt).TotalMinutes))
+                    ? Math.Max(0, (int)Math.Round((now - attempt.StartedAt).TotalMinutes))
                     : 0;
 
             return new ExamLiveMonitorStudentDto
@@ -1481,6 +1562,7 @@ public class ExamsController : ControllerBase
             ExamId = exam.Id,
             ExamTitle = exam.Title,
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
+            ServerTimeUtc = now,
             Summary = new ExamLiveMonitorSummaryDto
             {
                 TotalEnrolled = rows.Count,
@@ -1512,15 +1594,7 @@ public class ExamsController : ControllerBase
             x.Status == "Eligible");
 
         if (!hasEligibleEnrollment)
-        {
-            var canUseCurrentTermFallback = await _context.CourseOfferings.AnyAsync(x =>
-                x.Id == exam.CourseOfferingId.Value &&
-                x.Term != null &&
-                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
-
-            if (!canUseCurrentTermFallback)
-                return StudentExamNotEligibleMessage;
-        }
+            return StudentExamNotEligibleMessage;
 
         if (blockResubmission)
         {
@@ -1551,6 +1625,31 @@ public class ExamsController : ControllerBase
         return await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == examId);
     }
 
+    private async Task<ExamAccessCode?> GetActiveExamAccessCodeAsync(Guid examId, DateTime? at = null)
+    {
+        var now = at ?? DateTime.UtcNow;
+        return await _context.ExamAccessCodes
+            .AsNoTracking()
+            .Where(x => x.ExamId == examId && x.IsActive && x.RevokedAt == null && x.ExpiresAt > now)
+            .OrderByDescending(x => x.GeneratedAt)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<int> DeactivateExpiredAccessCodesAsync(Guid examId, DateTime now)
+    {
+        var expiredCodes = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == examId && x.IsActive && x.ExpiresAt <= now)
+            .ToListAsync();
+
+        foreach (var accessCode in expiredCodes)
+        {
+            accessCode.IsActive = false;
+            accessCode.RevokedAt ??= accessCode.ExpiresAt;
+        }
+
+        return expiredCodes.Count;
+    }
+
     private async Task<ExamStudentAccess> GetOrCreateStudentAccessAsync(Guid examId, Guid studentId)
     {
         var access = await _context.ExamStudentAccesses
@@ -1575,6 +1674,7 @@ public class ExamsController : ControllerBase
         return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
     }
 
+ feature/alma-manual-admission-workflow
     private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
     {
         if (hasAccess)
@@ -1588,6 +1688,19 @@ public class ExamsController : ControllerBase
             _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
             _ => "Access is available."
         };
+
+    private static string BuildAccessStatusMessage(bool requiresCode, bool hasActiveCode, bool hasAccess)
+    {
+        if (hasAccess)
+            return "Access confirmed.";
+
+        if (!requiresCode)
+            return "This exam does not require an entry code yet.";
+
+        return hasActiveCode
+            ? "Enter the exam access code provided by the professor."
+            : "A new entry code is required. Please ask the professor to generate one.";
+ main
     }
 
     private async Task MarkStudentAccessStartedAsync(Guid examId, Guid studentId, DateTime now)
@@ -1655,9 +1768,10 @@ public class ExamsController : ControllerBase
         return Regex.Replace(code ?? string.Empty, "\\s+", string.Empty).Trim().ToUpperInvariant();
     }
 
-    private static string HashAccessCode(string code)
+    private static string HashAccessCode(string code, Guid examId)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(NormalizeAccessCode(code)));
+        var scopedCode = $"{examId:N}:{NormalizeAccessCode(code)}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(scopedCode));
         return Convert.ToHexString(bytes);
     }
 
@@ -1867,13 +1981,23 @@ public class ExamsController : ControllerBase
         var answerRows = await _context.ExamAttempts
             .AsNoTracking()
             .Where(a => attemptIds.Contains(a.Id))
-            .Select(a => new { a.Id, a.AnswersJson })
+            .Select(a => new { a.Id, a.AnswersJson, a.QuestionScoresJson })
             .ToListAsync();
-        var answersByAttempt = answerRows.ToDictionary(x => x.Id, x => BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson)));
+        var questionScoresByAttempt = answerRows.ToDictionary(
+            x => x.Id,
+            x => ReadQuestionScoresForReview(questions, x.AnswersJson, x.QuestionScoresJson));
+        var answersByAttempt = answerRows.ToDictionary(
+            x => x.Id,
+            x =>
+            {
+                var scores = questionScoresByAttempt.TryGetValue(x.Id, out var questionScores) ? questionScores : [];
+                return BuildAnswerReview(questions, ParseAttemptAnswers(x.AnswersJson), scores);
+            });
 
         foreach (var attempt in mappedAttempts)
         {
             attempt.Answers = answersByAttempt.TryGetValue(attempt.AttemptId, out var answers) ? answers : [];
+            attempt.QuestionScores = questionScoresByAttempt.TryGetValue(attempt.AttemptId, out var questionScores) ? questionScores : [];
 
             if (integrityByAttempt.TryGetValue(attempt.AttemptId, out var events))
             {
@@ -1932,16 +2056,33 @@ public class ExamsController : ControllerBase
         if (attempt.Status != ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "Only submitted attempts can be graded." });
 
-        var questionTotal = await _context.Questions
+        var questions = await _context.Questions
+            .AsNoTracking()
             .Where(x => x.ExamId == attempt.ExamId)
-            .SumAsync(x => (double)x.Points);
-        var examPoints = ResolveExamMaximumPoints(attempt.Exam, questionTotal);
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        var examPoints = ResolveExamMaximumPoints(attempt.Exam, questions.Sum(x => (double)x.Points));
 
-        var manualScore = dto.ManualScore ?? attempt.ManualScore;
-        var finalScore = dto.FinalScore ?? (attempt.AutoScore + manualScore);
+        var requestedQuestionScores = dto.QuestionScores ?? [];
+        var questionScoreValidationError = ValidateRequestedQuestionScores(questions, requestedQuestionScores);
+        if (questionScoreValidationError != null)
+            return BadRequest(new { message = questionScoreValidationError });
 
-        if (manualScore < 0)
-            return BadRequest(new { message = "Manual score cannot be negative." });
+        var questionScores = ReadQuestionScoresForReview(questions, attempt.AnswersJson, attempt.QuestionScoresJson);
+        if (requestedQuestionScores.Count > 0)
+        {
+            ApplyQuestionScoreOverrides(questionScores, requestedQuestionScores);
+        }
+        else
+        {
+            var desiredFinalScore = dto.FinalScore ?? (attempt.AutoScore + (dto.ManualScore ?? attempt.ManualScore));
+            if (desiredFinalScore < 0 || (examPoints > 0 && desiredFinalScore > examPoints))
+                return BadRequest(new { message = "Final score is outside the allowed exam range." });
+
+            ApplyLegacyOverallAdjustment(questionScores, desiredFinalScore);
+        }
+
+        var (autoScore, finalScore, manualScore) = CalculateQuestionScoreTotals(questionScores);
 
         if (finalScore < 0 || (examPoints > 0 && finalScore > examPoints))
             return BadRequest(new { message = "Final score is outside the allowed exam range." });
@@ -1950,6 +2091,8 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
+        attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
+        attempt.AutoScore = autoScore;
         attempt.ManualScore = manualScore;
         attempt.FinalScore = finalScore;
         attempt.IsGraded = true;
@@ -1991,7 +2134,9 @@ public class ExamsController : ControllerBase
             IntegrityViolationCount = attempt.IntegrityViolationCount,
             IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
             IntegrityPolicyAction = attempt.IntegrityPolicyAction,
-            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt
+            IntegrityAutoActionTriggeredAt = attempt.IntegrityAutoActionTriggeredAt,
+            QuestionScores = questionScores,
+            Answers = BuildAnswerReview(questions, ParseAttemptAnswers(attempt.AnswersJson), questionScores)
         });
     }
 
@@ -2558,6 +2703,7 @@ public class ExamsController : ControllerBase
         existingQuestion.Topic = selectedReplacement.Topic;
         existingQuestion.Difficulty = selectedReplacement.Difficulty;
         existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.MetadataJson = selectedReplacement.MetadataJson;
         existingQuestion.Points = selectedReplacement.Points;
         existingQuestion.CourseId = selectedReplacement.CourseId;
 
@@ -2618,6 +2764,7 @@ public class ExamsController : ControllerBase
         existingQuestion.Topic = selectedReplacement.Topic;
         existingQuestion.Difficulty = selectedReplacement.Difficulty;
         existingQuestion.OptionsJson = selectedReplacement.OptionsJson;
+        existingQuestion.MetadataJson = selectedReplacement.MetadataJson;
         existingQuestion.Points = selectedReplacement.Points;
         existingQuestion.CourseId = selectedReplacement.CourseId;
 
@@ -2738,6 +2885,7 @@ public class ExamsController : ControllerBase
             Topic = source.Topic,
             Difficulty = source.Difficulty,
             OptionsJson = source.OptionsJson,
+            MetadataJson = source.MetadataJson,
             Points = source.Points
         };
     }
@@ -2785,7 +2933,8 @@ public class ExamsController : ControllerBase
             Difficulty = question.Difficulty,
             CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
-            Points = question.Points
+            Points = question.Points,
+            TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(question, includePrivateFields: true)
         };
     }
 
@@ -3353,22 +3502,12 @@ public class ExamsController : ControllerBase
 
     private static string ResolveQuestionPrompt(Question question)
     {
-        if (!string.Equals(question.Type, "CSharp", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(question.Type, "SQL", StringComparison.OrdinalIgnoreCase))
-        {
-            return question.Text;
-        }
-
-        return ExtractStructuredQuestionSection(question.Text, "Prompt") ?? question.Text;
+        return QuestionTechnicalMetadataMapper.ResolvePrompt(question);
     }
 
     private static string? ResolveExpectedAnswer(Question question)
     {
-        var directAnswer = NormalizeOptionalValue(question.CorrectAnswer);
-        if (!string.IsNullOrWhiteSpace(directAnswer))
-            return directAnswer;
-
-        return ExtractStructuredQuestionSection(question.Text, "Expected answer / grading note");
+        return QuestionTechnicalMetadataMapper.ResolveExpectedAnswerOrNotes(question);
     }
 
     private static string? ExtractStructuredQuestionSection(string value, string label)
@@ -3798,9 +3937,15 @@ public class ExamsController : ControllerBase
         };
     }
 
-    private static List<ExamAttemptAnswerReviewDto> BuildAnswerReview(List<Question> questions, List<AnswerDto> answers)
+    private static List<ExamAttemptAnswerReviewDto> BuildAnswerReview(
+        List<Question> questions,
+        List<AnswerDto> answers,
+        List<ExamAttemptQuestionScoreDto>? questionScores = null)
     {
         var answerByQuestion = answers.ToDictionary(x => x.QuestionId, x => x.Response ?? string.Empty);
+        var scoreByQuestion = (questionScores ?? [])
+            .GroupBy(x => x.QuestionId)
+            .ToDictionary(x => x.Key, x => x.Last());
 
         return questions.Select(question =>
         {
@@ -3808,6 +3953,7 @@ public class ExamsController : ControllerBase
             var normalizedResponse = NormalizeOptionalValue(response) ?? string.Empty;
             var isCorrect = !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
                 IsCorrectMcqResponse(question.CorrectAnswer, normalizedResponse);
+            scoreByQuestion.TryGetValue(question.Id, out var score);
 
             return new ExamAttemptAnswerReviewDto
             {
@@ -3818,9 +3964,178 @@ public class ExamsController : ControllerBase
                 CorrectAnswer = question.CorrectAnswer,
                 Response = normalizedResponse,
                 Points = question.Points,
-                IsCorrect = isCorrect
+                IsCorrect = isCorrect,
+                AutoPointsAwarded = score?.AutoPointsAwarded ?? (isCorrect ? question.Points : 0),
+                FinalPointsAwarded = score?.FinalPointsAwarded ?? (isCorrect ? question.Points : 0),
+                IsManuallyOverridden = score?.IsManuallyOverridden ?? false,
+                GradingNotes = score?.GradingNotes
             };
         }).ToList();
+    }
+
+    private static List<ExamAttemptQuestionScoreDto> BuildQuestionScoreBreakdown(List<Question> questions, List<AnswerDto> answers)
+    {
+        var answerByQuestion = answers.ToDictionary(x => x.QuestionId, x => x.Response ?? string.Empty);
+
+        return questions
+            .OrderBy(x => x.Id)
+            .Select(question =>
+            {
+                answerByQuestion.TryGetValue(question.Id, out var response);
+                var autoPoints = 0d;
+
+                if (string.Equals(question.Type, "MCQ", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(question.CorrectAnswer) &&
+                    IsCorrectMcqResponse(question.CorrectAnswer, response))
+                {
+                    autoPoints = question.Points;
+                }
+
+                return new ExamAttemptQuestionScoreDto
+                {
+                    QuestionId = question.Id,
+                    MaxPoints = question.Points,
+                    AutoPointsAwarded = RoundScore(autoPoints),
+                    FinalPointsAwarded = RoundScore(autoPoints),
+                    IsManuallyOverridden = false
+                };
+            })
+            .ToList();
+    }
+
+    private static List<ExamAttemptQuestionScoreDto> ReadQuestionScoresForReview(List<Question> questions, string answersJson, string? questionScoresJson)
+    {
+        var defaults = BuildQuestionScoreBreakdown(questions, ParseAttemptAnswers(answersJson));
+        var defaultByQuestion = defaults.ToDictionary(x => x.QuestionId);
+        var raw = NormalizeOptionalValue(questionScoresJson);
+        if (raw == null)
+            return defaults;
+
+        try
+        {
+            var stored = JsonSerializer.Deserialize<List<ExamAttemptQuestionScoreDto>>(raw) ?? [];
+            var storedByQuestion = stored
+                .Where(x => x.QuestionId != Guid.Empty)
+                .GroupBy(x => x.QuestionId)
+                .ToDictionary(x => x.Key, x => x.Last());
+
+            return questions
+                .OrderBy(x => x.Id)
+                .Select(question =>
+                {
+                    var fallback = defaultByQuestion[question.Id];
+                    if (!storedByQuestion.TryGetValue(question.Id, out var existing))
+                        return fallback;
+
+                    var normalizedAuto = Math.Clamp(RoundScore(existing.AutoPointsAwarded), 0, question.Points);
+                    var normalizedFinal = Math.Clamp(RoundScore(existing.FinalPointsAwarded), 0, question.Points);
+
+                    return new ExamAttemptQuestionScoreDto
+                    {
+                        QuestionId = question.Id,
+                        MaxPoints = question.Points,
+                        AutoPointsAwarded = normalizedAuto,
+                        FinalPointsAwarded = normalizedFinal,
+                        IsManuallyOverridden = existing.IsManuallyOverridden || Math.Abs(normalizedFinal - normalizedAuto) > 0.009,
+                        GradingNotes = NormalizeOptionalValue(existing.GradingNotes)
+                    };
+                })
+                .ToList();
+        }
+        catch
+        {
+            return defaults;
+        }
+    }
+
+    private static string? SerializeQuestionScores(List<ExamAttemptQuestionScoreDto> questionScores)
+    {
+        return questionScores.Count == 0 ? null : JsonSerializer.Serialize(questionScores);
+    }
+
+    private static string? ValidateRequestedQuestionScores(List<Question> questions, List<GradeExamAttemptQuestionScoreDto> requestedScores)
+    {
+        if (requestedScores.Count == 0)
+            return null;
+
+        var duplicateIds = requestedScores
+            .GroupBy(x => x.QuestionId)
+            .Where(x => x.Key != Guid.Empty && x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+        if (duplicateIds.Count > 0)
+            return "Each question score can only be submitted once per grading request.";
+
+        var questionById = questions.ToDictionary(x => x.Id);
+        foreach (var item in requestedScores)
+        {
+            if (!questionById.TryGetValue(item.QuestionId, out var question))
+                return "One or more question scores do not belong to this exam.";
+
+            if (item.PointsAwarded < 0 || item.PointsAwarded > question.Points)
+                return $"Question score for '{ResolveQuestionPrompt(question)}' is outside the allowed range.";
+        }
+
+        return null;
+    }
+
+    private static void ApplyQuestionScoreOverrides(
+        List<ExamAttemptQuestionScoreDto> currentScores,
+        List<GradeExamAttemptQuestionScoreDto> requestedScores)
+    {
+        var scoreByQuestion = currentScores.ToDictionary(x => x.QuestionId);
+
+        foreach (var item in requestedScores)
+        {
+            if (!scoreByQuestion.TryGetValue(item.QuestionId, out var existing))
+                continue;
+
+            existing.FinalPointsAwarded = RoundScore(item.PointsAwarded);
+            existing.IsManuallyOverridden = Math.Abs(existing.FinalPointsAwarded - existing.AutoPointsAwarded) > 0.009;
+            existing.GradingNotes = NormalizeOptionalValue(item.Notes);
+        }
+    }
+
+    private static void ApplyLegacyOverallAdjustment(List<ExamAttemptQuestionScoreDto> questionScores, double desiredFinalScore)
+    {
+        var remainingDelta = RoundScore(desiredFinalScore - questionScores.Sum(x => x.FinalPointsAwarded));
+        if (Math.Abs(remainingDelta) <= 0.009)
+            return;
+
+        var candidates = remainingDelta > 0
+            ? questionScores.OrderByDescending(x => x.MaxPoints - x.FinalPointsAwarded).ToList()
+            : questionScores.OrderByDescending(x => x.FinalPointsAwarded).ToList();
+
+        foreach (var score in candidates)
+        {
+            var available = remainingDelta > 0
+                ? score.MaxPoints - score.FinalPointsAwarded
+                : score.FinalPointsAwarded;
+
+            if (available <= 0)
+                continue;
+
+            var change = Math.Min(Math.Abs(remainingDelta), available);
+            score.FinalPointsAwarded = RoundScore(score.FinalPointsAwarded + (remainingDelta > 0 ? change : -change));
+            score.IsManuallyOverridden = Math.Abs(score.FinalPointsAwarded - score.AutoPointsAwarded) > 0.009;
+            remainingDelta = RoundScore(remainingDelta + (remainingDelta > 0 ? -change : change));
+
+            if (Math.Abs(remainingDelta) <= 0.009)
+                break;
+        }
+    }
+
+    private static (double autoScore, double finalScore, double manualScore) CalculateQuestionScoreTotals(List<ExamAttemptQuestionScoreDto> questionScores)
+    {
+        var autoScore = RoundScore(questionScores.Sum(x => x.AutoPointsAwarded));
+        var finalScore = RoundScore(questionScores.Sum(x => x.FinalPointsAwarded));
+        var manualScore = RoundScore(finalScore - autoScore);
+        return (autoScore, finalScore, manualScore);
+    }
+
+    private static double RoundScore(double value)
+    {
+        return Math.Round(value, 2, MidpointRounding.AwayFromZero);
     }
 
     private static TechnicalRunResultDto BuildTechnicalRunResult(Question question, string response)
@@ -4018,23 +4333,10 @@ public class ExamsController : ControllerBase
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)
     {
-        var eligibleOfferingIds = await _context.StudentCourseEnrollments
+        return await _context.StudentCourseEnrollments
             .Where(x => x.StudentId == userId && x.EligibleForExam && x.Status == "Eligible")
             .Select(x => x.CourseOfferingId)
             .ToListAsync();
-
-        var currentTermOfferingIds = await _context.CourseOfferings
-            .Where(x =>
-                x.Term != null &&
-                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft") &&
-                _context.Exams.Any(e => e.CourseOfferingId == x.Id && e.IsPublished && e.Status == "Published"))
-            .Select(x => x.Id)
-            .ToListAsync();
-
-        return eligibleOfferingIds
-            .Concat(currentTermOfferingIds)
-            .Distinct()
-            .ToList();
     }
 
     private async Task<bool> CanStudentAccessExamAsync(Guid userId, Exam exam)
@@ -4048,12 +4350,6 @@ public class ExamsController : ControllerBase
             x.EligibleForExam &&
             x.Status == "Eligible");
 
-        if (hasEligibleEnrollment)
-            return true;
-
-        return await _context.CourseOfferings.AnyAsync(x =>
-            x.Id == exam.CourseOfferingId.Value &&
-            x.Term != null &&
-            (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft"));
+        return hasEligibleEnrollment;
     }
 }

@@ -129,7 +129,7 @@ export default function ExamCreatePage() {
         });
       } catch (err) {
         if (active) {
-          setError(err?.response?.data?.message || "Failed to load exam for editing.");
+          setError(err?.response?.data?.message || t("examCreate.loadEditError"));
         }
       } finally {
         if (active) setExamLoading(false);
@@ -139,7 +139,7 @@ export default function ExamCreatePage() {
     return () => {
       active = false;
     };
-  }, [examId]);
+  }, [examId, t]);
 
   const selectedOffering = useMemo(
     () => offerings.find((offering) => offering.id === form.courseOfferingId) || null,
@@ -227,7 +227,7 @@ export default function ExamCreatePage() {
         const created = await createExam(payload);
         const nextId = getEntityId(created);
         if (!nextId) {
-          setError("Exam was saved, but the response did not include an exam id. Return to exams and refresh the list.");
+          setError(t("examCreate.savedMissingId"));
           return;
         }
         nav(`/exams/${nextId}`);
@@ -248,7 +248,7 @@ export default function ExamCreatePage() {
   }
 
   if (examLoading) {
-    return <div className="pageState">Loading exam editor...</div>;
+    return <div className="pageState">{t("examCreate.editorLoading")}</div>;
   }
 
   if (!user) {
@@ -259,8 +259,8 @@ export default function ExamCreatePage() {
     <AppShell
       user={user}
       badge={t("examCreate.badge")}
-      title={isEditMode ? "Edit exam" : t("examCreate.title")}
-      subtitle={isEditMode ? "Update the existing exam, including lockdown settings, without creating a new one." : t("examCreate.subtitle")}
+      title={isEditMode ? t("examCreate.editTitle") : t("examCreate.title")}
+      subtitle={isEditMode ? t("examCreate.editSubtitle") : t("examCreate.subtitle")}
       actions={<Link className="btn" to="/exams">{t("common.cancel")}</Link>}
     >
       <section className="formSurface">
@@ -268,9 +268,9 @@ export default function ExamCreatePage() {
           <div className="sectionHeader">
             <div>
               <h3>{t("examCreate.configuration")}</h3>
-              <span className="sectionMeta">Set the course, timing, and delivery policy before adding questions.</span>
+              <span className="sectionMeta">{t("examCreate.sectionMeta")}</span>
             </div>
-            <span className="statusPill statusDraft">{isEditMode ? "Edit mode" : "Draft setup"}</span>
+            <span className="statusPill statusDraft">{isEditMode ? t("examCreate.editMode") : t("examCreate.draftSetup")}</span>
           </div>
           <div className="sectionBody">
             {error ? <div className="alert">{error}</div> : null}
@@ -285,8 +285,8 @@ export default function ExamCreatePage() {
               <div className="formSection">
                 <div className="formSectionHeader">
                   <div>
-                    <h4>Assessment basics</h4>
-                    <p>Keep the exam identity clear for staff and students.</p>
+                    <h4>{t("examCreate.basicsTitle")}</h4>
+                    <p>{t("examCreate.basicsText")}</p>
                   </div>
                 </div>
 
@@ -306,37 +306,37 @@ export default function ExamCreatePage() {
                         </option>
                       ))}
                     </select>
-                    <span className="fieldHint">This connects the draft to the correct term, course, and section.</span>
+                    <span className="fieldHint">{t("examCreate.offeringHint")}</span>
                   </div>
 
                   <div className="autoMetadataPanel fieldSpanFull">
                     <div className="autoMetadataHeader">
                       <div>
-                        <span className="summaryLabel">Auto-filled academic data</span>
-                        <strong>{form.title || "Select a course to generate the assessment title"}</strong>
+                        <span className="summaryLabel">{t("examCreate.autoData")}</span>
+                        <strong>{form.title || t("examCreate.selectCourseTitle")}</strong>
                       </div>
-                      <span className="statusPill statusDraft">System-filled</span>
+                      <span className="statusPill statusDraft">{t("examCreate.systemFilled")}</span>
                     </div>
                     <div className="autoMetadataGrid">
                       <div>
-                        <span>Assessment category</span>
-                        <strong>{formatAssessmentType(form.assessmentType)}</strong>
+                        <span>{t("examCreate.assessmentCategory")}</span>
+                        <strong>{formatAssessmentType(form.assessmentType, t)}</strong>
                       </div>
                       <div>
-                        <span>Official exam period</span>
-                        <strong>{formatExamPeriod(form.examPeriod)}</strong>
+                        <span>{t("examCreate.officialPeriod")}</span>
+                        <strong>{formatExamPeriod(form.examPeriod, t)}</strong>
                       </div>
                       <div>
-                        <span>Academic year</span>
-                        <strong>{form.academicYear || "From course offering"}</strong>
+                        <span>{t("examCreate.academicYear")}</span>
+                        <strong>{form.academicYear || t("examCreate.fromOffering")}</strong>
                       </div>
                       <div>
-                        <span>Semester</span>
-                        <strong>{form.semesterLabel || "From course offering"}</strong>
+                        <span>{t("examCreate.semester")}</span>
+                        <strong>{form.semesterLabel || t("examCreate.fromOffering")}</strong>
                       </div>
                       <div>
-                        <span>Generation / cohort</span>
-                        <strong>{form.cohortLabel || "From course offering"}</strong>
+                        <span>{t("examCreate.cohort")}</span>
+                        <strong>{form.cohortLabel || t("examCreate.fromOffering")}</strong>
                       </div>
                     </div>
                   </div>
@@ -353,7 +353,7 @@ export default function ExamCreatePage() {
                   </div>
 
                   <div className="field">
-                    <label className="label">Maximum exam points</label>
+                    <label className="label">{t("examCreate.maximumPoints")}</label>
                     <input
                       className="input"
                       type="number"
@@ -365,7 +365,7 @@ export default function ExamCreatePage() {
                   </div>
 
                   <div className="field">
-                    <label className="label">Starts at</label>
+                    <label className="label">{t("examCreate.startsAt")}</label>
                     <input
                       className="input"
                       type="datetime-local"
@@ -375,7 +375,7 @@ export default function ExamCreatePage() {
                   </div>
 
                   <div className="field">
-                    <label className="label">Ends at</label>
+                    <label className="label">{t("examCreate.endsAt")}</label>
                     <input
                       className="input"
                       type="datetime-local"
@@ -397,14 +397,14 @@ export default function ExamCreatePage() {
               </div>
 
               <div className="publishNotice">
-                <strong>{isEditMode ? "Published exams return to draft after editing" : "Draft and publish workflow"}</strong>
-                <span>{isEditMode ? "After saving changes, review the exam and publish it again so students use the updated settings." : "Save the exam draft first, attach questions in the builder, then publish it for eligible students."}</span>
+                <strong>{isEditMode ? t("examCreate.publishEditTitle") : t("examCreate.publishDraftTitle")}</strong>
+                <span>{isEditMode ? t("examCreate.publishEditText") : t("examCreate.publishDraftText")}</span>
               </div>
 
               <div className="formActionsBar">
                 <Link className="btn" to="/exams">{t("common.back")}</Link>
                 <button className="btn btnPrimary" type="submit" disabled={!canSubmit}>
-                  {saving ? (isEditMode ? "Saving changes..." : t("examCreate.creating")) : (isEditMode ? "Save changes" : "Save draft")}
+                  {saving ? (isEditMode ? t("examCreate.savingChanges") : t("examCreate.creating")) : (isEditMode ? t("examCreate.saveChanges") : t("examCreate.saveDraft"))}
                 </button>
               </div>
             </form>
@@ -446,12 +446,14 @@ function buildAssessmentTitle(offering) {
   return courseName || courseCode || "Course exam";
 }
 
-function formatAssessmentType(value) {
-  return assessmentTypes.find((type) => type.value === value)?.label || "Exam";
+function formatAssessmentType(value, t) {
+  const normalized = assessmentTypes.find((type) => type.value === value)?.value || "Exam";
+  return t(`examCreate.assessmentTypes.${normalized}`);
 }
 
-function formatExamPeriod(value) {
-  return examPeriods.find((period) => period.value === value)?.label || "January Exam Period";
+function formatExamPeriod(value, t) {
+  const normalized = examPeriods.find((period) => period.value === value)?.value || "January Exam Period";
+  return t(`examCreate.examPeriods.${normalized}`);
 }
 
 function normalizeAssessmentTypeForUi(value) {

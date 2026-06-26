@@ -70,7 +70,8 @@ public class QuestionsController : ControllerBase
             Difficulty = User.IsInRole("Student") ? null : question.Difficulty,
             CorrectAnswerCount = GetCorrectAnswers(question.CorrectAnswer).Count,
             Options = ParseOptions(question.OptionsJson),
-            Points = question.Points
+            Points = question.Points,
+            TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(question, includePrivateFields: !User.IsInRole("Student"))
         });
     }
 
@@ -99,6 +100,7 @@ public class QuestionsController : ControllerBase
             Type = dto.Type,
             CourseId = dto.CourseId,
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
+            MetadataJson = QuestionTechnicalMetadataMapper.SerializeForStorage(dto.Type, dto.TechnicalMetadata),
             CorrectAnswer = dto.CorrectAnswer,
             Topic = NormalizeOptionalValue(dto.Topic),
             Difficulty = NormalizeDifficulty(dto.Difficulty),
@@ -151,6 +153,7 @@ public class QuestionsController : ControllerBase
         existing.Type = dto.Type;
         existing.CourseId = dto.CourseId;
         existing.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
+        existing.MetadataJson = QuestionTechnicalMetadataMapper.SerializeForStorage(dto.Type, dto.TechnicalMetadata);
         existing.CorrectAnswer = dto.CorrectAnswer;
         existing.Topic = NormalizeOptionalValue(dto.Topic);
         existing.Difficulty = NormalizeDifficulty(dto.Difficulty);
@@ -245,7 +248,8 @@ public class QuestionsController : ControllerBase
             Difficulty = includeCorrectAnswer ? q.Difficulty : null,
             CorrectAnswerCount = GetCorrectAnswers(q.CorrectAnswer).Count,
             Options = ParseOptions(q.OptionsJson),
-            Points = q.Points
+            Points = q.Points,
+            TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(q, includePrivateFields: includeCorrectAnswer)
         }));
     }
 
@@ -358,6 +362,7 @@ public class QuestionsController : ControllerBase
             Topic = NormalizeOptionalValue(dto.Topic),
             Difficulty = NormalizeDifficulty(dto.Difficulty),
             OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null,
+            MetadataJson = QuestionTechnicalMetadataMapper.SerializeForStorage(dto.Type, dto.TechnicalMetadata),
             Points = dto.Points
         };
 
@@ -403,6 +408,7 @@ public class QuestionsController : ControllerBase
         question.Topic = NormalizeOptionalValue(dto.Topic);
         question.Difficulty = NormalizeDifficulty(dto.Difficulty);
         question.OptionsJson = options.Count > 0 ? JsonSerializer.Serialize(options) : null;
+        question.MetadataJson = QuestionTechnicalMetadataMapper.SerializeForStorage(dto.Type, dto.TechnicalMetadata);
         question.Points = dto.Points;
         question.CourseId = offering.CourseId;
 
@@ -729,6 +735,7 @@ public class QuestionsController : ControllerBase
             Topic = source.Topic,
             Difficulty = source.Difficulty,
             OptionsJson = source.OptionsJson,
+            MetadataJson = source.MetadataJson,
             Points = source.Points
         };
     }
@@ -776,7 +783,8 @@ public class QuestionsController : ControllerBase
             Topic = question.Topic,
             Difficulty = question.Difficulty,
             Options = ParseOptions(question.OptionsJson),
-            Points = question.Points
+            Points = question.Points,
+            TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(question, includePrivateFields: true)
         };
     }
 

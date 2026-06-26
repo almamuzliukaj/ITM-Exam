@@ -5,6 +5,7 @@ public class GradeExamAttemptDto
     public double? ManualScore { get; set; }
     public double? FinalScore { get; set; }
     public string? Notes { get; set; }
+    public List<GradeExamAttemptQuestionScoreDto> QuestionScores { get; set; } = [];
 }
 
 public class PublishExamResultsDto
@@ -42,6 +43,7 @@ public class ExamAttemptSummaryDto
     public DateTime? IntegrityAutoActionTriggeredAt { get; set; }
     public DateTime? IntegrityLastEventAt { get; set; }
     public List<ExamIntegrityEventDto> IntegrityEvents { get; set; } = [];
+    public List<ExamAttemptQuestionScoreDto> QuestionScores { get; set; } = [];
     public List<ExamAttemptAnswerReviewDto> Answers { get; set; } = [];
 }
 
@@ -55,6 +57,27 @@ public class ExamAttemptAnswerReviewDto
     public string Response { get; set; } = string.Empty;
     public int Points { get; set; }
     public bool IsCorrect { get; set; }
+    public double AutoPointsAwarded { get; set; }
+    public double FinalPointsAwarded { get; set; }
+    public bool IsManuallyOverridden { get; set; }
+    public string? GradingNotes { get; set; }
+}
+
+public class GradeExamAttemptQuestionScoreDto
+{
+    public Guid QuestionId { get; set; }
+    public double PointsAwarded { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class ExamAttemptQuestionScoreDto
+{
+    public Guid QuestionId { get; set; }
+    public double MaxPoints { get; set; }
+    public double AutoPointsAwarded { get; set; }
+    public double FinalPointsAwarded { get; set; }
+    public bool IsManuallyOverridden { get; set; }
+    public string? GradingNotes { get; set; }
 }
 
 public class StudentExamResultDto

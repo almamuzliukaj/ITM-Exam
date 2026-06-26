@@ -27,11 +27,8 @@ public class ExamsController : ControllerBase
     private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
     private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusRemoved = "Removed";
- feature/alma-physical-admission-monitoring
     private const string StudentAccessStatusDeviceChangeRequested = "DeviceChangeRequested";
-
     private const string StudentAccessStatusTemporarilyOffline = "TemporarilyOffline";
- main
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
@@ -1079,12 +1076,8 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
- feature/alma-physical-admission-monitoring
             RequestedAt = access?.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
-
             ServerTimeUtc = now,
-            RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
- main
             ApprovalReason = access?.ApprovalReason ?? string.Empty,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
@@ -1200,10 +1193,8 @@ public class ExamsController : ControllerBase
             ApprovedAt = access.ApprovedAt,
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
- feature/alma-physical-admission-monitoring
-            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value)
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            main
             Message = "Approval request sent. Wait for your professor before starting the exam."
         });
     }
@@ -1283,28 +1274,18 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = true,
- feature/alma-physical-admission-monitoring
             HasAccess = false,
-
             HasActiveCode = true,
-            HasAccess = true,
- main
             AccessStatus = access.AccessStatus,
             ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
- feature/alma-physical-admission-monitoring
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
-            Message = "Access code verified. Please wait for the professor to approve your physical identity before the rules screen opens."
-
             ServerTimeUtc = now,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
-            ApprovalReason = access.ApprovalReason,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            Message = "Access confirmed. You can start the exam."
- main
+            Message = "Access code verified. Please wait for the professor to approve your physical identity before the rules screen opens."
         });
     }
 
@@ -1438,12 +1419,8 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
- feature/alma-physical-admission-monitoring
             RequestedAt = null,
-
             ServerTimeUtc = now,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
- main
             ApprovalReason = access.ApprovalReason,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = "Student access approved."
@@ -1499,15 +1476,9 @@ public class ExamsController : ControllerBase
         });
     }
 
- feature/alma-physical-admission-monitoring
     [HttpPost("{examId:guid}/students/{studentId:guid}/revoke-access")]
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<ActionResult<ExamAccessStatusDto>> RevokeStudentExamAccess(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
-
-    [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
-    [Authorize(Roles = "Professor,Assistant")]
-    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
- main
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1524,7 +1495,6 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "This student is not eligible for this exam." });
 
         var now = DateTime.UtcNow;
- feature/alma-physical-admission-monitoring
         var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
         access.AccessStatus = StudentAccessStatusRemoved;
         access.ApprovedAt = null;
@@ -1552,6 +1522,69 @@ public class ExamsController : ControllerBase
             RequestedAt = null,
             ApprovalReason = access.ApprovalReason,
             Message = "Student admission revoked."
+        });
+    }
+
+    [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+        var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRemoved;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovedAt = null;
+        access.ApprovalReason = reason;
+        access.LastActivityAt = now;
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
+        if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+        {
+            attempt.Status = ExamAttemptRemovedStatus;
+            attempt.LastSavedAt = now;
+        }
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.StudentRemoved", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            removedByUserId = userId.Value,
+            removedAt = now,
+            reason,
+            attemptId = attempt?.Id,
+            preservedAnswers = attempt?.AnswersJson?.Length > 0
+        }, "ExamDelivery");
+
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = requiresCode,
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            ServerTimeUtc = now,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
         });
     }
 
@@ -1595,55 +1628,14 @@ public class ExamsController : ControllerBase
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = await RequiresEntryCodeAsync(exam.Id),
-
-        var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
-        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
-        access.AccessStatus = StudentAccessStatusRemoved;
-        access.ApprovedByUserId = userId.Value;
-        access.ApprovedAt = null;
-        access.ApprovalReason = reason;
-        access.LastActivityAt = now;
-
-        var attempt = await _context.ExamAttempts
-            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
-        if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
-        {
-            attempt.Status = ExamAttemptRemovedStatus;
-            attempt.LastSavedAt = now;
-        }
-
-        await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.StudentRemoved", "Exam", exam.Id, new
-        {
-            examId = exam.Id,
-            studentId,
-            removedByUserId = userId.Value,
-            removedAt = now,
-            reason,
-            attemptId = attempt?.Id,
-            preservedAnswers = attempt?.AnswersJson?.Length > 0
-        }, "ExamDelivery");
-
-        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
-
-        return Ok(new ExamAccessStatusDto
-        {
-            RequiresCode = requiresCode, main
             HasAccess = false,
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
- feature/alma-physical-admission-monitoring
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = "Device change request sent. Wait for staff approval before continuing."
-
-            ServerTimeUtc = now,
-            RequestedAt = null,
-            ApprovalReason = access.ApprovalReason,
-            Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
- main
         });
     }
 
@@ -1737,12 +1729,8 @@ public class ExamsController : ControllerBase
             Summary = new ExamLiveMonitorSummaryDto
             {
                 TotalEnrolled = rows.Count,
- feature/alma-physical-admission-monitoring
                 WaitingForPhysicalVerification = rows.Count(x => x.AccessStatus is StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusApprovalRequested),
                 Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
-
-                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted or StudentAccessStatusTemporarilyOffline),
- main
                 Active = rows.Count(x => x.AttemptStatus == ExamAttemptInProgressStatus),
                 Submitted = rows.Count(x => x.AttemptStatus == ExamAttemptSubmittedStatus),
                 NotJoined = rows.Count(x => x.AttemptStatus == "NotStarted"),

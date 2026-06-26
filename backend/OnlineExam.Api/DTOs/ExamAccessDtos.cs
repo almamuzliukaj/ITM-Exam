@@ -27,12 +27,18 @@ public class ExamAccessCodeResponseDto
 public class ExamAccessStatusDto
 {
     public bool RequiresCode { get; set; }
+    public bool HasActiveCode { get; set; }
     public bool HasAccess { get; set; }
     public string AccessStatus { get; set; } = "NotVerified";
+    public DateTime? ActiveCodeExpiresAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
+ feature/alma-manual-admission-workflow
     public DateTime? RequestedAt { get; set; }
     public string ApprovalReason { get; set; } = string.Empty;
+
+    public int CodeLifetimeSeconds { get; set; }
+ main
     public string Message { get; set; } = string.Empty;
 }
 

@@ -34,6 +34,7 @@ public class ExamQuestionResponseDto
     public int CorrectAnswerCount { get; set; } = 1;
     public List<string> Options { get; set; } = [];
     public int Points { get; set; }
+    public QuestionTechnicalMetadataDto? TechnicalMetadata { get; set; }
 }
 
 public class GenerateRandomExamQuestionsResponseDto

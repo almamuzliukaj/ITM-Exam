@@ -8,37 +8,32 @@ export default function StudentResultsPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [activeResultView, setActiveResultView] = useState("published");
   const [resultPage, setResultPage] = useState(1);
   const [resultPageSize, setResultPageSize] = useState(6);
 
+  async function loadResults({ silent = false } = {}) {
+    try {
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+      setError("");
+      const data = await getMyExamResults();
+      setResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(readApiMessage(err) || "Failed to load your published exam results.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
   useEffect(() => {
     if (!user || user.role !== "Student") return;
-
-    let active = true;
-
-    async function loadResults() {
-      try {
-        setLoading(true);
-        setError("");
-        const data = await getMyExamResults();
-        if (active) setResults(Array.isArray(data) ? data : []);
-      } catch (err) {
-        if (active) setError(readApiMessage(err) || "Failed to load your exam results.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
     loadResults();
-    return () => {
-      active = false;
-    };
   }, [user]);
 
-  const published = useMemo(() => results.filter((result) => result.isPublished), [results]);
-  const pending = useMemo(() => results.filter((result) => !result.isPublished), [results]);
+  const published = useMemo(() => results.filter((result) => result.isPublished !== false), [results]);
   const averageScore = useMemo(() => {
     if (published.length === 0) return null;
     const total = published.reduce((sum, result) => sum + Number(result.finalScore || 0), 0);
@@ -48,7 +43,7 @@ export default function StudentResultsPage() {
     () => [...published].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))[0] || null,
     [published],
   );
-  const activeResults = activeResultView === "published" ? published : pending;
+  const activeResults = published;
   const resultPageCount = Math.max(1, Math.ceil(activeResults.length / resultPageSize));
   const visibleResults = useMemo(() => {
     const startIndex = (resultPage - 1) * resultPageSize;
@@ -59,7 +54,7 @@ export default function StudentResultsPage() {
 
   useEffect(() => {
     setResultPage(1);
-  }, [activeResultView, resultPageSize]);
+  }, [resultPageSize]);
 
   useEffect(() => {
     setResultPage((current) => Math.min(current, resultPageCount));
@@ -73,15 +68,22 @@ export default function StudentResultsPage() {
       user={user}
       badge="Result experience"
       title="My exam results"
-      subtitle="Published scores appear here after staff review. Pending attempts stay hidden until the professor publishes them."
-      actions={<Link className="btn" to="/exams">Available exams</Link>}
+      subtitle="Only professor-published scores appear here after staff review."
+      actions={
+        <>
+          <button className="btn" type="button" onClick={() => loadResults({ silent: true })} disabled={loading || refreshing}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+          <Link className="btn" to="/exams">Available exams</Link>
+        </>
+      }
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
 
         <section className="summaryStrip">
           <article className="summaryCard">
-            <span className="summaryLabel">Submitted</span>
+            <span className="summaryLabel">Visible results</span>
             <strong>{results.length}</strong>
           </article>
           <article className="summaryCard">
@@ -89,8 +91,8 @@ export default function StudentResultsPage() {
             <strong>{published.length}</strong>
           </article>
           <article className="summaryCard">
-            <span className="summaryLabel">Pending</span>
-            <strong>{pending.length}</strong>
+            <span className="summaryLabel">Hidden pending</span>
+            <strong>Protected</strong>
           </article>
           <article className="summaryCard">
             <span className="summaryLabel">Average</span>
@@ -101,7 +103,7 @@ export default function StudentResultsPage() {
         <section className="resultPolicyStrip">
           <div>
             <strong>Result visibility rule</strong>
-            <span>Scores stay hidden until staff complete review and publish the result.</span>
+            <span>Submitted attempts stay hidden until staff save grading and publish the final result.</span>
           </div>
           <div>
             <strong>{latestPublished ? formatDateTime(latestPublished.publishedAt) : "No publication yet"}</strong>
@@ -112,23 +114,18 @@ export default function StudentResultsPage() {
         <section className="surfaceCard">
             <div className="sectionHeader">
               <div>
-                <h3>{activeResultView === "published" ? "Published results" : "Pending review"}</h3>
+                <h3>Published results</h3>
                 <span className="sectionMeta">Showing {resultStart}-{resultEnd} of {activeResults.length} result{activeResults.length === 1 ? "" : "s"}.</span>
               </div>
             </div>
             <div className="sectionBody stackLg">
               <div className="adminToolbar">
-                <div className="segmentedControl" aria-label="Result view">
-                  <button className={activeResultView === "published" ? "active" : ""} type="button" onClick={() => setActiveResultView("published")}>
-                    Published
-                  </button>
-                  <button className={activeResultView === "pending" ? "active" : ""} type="button" onClick={() => setActiveResultView("pending")}>
-                    Pending
-                  </button>
+                <div className="resultLifecycleHint">
+                  <strong>Lifecycle check</strong>
+                  <span>Save grading {"->"} publish result {"->"} student refreshes this page.</span>
                 </div>
                 <div className="adminToolbarStatus">
                   <span className="statusPill statusLive">{published.length} published</span>
-                  <span className="statusPill statusDraft">{pending.length} pending</span>
                   <select className="input inputCompact" value={resultPageSize} onChange={(e) => setResultPageSize(Number(e.target.value))} aria-label="Results per page">
                     <option value={6}>6 rows</option>
                     <option value={12}>12 rows</option>
@@ -137,28 +134,16 @@ export default function StudentResultsPage() {
                 </div>
               </div>
               {loading ? (
-                <div className="pageStateCard">Loading results...</div>
+                <div className="pageStateCard">Loading published results...</div>
               ) : activeResults.length === 0 ? (
                 <div className="emptyState">
-                  <p>{activeResultView === "published" ? "No published results yet." : "No pending attempts."}</p>
-                  <p>{activeResultView === "published" ? "After grading and publication, your score and review notes will appear here." : "Submitted attempts waiting for review will appear here."}</p>
+                  <p>No published results yet.</p>
+                  <p>After the professor saves grading and publishes the result, refresh this page to see your score.</p>
                 </div>
-              ) : activeResultView === "published" ? (
+              ) : (
                 <div className="resultCardStack">
                   {visibleResults.map((result) => (
                     <ResultCard key={result.attemptId} result={result} />
-                  ))}
-                </div>
-              ) : (
-                <div className="studentItemList">
-                  {visibleResults.map((result) => (
-                    <div key={result.attemptId} className="studentItemRow">
-                      <div>
-                        <strong>{result.examTitle}</strong>
-                        <span>Submitted {formatDateTime(result.submittedAt)}</span>
-                      </div>
-                      <span className="statusPill statusDraft">{formatStatus(result.status)}</span>
-                    </div>
                   ))}
                 </div>
               )}
@@ -226,11 +211,6 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function formatStatus(status) {
-  if (status === "ReadyToPublish") return "Ready";
-  return status || "Pending";
 }
 
 function formatPercentage(value) {

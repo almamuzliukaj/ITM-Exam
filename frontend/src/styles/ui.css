@@ -3986,6 +3986,25 @@ input[type="radio"]{
   line-height: 1.5;
 }
 
+.resultLifecycleHint{
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.resultLifecycleHint strong{
+  color: var(--heading);
+}
+
+.resultLifecycleHint span{
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .resultCardStack{
   display: flex;
   flex-direction: column;

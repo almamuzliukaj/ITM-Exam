@@ -95,10 +95,11 @@ export default function StudentExamSessionPage() {
         setSessionTiming(provisionalTiming);
         setTimeRemaining(calculateRemainingSeconds(provisionalTiming));
 
-        const attemptData = await getCurrentExamAttempt(examId);
+        const clientSessionId = clientSessionIdRef.current;
+        const attemptData = await getCurrentExamAttempt(examId, clientSessionId);
         const [questionData, integritySummary] = await Promise.all([
-          listQuestions(examId),
-          getCurrentExamIntegritySummary(examId).catch(() => null),
+          listQuestions(examId, clientSessionId),
+          getCurrentExamIntegritySummary(examId, clientSessionId).catch(() => null),
         ]);
         if (!active) return;
 
@@ -425,6 +426,7 @@ export default function StudentExamSessionPage() {
           questionId,
           response: String(response || "").trim(),
         })),
+        clientSessionId: clientSessionIdRef.current,
       };
       const submission = await submitExamAttempt(examId, payload);
       if (document.fullscreenElement && document.exitFullscreen) {
@@ -529,7 +531,7 @@ export default function StudentExamSessionPage() {
       }
 
       try {
-        const updated = await sendExamHeartbeat(examId);
+        const updated = await sendExamHeartbeat(examId, clientSessionIdRef.current);
         if (!active) return;
         setAccessStatus(updated);
         setNetworkOnline(true);
@@ -835,10 +837,11 @@ export default function StudentExamSessionPage() {
           <span>Violations</span>
           <strong>{effectiveViolationCount}/{autoActionThreshold}</strong>
         </div>
-        <div className="secureExamStudent">
-          <strong>{user.fullName || user.email}</strong>
-          <span>{faceProctoring.status === "active" ? "Camera active" : "Camera check"}</span>
-        </div>
+        <SecureExamIdentityBanner
+          identity={accessStatus?.studentIdentity}
+          fallbackUser={user}
+          cameraStatus={faceProctoring.status}
+        />
       </header>
 
       <main className="secureExamMain">
@@ -1462,6 +1465,28 @@ function StudentIdentityCard({ identity }) {
   );
 }
 
+function SecureExamIdentityBanner({ identity, fallbackUser, cameraStatus }) {
+  const fullName = identity?.fullName || fallbackUser?.fullName || "Student";
+  const email = identity?.email || fallbackUser?.email || "";
+  const studentNumber = identity?.studentNumber || identity?.studentId || "Pending ID";
+  const initials = identity?.initials || buildInitials(fullName, email);
+
+  return (
+    <div className="secureExamIdentityBanner" aria-label="Verified student identity">
+      <div className="secureExamIdentityPhoto" aria-hidden="true">
+        {identity?.photoUrl ? <img src={identity.photoUrl} alt="" /> : <span>{initials}</span>}
+      </div>
+      <div className="secureExamIdentityText">
+        <span>Verified student</span>
+        <strong>{fullName}</strong>
+        <small>{email}</small>
+        <small>ID: {studentNumber}</small>
+      </div>
+      <em>{cameraStatus === "active" ? "Camera active" : "Camera check"}</em>
+    </div>
+  );
+}
+
 function ApprovalRejectedPanel({ accessStatus, requesting, onRequestAgain }) {
   return (
     <section className="surfaceCard manualAdmissionPanel manualAdmissionRejected">
@@ -1683,6 +1708,20 @@ function formatSavedAt(value) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+}
+
+function buildInitials(fullName, email) {
+  const parts = String(fullName || "")
+    .split(" ")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length > 0) {
+    return parts.map((part) => part[0]?.toUpperCase()).join("");
+  }
+
+  return String(email || "ST").slice(0, 2).toUpperCase();
 }
 
 function formatSaveState(saveState) {

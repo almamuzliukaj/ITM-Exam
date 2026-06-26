@@ -75,6 +75,11 @@ export async function getCurrentExamIntegritySummary(examId) {
   return response.data;
 }
 
+export async function sendExamHeartbeat(examId) {
+  const response = await api.post(`/api/exams/${examId}/attempt/heartbeat`);
+  return response.data;
+}
+
 export async function getExamAccessStatus(examId) {
   const response = await api.get(`/api/exams/${examId}/access-status`);
   return response.data;

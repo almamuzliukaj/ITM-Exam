@@ -2015,6 +2015,7 @@ public class ExamsController : ControllerBase
                     StudentName = item.StudentName,
                     StudentEmail = item.StudentEmail,
                     Status = item.Attempt.Status,
+                    GradingStatus = ResolveGradingStatus(item.Attempt),
                     StartedAt = item.Attempt.StartedAt,
                     LastSavedAt = item.Attempt.LastSavedAt,
                     SubmittedAt = item.Attempt.SubmittedAt,
@@ -2029,7 +2030,10 @@ public class ExamsController : ControllerBase
                     IsGraded = item.Attempt.IsGraded,
                     IsPublished = item.Attempt.IsPublished,
                     GradedAt = item.Attempt.GradedAt,
+                    GradedByUserId = item.Attempt.GradedByUserId,
                     GradingNotes = item.Attempt.GradingNotes,
+                    PublishedAt = item.Attempt.PublishedAt,
+                    PublishedByUserId = item.Attempt.PublishedByUserId,
                     IntegrityViolationCount = item.Attempt.IntegrityViolationCount,
                     IntegrityLastViolationAt = item.Attempt.IntegrityLastViolationAt,
                     IntegrityPolicyAction = item.Attempt.IntegrityPolicyAction,
@@ -2171,6 +2175,13 @@ public class ExamsController : ControllerBase
         attempt.GradedAt = DateTime.UtcNow;
         attempt.GradedByUserId = userId.Value;
         attempt.GradingNotes = NormalizeOptionalValue(dto.Notes);
+        var wasPublished = attempt.IsPublished;
+        if (wasPublished)
+        {
+            attempt.IsPublished = false;
+            attempt.PublishedAt = null;
+            attempt.PublishedByUserId = null;
+        }
         var scorePercentage = CalculateScorePercentage(attempt.FinalScore, examPoints);
 
         await _context.SaveChangesAsync();
@@ -2179,7 +2190,11 @@ public class ExamsController : ControllerBase
             attempt.ExamId,
             attempt.AutoScore,
             attempt.ManualScore,
-            attempt.FinalScore
+            attempt.FinalScore,
+            attempt.GradedByUserId,
+            attempt.GradedAt,
+            wasPublished,
+            unpublishedForReview = wasPublished
         }, "Grading");
 
         return Ok(new ExamAttemptSummaryDto
@@ -2188,6 +2203,7 @@ public class ExamsController : ControllerBase
             ExamId = attempt.ExamId,
             StudentId = attempt.StudentId,
             Status = attempt.Status,
+            GradingStatus = ResolveGradingStatus(attempt),
             StartedAt = attempt.StartedAt,
             LastSavedAt = attempt.LastSavedAt,
             SubmittedAt = attempt.SubmittedAt,
@@ -2202,7 +2218,10 @@ public class ExamsController : ControllerBase
             IsGraded = attempt.IsGraded,
             IsPublished = attempt.IsPublished,
             GradedAt = attempt.GradedAt,
+            GradedByUserId = attempt.GradedByUserId,
             GradingNotes = attempt.GradingNotes,
+            PublishedAt = attempt.PublishedAt,
+            PublishedByUserId = attempt.PublishedByUserId,
             IntegrityViolationCount = attempt.IntegrityViolationCount,
             IntegrityLastViolationAt = attempt.IntegrityLastViolationAt,
             IntegrityPolicyAction = attempt.IntegrityPolicyAction,
@@ -2377,17 +2396,13 @@ public class ExamsController : ControllerBase
         if (attempts.Count == 0)
             return BadRequest(new { message = "No graded unpublished attempts are available to publish." });
 
+        var notReviewedCount = attempts.Count(x => !x.IsGraded);
+        if (notReviewedCount > 0)
+            return BadRequest(new { message = $"Cannot publish results yet. {notReviewedCount} attempt(s) still need grading review." });
+
         var publishedAt = DateTime.UtcNow;
         foreach (var attempt in attempts)
         {
-            if (!attempt.IsGraded)
-            {
-                attempt.IsGraded = true;
-                attempt.GradedAt = publishedAt;
-                attempt.GradedByUserId = userId.Value;
-                attempt.FinalScore = attempt.FinalScore > 0 ? attempt.FinalScore : attempt.AutoScore + attempt.ManualScore;
-            }
-
             attempt.IsPublished = true;
             attempt.PublishedAt = publishedAt;
             attempt.PublishedByUserId = userId.Value;
@@ -2396,7 +2411,10 @@ public class ExamsController : ControllerBase
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("ExamResults.Published", "Exam", id, new
         {
-            PublishedAttempts = attempts.Count
+            PublishedAttempts = attempts.Count,
+            PublishedAttemptIds = attempts.Select(x => x.Id).ToList(),
+            PublishedByUserId = userId.Value,
+            PublishedAt = publishedAt
         }, "Results");
 
         return Ok(new
@@ -4203,6 +4221,20 @@ public class ExamsController : ControllerBase
         var finalScore = RoundScore(questionScores.Sum(x => x.FinalPointsAwarded));
         var manualScore = RoundScore(finalScore - autoScore);
         return (autoScore, finalScore, manualScore);
+    }
+
+    private static string ResolveGradingStatus(ExamAttempt attempt)
+    {
+        if (attempt.IsPublished)
+            return "Published";
+
+        if (attempt.IsGraded)
+            return "Graded";
+
+        if (attempt.GradedAt.HasValue || !string.IsNullOrWhiteSpace(attempt.QuestionScoresJson))
+            return "InReview";
+
+        return "NotReviewed";
     }
 
     private static double RoundScore(double value)

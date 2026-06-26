@@ -22,6 +22,7 @@ public class ExamAttemptSummaryDto
     public string StudentName { get; set; } = string.Empty;
     public string StudentEmail { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string GradingStatus { get; set; } = "NotReviewed";
     public DateTime StartedAt { get; set; }
     public DateTime? LastSavedAt { get; set; }
     public DateTime? SubmittedAt { get; set; }
@@ -36,7 +37,10 @@ public class ExamAttemptSummaryDto
     public bool IsGraded { get; set; }
     public bool IsPublished { get; set; }
     public DateTime? GradedAt { get; set; }
+    public Guid? GradedByUserId { get; set; }
     public string? GradingNotes { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public Guid? PublishedByUserId { get; set; }
     public int IntegrityViolationCount { get; set; }
     public DateTime? IntegrityLastViolationAt { get; set; }
     public string IntegrityPolicyAction { get; set; } = "None";

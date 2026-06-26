@@ -2344,7 +2344,7 @@ feature/agnesa-access-code-security
             return Unauthorized();
 
         var rawResults = await _context.ExamAttempts
-            .Where(x => x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
+            .Where(x => x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus && x.IsPublished)
             .Join(
                 _context.Exams,
                 attempt => attempt.ExamId,
@@ -2355,7 +2355,7 @@ feature/agnesa-access-code-security
                     ExamId = attempt.ExamId,
                     ExamTitle = exam.Title,
                     SubmittedAt = attempt.SubmittedAt,
-                    Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
+                    Status = "Published",
                     IsPublished = attempt.IsPublished,
                     FinalScore = attempt.FinalScore,
                     AutoScore = attempt.AutoScore,
@@ -2373,7 +2373,7 @@ feature/agnesa-access-code-security
             .Select(item =>
             {
                 var examMaxPoints = examPointLookup.GetValueOrDefault(item.ExamId, 0);
-                var scorePercentage = item.IsPublished ? CalculateScorePercentage(item.FinalScore, examMaxPoints) : (double?)null;
+                var scorePercentage = CalculateScorePercentage(item.FinalScore, examMaxPoints);
                 return new StudentExamResultDto
                 {
                     AttemptId = item.AttemptId,
@@ -2382,13 +2382,13 @@ feature/agnesa-access-code-security
                     SubmittedAt = item.SubmittedAt,
                     Status = item.Status,
                     IsPublished = item.IsPublished,
-                    FinalScore = item.IsPublished ? item.FinalScore : null,
-                    AutoScore = item.IsPublished ? item.AutoScore : null,
-                    ExamMaxPoints = item.IsPublished ? examMaxPoints : null,
+                    FinalScore = item.FinalScore,
+                    AutoScore = item.AutoScore,
+                    ExamMaxPoints = examMaxPoints,
                     ScorePercentage = scorePercentage,
-                    FinalGrade = scorePercentage.HasValue ? CalculateFinalGrade(scorePercentage.Value) : null,
-                    IsPassed = scorePercentage.HasValue ? IsPassingGrade(scorePercentage.Value) : null,
-                    GradingNotes = item.IsPublished ? item.GradingNotes : null,
+                    FinalGrade = CalculateFinalGrade(scorePercentage),
+                    IsPassed = IsPassingGrade(scorePercentage),
+                    GradingNotes = item.GradingNotes,
                     PublishedAt = item.PublishedAt
                 };
             })
@@ -2398,8 +2398,8 @@ feature/agnesa-access-code-security
         {
             studentId = userId.Value,
             totalResults = results.Count,
-            publishedResults = results.Count(x => x.IsPublished),
-            pendingResults = results.Count(x => !x.IsPublished)
+            publishedResults = results.Count,
+            pendingResults = 0
         }, "Results");
 
         return Ok(results);

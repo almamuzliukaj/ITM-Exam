@@ -10,10 +10,24 @@ export default function StudentResultsPage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [activeResultView, setActiveResultView] = useState("published");
   const [resultPage, setResultPage] = useState(1);
   const [resultPageSize, setResultPageSize] = useState(6);
+
+ feature/alma-published-result-e2e
+  async function loadResults({ silent = false } = {}) {
+    try {
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+      setError("");
+      const data = await getMyExamResults();
+      setResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(readApiMessage(err) || "Failed to load your published exam results.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
 
   useEffect(() => {
     if (!user || user.role !== "Student") return;
@@ -31,16 +45,23 @@ export default function StudentResultsPage() {
       } finally {
         if (active) setLoading(false);
       }
+      main
     }
+  }
 
+  useEffect(() => {
+    if (!user || user.role !== "Student") return;
     loadResults();
+ feature/alma-published-result-e2e
+  }, [user]);
+
     return () => {
       active = false;
     };
   }, [user, t]);
+ main
 
-  const published = useMemo(() => results.filter((result) => result.isPublished), [results]);
-  const pending = useMemo(() => results.filter((result) => !result.isPublished), [results]);
+  const published = useMemo(() => results.filter((result) => result.isPublished !== false), [results]);
   const averageScore = useMemo(() => {
     if (published.length === 0) return null;
     const total = published.reduce((sum, result) => sum + Number(result.finalScore || 0), 0);
@@ -50,7 +71,7 @@ export default function StudentResultsPage() {
     () => [...published].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))[0] || null,
     [published],
   );
-  const activeResults = activeResultView === "published" ? published : pending;
+  const activeResults = published;
   const resultPageCount = Math.max(1, Math.ceil(activeResults.length / resultPageSize));
   const visibleResults = useMemo(() => {
     const startIndex = (resultPage - 1) * resultPageSize;
@@ -61,7 +82,7 @@ export default function StudentResultsPage() {
 
   useEffect(() => {
     setResultPage(1);
-  }, [activeResultView, resultPageSize]);
+  }, [resultPageSize]);
 
   useEffect(() => {
     setResultPage((current) => Math.min(current, resultPageCount));
@@ -73,17 +94,35 @@ export default function StudentResultsPage() {
   return (
     <AppShell
       user={user}
+feature/alma-published-result-e2e
+      badge="Result experience"
+      title="My exam results"
+      subtitle="Only professor-published scores appear here after staff review."
+      actions={
+        <>
+          <button className="btn" type="button" onClick={() => loadResults({ silent: true })} disabled={loading || refreshing}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+          <Link className="btn" to="/exams">Available exams</Link>
+        </>
+      }
+
       badge={t("studentResults.badge")}
       title={t("studentResults.title")}
       subtitle={t("studentResults.subtitle")}
       actions={<Link className="btn" to="/exams">{t("studentResults.availableExams")}</Link>}
+main
     >
       <div className="stackXl">
         {error ? <div className="alert">{error}</div> : null}
 
         <section className="summaryStrip">
           <article className="summaryCard">
+ feature/alma-published-result-e2e
+            <span className="summaryLabel">Visible results</span>
+
             <span className="summaryLabel">{t("studentResults.submitted")}</span>
+ main
             <strong>{results.length}</strong>
           </article>
           <article className="summaryCard">
@@ -91,8 +130,13 @@ export default function StudentResultsPage() {
             <strong>{published.length}</strong>
           </article>
           <article className="summaryCard">
+ feature/alma-published-result-e2e
+            <span className="summaryLabel">Hidden pending</span>
+            <strong>Protected</strong>
+
             <span className="summaryLabel">{t("studentResults.pending")}</span>
             <strong>{pending.length}</strong>
+ main
           </article>
           <article className="summaryCard">
             <span className="summaryLabel">{t("studentResults.average")}</span>
@@ -102,8 +146,13 @@ export default function StudentResultsPage() {
 
         <section className="resultPolicyStrip">
           <div>
+ feature/alma-published-result-e2e
+            <strong>Result visibility rule</strong>
+            <span>Submitted attempts stay hidden until staff save grading and publish the final result.</span>
+
             <strong>{t("studentResults.visibilityTitle")}</strong>
             <span>{t("studentResults.visibilityText")}</span>
+ main
           </div>
           <div>
             <strong>{latestPublished ? formatDateTime(latestPublished.publishedAt) : t("studentResults.noPublication")}</strong>
@@ -114,12 +163,29 @@ export default function StudentResultsPage() {
         <section className="surfaceCard">
             <div className="sectionHeader">
               <div>
+ feature/alma-published-result-e2e
+                <h3>Published results</h3>
+                <span className="sectionMeta">Showing {resultStart}-{resultEnd} of {activeResults.length} result{activeResults.length === 1 ? "" : "s"}.</span>
+
                 <h3>{activeResultView === "published" ? t("studentResults.publishedResults") : t("studentResults.pendingReview")}</h3>
                 <span className="sectionMeta">{t("studentResults.showing", { start: resultStart, end: resultEnd, count: activeResults.length, suffix: activeResults.length === 1 ? "" : "s" })}</span>
+ main
               </div>
             </div>
             <div className="sectionBody stackLg">
               <div className="adminToolbar">
+ feature/alma-published-result-e2e
+                <div className="resultLifecycleHint">
+                  <strong>Lifecycle check</strong>
+                  <span>Save grading {"->"} publish result {"->"} student refreshes this page.</span>
+                </div>
+                <div className="adminToolbarStatus">
+                  <span className="statusPill statusLive">{published.length} published</span>
+                  <select className="input inputCompact" value={resultPageSize} onChange={(e) => setResultPageSize(Number(e.target.value))} aria-label="Results per page">
+                    <option value={6}>6 rows</option>
+                    <option value={12}>12 rows</option>
+                    <option value={24}>24 rows</option>
+
                 <div className="segmentedControl" aria-label={t("studentResults.resultView")}>
                   <button className={activeResultView === "published" ? "active" : ""} type="button" onClick={() => setActiveResultView("published")}>
                     {t("studentResults.published")}
@@ -135,22 +201,33 @@ export default function StudentResultsPage() {
                     <option value={6}>{t("studentResults.rows", { count: 6 })}</option>
                     <option value={12}>{t("studentResults.rows", { count: 12 })}</option>
                     <option value={24}>{t("studentResults.rows", { count: 24 })}</option>
+ main
                   </select>
                 </div>
               </div>
               {loading ? (
+ feature/alma-published-result-e2e
+                <div className="pageStateCard">Loading published results...</div>
+              ) : activeResults.length === 0 ? (
+                <div className="emptyState">
+                  <p>No published results yet.</p>
+                  <p>After the professor saves grading and publishes the result, refresh this page to see your score.</p>
+
                 <div className="pageStateCard">{t("studentResults.loadingRecords")}</div>
               ) : activeResults.length === 0 ? (
                 <div className="emptyState">
                   <p>{activeResultView === "published" ? t("studentResults.emptyPublishedTitle") : t("studentResults.emptyPendingTitle")}</p>
                   <p>{activeResultView === "published" ? t("studentResults.emptyPublishedText") : t("studentResults.emptyPendingText")}</p>
+main
                 </div>
-              ) : activeResultView === "published" ? (
+              ) : (
                 <div className="resultCardStack">
                   {visibleResults.map((result) => (
                     <ResultCard key={result.attemptId} result={result} t={t} />
                   ))}
                 </div>
+ feature/alma-published-result-e2e
+
               ) : (
                 <div className="studentItemList">
                   {visibleResults.map((result) => (
@@ -163,6 +240,7 @@ export default function StudentResultsPage() {
                     </div>
                   ))}
                 </div>
+ main
               )}
               <div className="paginationBar">
                 <span>{t("studentResults.showing", { start: resultStart, end: resultEnd, count: activeResults.length, suffix: activeResults.length === 1 ? "" : "s" })}</span>
@@ -230,11 +308,14 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+feature/alma-published-result-e2e
+
 function formatStatus(status, t) {
   if (status === "ReadyToPublish") return t("studentResults.ready");
   return status || t("studentResults.pending");
 }
 
+ main
 function formatPercentage(value) {
   if (value == null) return "-";
   return `${Number(value).toFixed(2)}%`;

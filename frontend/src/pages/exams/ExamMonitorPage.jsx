@@ -2,7 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getExam, getExamIntegritySummary } from "../../lib/examsApi";
+import { allowExamStudentAccess, getExam, getExamLiveMonitor, rejectExamStudentAccess, revokeExamStudentAccess } from "../../lib/examsApi";
 
 const REFRESH_MS = 5000;
 
@@ -13,6 +13,7 @@ export default function ExamMonitorPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionStudentId, setActionStudentId] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
@@ -27,12 +28,12 @@ export default function ExamMonitorPage() {
       else setLoading(true);
       setError("");
 
-      const [examData, summaryData] = await Promise.all([
+      const [examData, monitorData] = await Promise.all([
         getExam(examId),
-        getExamIntegritySummary(examId),
+        getExamLiveMonitor(examId),
       ]);
 
-      const nextEvents = flattenEvents(summaryData?.attempts || []);
+      const nextEvents = flattenMonitorEvents(monitorData?.students || []);
       const nextNewIds = new Set();
       for (const event of nextEvents) {
         if (!seenEventIdsRef.current.has(event.eventId)) {
@@ -47,7 +48,7 @@ export default function ExamMonitorPage() {
       seenEventIdsRef.current = new Set(nextEvents.map((event) => event.eventId));
       setNewEventIds(nextNewIds);
       setExam(examData);
-      setSummary(summaryData);
+      setSummary(monitorData);
       setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(readApiMessage(err) || "Failed to load live monitor.");
@@ -67,12 +68,47 @@ export default function ExamMonitorPage() {
     return () => window.clearInterval(timer);
   }, [autoRefresh, loadMonitor]);
 
-  const attempts = useMemo(() => Array.isArray(summary?.attempts) ? summary.attempts : [], [summary]);
-  const activeAttempts = useMemo(() => attempts.filter((attempt) => attempt.attemptStatus === "InProgress"), [attempts]);
-  const submittedAttempts = useMemo(() => attempts.filter((attempt) => attempt.attemptStatus === "Submitted"), [attempts]);
-  const flaggedAttempts = useMemo(() => attempts.filter((attempt) => Number(attempt.attemptViolationCount || 0) > 0), [attempts]);
-  const autoSubmittedAttempts = useMemo(() => attempts.filter((attempt) => Boolean(attempt.autoActionTriggeredAt)), [attempts]);
-  const latestEvents = useMemo(() => flattenEvents(attempts).slice(0, 10), [attempts]);
+  const students = useMemo(() => Array.isArray(summary?.students) ? summary.students : [], [summary]);
+  const activeStudents = useMemo(() => students.filter((student) => student.attemptStatus === "InProgress"), [students]);
+  const submittedStudents = useMemo(() => students.filter((student) => student.attemptStatus === "Submitted"), [students]);
+  const waitingStudents = useMemo(() => students.filter((student) => ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus)), [students]);
+  const flaggedStudents = useMemo(() => students.filter((student) => Number(student.violationCount || 0) > 0), [students]);
+  const latestEvents = useMemo(() => flattenMonitorEvents(students).slice(0, 10), [students]);
+
+  async function performStudentAction(student, action) {
+    if (!examId || !student?.studentId) return;
+    const reason = window.prompt(
+      action === "approve"
+        ? "Approval note"
+        : action === "reject"
+          ? "Rejection reason"
+          : "Revocation reason",
+      action === "approve"
+        ? "Physical identity verified by staff."
+        : action === "reject"
+          ? "Physical identity was not approved."
+          : "Admission/session revoked by staff.",
+    );
+
+    if (reason === null) return;
+
+    try {
+      setActionStudentId(student.studentId);
+      setError("");
+      if (action === "approve") {
+        await allowExamStudentAccess(examId, student.studentId, reason);
+      } else if (action === "reject") {
+        await rejectExamStudentAccess(examId, student.studentId, reason);
+      } else {
+        await revokeExamStudentAccess(examId, student.studentId, reason);
+      }
+      await loadMonitor(true);
+    } catch (err) {
+      setError(readApiMessage(err) || "Student admission action failed.");
+    } finally {
+      setActionStudentId("");
+    }
+  }
 
   if (userLoading) return <div className="pageState">Loading monitor...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
@@ -120,27 +156,27 @@ export default function ExamMonitorPage() {
             </section>
 
             <section className="monitorMetricGrid">
-              <MonitorMetric label="Active attempts" value={activeAttempts.length} tone="live" />
-              <MonitorMetric label="Submitted" value={submittedAttempts.length} />
-              <MonitorMetric label="Students flagged" value={flaggedAttempts.length} tone={flaggedAttempts.length > 0 ? "warn" : "clear"} />
-              <MonitorMetric label="Total violations" value={summary?.totalViolations || 0} tone={Number(summary?.totalViolations || 0) > 0 ? "danger" : "clear"} />
-              <MonitorMetric label="Auto actions" value={autoSubmittedAttempts.length} tone={autoSubmittedAttempts.length > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Waiting approval" value={waitingStudents.length || summary?.summary?.waitingForPhysicalVerification || 0} tone={waitingStudents.length > 0 ? "warn" : "clear"} />
+              <MonitorMetric label="In progress" value={activeStudents.length || summary?.summary?.active || 0} tone="live" />
+              <MonitorMetric label="Submitted" value={submittedStudents.length || summary?.summary?.submitted || 0} />
+              <MonitorMetric label="Students flagged" value={flaggedStudents.length || summary?.summary?.withViolations || 0} tone={flaggedStudents.length > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Enrolled" value={summary?.summary?.totalEnrolled || students.length} />
             </section>
 
             <section className="monitorLayout">
               <div className="surfaceCard monitorRosterCard">
                 <div className="sectionHeader">
                   <div>
-                    <h3>Student activity</h3>
-                    <span className="sectionMeta">Current attempt state, violation count, and latest policy action.</span>
+                    <h3>Physical admission roster</h3>
+                    <span className="sectionMeta">Verify classroom identity, control access, and monitor live exam state.</span>
                   </div>
-                  <span className="statusPill statusDraft">{attempts.length} attempts</span>
+                  <span className="statusPill statusDraft">{students.length} students</span>
                 </div>
                 <div className="sectionBody">
-                  {attempts.length === 0 ? (
+                  {students.length === 0 ? (
                     <div className="emptyState">
-                      <strong>No active attempts yet</strong>
-                      <span>Students will appear here after they start the exam.</span>
+                      <strong>No enrolled students found</strong>
+                      <span>Eligible students will appear here after the exam is linked to an offering.</span>
                     </div>
                   ) : (
                     <div className="monitorTableWrap">
@@ -148,29 +184,54 @@ export default function ExamMonitorPage() {
                         <thead>
                           <tr>
                             <th>Student</th>
-                            <th>Status</th>
+                            <th>Admission</th>
+                            <th>Attempt</th>
                             <th>Violations</th>
-                            <th>Last event</th>
-                            <th>Policy</th>
-                            <th>Started</th>
+                            <th>Last activity</th>
+                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {attempts.map((attempt) => (
-                            <tr key={attempt.attemptId} className={Number(attempt.attemptViolationCount || 0) > 0 ? "monitorFlaggedRow" : ""}>
+                          {students.map((student) => (
+                            <tr key={student.studentId} className={Number(student.violationCount || 0) > 0 ? "monitorFlaggedRow" : ""}>
                               <td>
-                                <strong>{attempt.studentName || "Student"}</strong>
-                                <span>{attempt.studentEmail}</span>
+                                <div className="monitorStudentIdentity">
+                                  <div className="monitorStudentAvatar">
+                                    {student.photoUrl ? <img src={student.photoUrl} alt="" /> : <span>{student.initials || "ST"}</span>}
+                                  </div>
+                                  <div>
+                                    <strong>{student.fullName || "Student"}</strong>
+                                    <span>{student.email}</span>
+                                    <small>ID: {student.studentNumber || student.studentId}</small>
+                                  </div>
+                                </div>
                               </td>
-                              <td><AttemptStatusBadge attempt={attempt} /></td>
+                              <td><AccessStatusBadge status={student.accessStatus} /></td>
+                              <td><AttemptStatusBadge student={student} /></td>
                               <td>
-                                <span className={`monitorViolationCount ${Number(attempt.attemptViolationCount || 0) >= Number(summary?.autoActionThreshold || 3) ? "danger" : ""}`}>
-                                  {attempt.attemptViolationCount || 0}/{summary?.autoActionThreshold || 3}
+                                <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
+                                  {student.violationCount || 0}/3
                                 </span>
                               </td>
-                              <td>{attempt.lastViolationAt ? formatDateTime(attempt.lastViolationAt) : "No events"}</td>
-                              <td><PolicyBadge value={attempt.currentPolicyAction} /></td>
-                              <td>{formatDateTime(attempt.startedAt)}</td>
+                              <td>
+                                <div className="monitorActivityCell">
+                                  <strong>{formatDateTime(student.lastActivityAt || student.startedAt || student.verifiedAt)}</strong>
+                                  <span>{student.latestViolationType ? formatEventType(student.latestViolationType) : student.admissionReason || "No security event"}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="monitorActionGroup">
+                                  <button className="btn btnTiny btnPrimary" type="button" onClick={() => performStudentAction(student, "approve")} disabled={actionStudentId === student.studentId || student.accessStatus === "ManuallyApproved" || student.attemptStatus === "Submitted"}>
+                                    {student.accessStatus === "DeviceChangeRequested" ? "Approve device" : "Approve"}
+                                  </button>
+                                  <button className="btn btnTiny" type="button" onClick={() => performStudentAction(student, "reject")} disabled={actionStudentId === student.studentId || student.attemptStatus === "Submitted"}>
+                                    Reject
+                                  </button>
+                                  <button className="btn btnTiny btnDangerSoft" type="button" onClick={() => performStudentAction(student, "revoke")} disabled={actionStudentId === student.studentId || student.accessStatus === "Removed" || student.attemptStatus === "Submitted"}>
+                                    Revoke
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -225,33 +286,57 @@ function MonitorMetric({ label, value, tone = "neutral" }) {
   );
 }
 
-function AttemptStatusBadge({ attempt }) {
-  if (attempt.autoActionTriggeredAt) {
-    return <span className="statusPill statusWarn">Auto submitted</span>;
+function AccessStatusBadge({ status }) {
+  if (status === "ManuallyApproved" || status === "Started" || status === "Submitted") {
+    return <span className="statusPill statusLive">Approved</span>;
   }
 
-  if (attempt.attemptStatus === "Submitted") {
+  if (status === "WaitingForPhysicalVerification" || status === "ApprovalRequested") {
+    return <span className="statusPill statusWarn">Waiting physical check</span>;
+  }
+
+  if (status === "DeviceChangeRequested") {
+    return <span className="statusPill statusWarn">Device change</span>;
+  }
+
+  if (status === "Rejected") {
+    return <span className="statusPill statusDanger">Rejected</span>;
+  }
+
+  if (status === "Removed") {
+    return <span className="statusPill statusDanger">Revoked</span>;
+  }
+
+  return <span className="statusPill statusDraft">Not joined</span>;
+}
+
+function AttemptStatusBadge({ student }) {
+  if (student.attemptStatus === "Submitted") {
     return <span className="statusPill statusLive">Submitted</span>;
   }
 
-  return <span className="statusPill statusDraft">In progress</span>;
+  if (student.attemptStatus === "InProgress") {
+    return <span className="statusPill statusPublished">In progress</span>;
+  }
+
+  if (student.accessStatus === "Removed") {
+    return <span className="statusPill statusDanger">Closed</span>;
+  }
+
+  return <span className="statusPill statusDraft">Not started</span>;
 }
 
-function PolicyBadge({ value }) {
-  const normalized = value || "None";
-  const warn = normalized !== "None";
-  return <span className={`statusPill ${warn ? "statusWarn" : "statusLive"}`}>{formatPolicy(normalized)}</span>;
-}
-
-function flattenEvents(attempts) {
-  return attempts
-    .flatMap((attempt) => (Array.isArray(attempt.events) ? attempt.events : []).map((event) => ({
-      ...event,
-      studentName: attempt.studentName || attempt.studentEmail || "Student",
-      attemptId: attempt.attemptId,
-    })))
-    .filter((event) => event.eventId)
-    .sort((left, right) => Date.parse(right.occurredAt || right.recordedAt || "") - Date.parse(left.occurredAt || left.recordedAt || ""));
+function flattenMonitorEvents(students) {
+  return students
+    .filter((student) => student.latestViolationAt || student.accessStatus === "DeviceChangeRequested" || student.accessStatus === "Removed")
+    .map((student) => ({
+      eventId: `${student.studentId}-${student.latestViolationAt || student.lastActivityAt || student.accessStatus}`,
+      eventType: student.latestViolationType || student.accessStatus,
+      studentName: student.fullName || student.email || "Student",
+      occurredAt: student.latestViolationAt || student.lastActivityAt || student.verifiedAt,
+      attemptViolationCount: student.violationCount || 0,
+    }))
+    .sort((left, right) => Date.parse(right.occurredAt || "") - Date.parse(left.occurredAt || ""));
 }
 
 function formatDateTime(value) {
@@ -283,12 +368,6 @@ function formatEventType(value) {
     .replaceAll("_", " ")
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatPolicy(value) {
-  if (value === "AutoSubmit") return "Auto submit";
-  if (value === "FinalWarning") return "Final warning";
-  return value || "None";
 }
 
 function readApiMessage(err) {

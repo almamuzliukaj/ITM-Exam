@@ -115,6 +115,16 @@ export async function rejectExamStudentAccess(examId, studentId, reason = "Profe
   return response.data;
 }
 
+export async function revokeExamStudentAccess(examId, studentId, reason = "Professor revoked exam admission.") {
+  const response = await api.post(`/api/exams/${examId}/students/${studentId}/revoke-access`, { reason });
+  return response.data;
+}
+
+export async function requestExamDeviceChange(examId, reason = "Student requested device change approval.") {
+  const response = await api.post(`/api/exams/${examId}/request-device-change`, { reason });
+  return response.data;
+}
+
 export async function getExamIntegritySummary(examId) {
   const response = await api.get(`/api/exams/${examId}/integrity-summary`);
   return response.data;

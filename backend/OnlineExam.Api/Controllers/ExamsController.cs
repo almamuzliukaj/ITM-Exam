@@ -23,9 +23,11 @@ public class ExamsController : ControllerBase
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
     private const string StudentAccessStatusNotVerified = "NotVerified";
+    private const string StudentAccessStatusWaitingForPhysicalVerification = "WaitingForPhysicalVerification";
     private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
     private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusRemoved = "Removed";
+    private const string StudentAccessStatusDeviceChangeRequested = "DeviceChangeRequested";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
@@ -1061,8 +1063,9 @@ public class ExamsController : ControllerBase
             AccessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
-            RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = access?.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
             ApprovalReason = access?.ApprovalReason ?? string.Empty,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
         });
     }
@@ -1108,8 +1111,9 @@ public class ExamsController : ControllerBase
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = access.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = BuildAccessStatusMessage(hasAccess, access.AccessStatus, requiresCode)
         });
     }
@@ -1146,8 +1150,9 @@ public class ExamsController : ControllerBase
                 AccessStatus = access.AccessStatus,
                 VerifiedAt = access.VerifiedAt,
                 ApprovedAt = access.ApprovedAt,
-                RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+                RequestedAt = access.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
                 ApprovalReason = access.ApprovalReason,
+                StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
                 Message = "Access confirmed. You can continue to the rules screen."
             });
         }
@@ -1174,6 +1179,7 @@ public class ExamsController : ControllerBase
             ApprovedAt = access.ApprovedAt,
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = "Approval request sent. Wait for your professor before starting the exam."
         });
     }
@@ -1217,28 +1223,31 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "The entry code is not valid for this exam." });
 
         var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
-        access.AccessStatus = StudentAccessStatusCodeVerified;
+        access.AccessStatus = StudentAccessStatusWaitingForPhysicalVerification;
         access.VerifiedAt = now;
         access.LastActivityAt = now;
+        access.ApprovalReason = "Access code verified. Waiting for physical identity approval.";
 
         await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.CodeVerified", "Exam", exam.Id, new
+        await _auditLogService.LogAsync("ExamAccess.CodeVerifiedPhysicalApprovalRequired", "Exam", exam.Id, new
         {
             examId = exam.Id,
             studentId = userId.Value,
-            access.VerifiedAt
+            access.VerifiedAt,
+            status = access.AccessStatus
         }, "ExamDelivery");
 
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = true,
-            HasAccess = true,
+            HasAccess = false,
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
-            Message = "Access confirmed. You can start the exam."
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+            Message = "Access code verified. Please wait for the professor to approve your physical identity before the rules screen opens."
         });
     }
 
@@ -1326,11 +1335,11 @@ public class ExamsController : ControllerBase
         access.AccessStatus = StudentAccessStatusManuallyApproved;
         access.ApprovedByUserId = userId.Value;
         access.ApprovedAt = now;
-        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Professor approval";
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Physical identity approved by staff.";
         access.LastActivityAt = now;
 
         await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.ManualApproval", "Exam", exam.Id, new
+        await _auditLogService.LogAsync("ExamAccess.PhysicalIdentityApproved", "Exam", exam.Id, new
         {
             examId = exam.Id,
             studentId,
@@ -1346,7 +1355,7 @@ public class ExamsController : ControllerBase
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = null,
             ApprovalReason = access.ApprovalReason,
             Message = "Student access approved."
         });
@@ -1398,6 +1407,106 @@ public class ExamsController : ControllerBase
             RequestedAt = null,
             ApprovalReason = access.ApprovalReason,
             Message = "Student access request rejected."
+        });
+    }
+
+    [HttpPost("{examId:guid}/students/{studentId:guid}/revoke-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RevokeStudentExamAccess(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRemoved;
+        access.ApprovedAt = null;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Admission revoked by staff.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.AdmissionRevoked", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            revokedByUserId = userId.Value,
+            revokedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = "Student admission revoked."
+        });
+    }
+
+    [HttpPost("{examId:guid}/request-device-change")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RequestDeviceChange(Guid examId, [FromBody] DeviceChangeRequestDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        access.AccessStatus = StudentAccessStatusDeviceChangeRequested;
+        access.ApprovedAt = null;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            requestedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = access.LastActivityAt,
+            ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+            Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }
 
@@ -1460,6 +1569,9 @@ public class ExamsController : ControllerBase
                 StudentId = item.Student.Id,
                 FullName = item.Student.FullName,
                 Email = item.Student.Email,
+                StudentNumber = BuildStudentNumber(item.Student),
+                PhotoUrl = string.Empty,
+                Initials = BuildInitials(item.Student.FullName, item.Student.Email),
                 EnrollmentStatus = item.Enrollment.Status,
                 AccessStatus = ResolveLiveAccessStatus(access, attempt),
                 AttemptStatus = attempt?.Status ?? "NotStarted",
@@ -1468,6 +1580,9 @@ public class ExamsController : ControllerBase
                 StartedAt = attempt?.StartedAt,
                 SubmittedAt = attempt?.SubmittedAt,
                 LastActivityAt = lastActivityAt,
+                AdmissionReason = access?.ApprovalReason ?? string.Empty,
+                HasDeviceChangeRequest = access?.AccessStatus == StudentAccessStatusDeviceChangeRequested,
+                DeviceChangeRequestedAt = access?.AccessStatus == StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
                 DurationUsedMinutes = durationUsed,
                 ViolationCount = attempt?.IntegrityViolationCount ?? 0,
                 LatestViolationAt = latestEvent?.OccurredAt,
@@ -1484,7 +1599,8 @@ public class ExamsController : ControllerBase
             Summary = new ExamLiveMonitorSummaryDto
             {
                 TotalEnrolled = rows.Count,
-                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
+                WaitingForPhysicalVerification = rows.Count(x => x.AccessStatus is StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusApprovalRequested),
+                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
                 Active = rows.Count(x => x.AttemptStatus == ExamAttemptInProgressStatus),
                 Submitted = rows.Count(x => x.AttemptStatus == ExamAttemptSubmittedStatus),
                 NotJoined = rows.Count(x => x.AttemptStatus == "NotStarted"),
@@ -1539,6 +1655,18 @@ public class ExamsController : ControllerBase
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId);
 
+            if (access?.AccessStatus == StudentAccessStatusRemoved)
+                return "Your exam admission was revoked by staff.";
+
+            if (access?.AccessStatus == StudentAccessStatusRejected)
+                return "Your exam admission request was rejected by staff.";
+
+            if (access?.AccessStatus == StudentAccessStatusDeviceChangeRequested)
+                return "Device change approval is required before continuing this exam.";
+
+            if (access?.AccessStatus == StudentAccessStatusWaitingForPhysicalVerification)
+                return "Physical professor approval is required before starting this exam.";
+
             if (!IsStudentAccessGranted(access))
                 return "Enter the exam access code before starting this exam.";
         }
@@ -1570,9 +1698,52 @@ public class ExamsController : ControllerBase
         return access;
     }
 
+    private async Task<StudentIdentityDto?> BuildStudentIdentityDtoAsync(Guid studentId)
+    {
+        var student = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == studentId);
+
+        if (student == null)
+            return null;
+
+        return new StudentIdentityDto
+        {
+            StudentId = student.Id,
+            FullName = student.FullName,
+            Email = student.Email,
+            StudentNumber = BuildStudentNumber(student),
+            PhotoUrl = string.Empty,
+            Initials = BuildInitials(student.FullName, student.Email)
+        };
+    }
+
+    private static string BuildStudentNumber(User student)
+    {
+        var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
+            return localPart.Trim();
+
+        return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
+    }
+
+    private static string BuildInitials(string? fullName, string? email)
+    {
+        var parts = (fullName ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(part => char.ToUpperInvariant(part[0]))
+            .ToArray();
+
+        if (parts.Length > 0)
+            return new string(parts);
+
+        return string.IsNullOrWhiteSpace(email) ? "ST" : email[..1].ToUpperInvariant();
+    }
+
     private static bool IsStudentAccessGranted(ExamStudentAccess? access)
     {
-        return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
+        return access?.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
     }
 
     private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
@@ -1582,9 +1753,11 @@ public class ExamsController : ControllerBase
 
         return accessStatus switch
         {
+            StudentAccessStatusWaitingForPhysicalVerification => "Access code verified. Wait for physical identity approval from your professor before starting.",
             StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor before starting the exam.",
             StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or enter a valid code.",
             StudentAccessStatusRemoved => "You were removed from this live exam session by staff.",
+            StudentAccessStatusDeviceChangeRequested => "Device change request sent. Wait for staff approval before continuing.",
             _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
             _ => "Access is available."
         };

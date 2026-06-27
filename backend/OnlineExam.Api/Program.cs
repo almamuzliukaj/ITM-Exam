@@ -466,6 +466,12 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "PublishedByUserId" uuid NULL;
 
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "AttemptQuestionOrderJson" text NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "AttemptVersionSignature" text NULL;
+
             ALTER TABLE IF EXISTS "Questions"
             ADD COLUMN IF NOT EXISTS "Topic" text NULL;
 

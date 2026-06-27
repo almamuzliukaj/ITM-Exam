@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<ExamIntegrityEvent> ExamIntegrityEvents { get; set; }
     public DbSet<ExamAccessCode> ExamAccessCodes { get; set; }
     public DbSet<ExamStudentAccess> ExamStudentAccesses { get; set; }
+    public DbSet<ExamSessionBinding> ExamSessionBindings { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<Question> Questions { get; set; }
     public DbSet<Term> Terms { get; set; }
@@ -40,6 +41,7 @@ public class AppDbContext : DbContext
                 Email = "admin@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Admin",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = adminCreatedAt
             },
@@ -50,6 +52,7 @@ public class AppDbContext : DbContext
                 Email = "prof@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Professor",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = professorCreatedAt
             },
@@ -60,6 +63,7 @@ public class AppDbContext : DbContext
                 Email = "assistant@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Assistant",
+                StudentNumber = string.Empty,
                 IsActive = true,
                 CreatedAt = assistantCreatedAt
             },
@@ -70,10 +74,27 @@ public class AppDbContext : DbContext
                 Email = "student@onlineexam.com",
                 PasswordHash = "Password123!",
                 Role = "Student",
+                StudentNumber = "STU-DEMO-001",
                 IsActive = true,
                 CreatedAt = studentCreatedAt
             }
         );
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.StudentNumber)
+            .HasMaxLength(40)
+            .HasDefaultValue(string.Empty);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.OfficialPhotoFileName)
+            .HasMaxLength(180);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.OfficialPhotoContentType)
+            .HasMaxLength(80);
+
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.StudentNumber);
 
         modelBuilder.Entity<Question>()
             .HasOne(q => q.Exam)
@@ -130,6 +151,33 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ExamStudentAccess>()
             .HasIndex(x => new { x.ExamId, x.StudentId })
             .IsUnique();
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.Exam)
+            .WithMany()
+            .HasForeignKey(x => x.ExamId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.Attempt)
+            .WithMany()
+            .HasForeignKey(x => x.AttemptId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasOne(x => x.ExamStudentAccess)
+            .WithMany()
+            .HasForeignKey(x => x.ExamStudentAccessId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => x.AttemptId);
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => new { x.ExamId, x.StudentId, x.Status });
+
+        modelBuilder.Entity<ExamSessionBinding>()
+            .HasIndex(x => new { x.ExamId, x.StudentId, x.SessionReferenceHash });
 
         modelBuilder.Entity<Term>()
             .HasIndex(x => x.Code)

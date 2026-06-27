@@ -34,13 +34,17 @@ export async function getExam(examId) {
   return response.data;
 }
 
-export async function listQuestions(examId) {
-  const response = await api.get(`/api/exams/${examId}/questions`);
+export async function listQuestions(examId, clientSessionId = "") {
+  const response = await api.get(`/api/exams/${examId}/questions`, {
+    params: clientSessionId ? { clientSessionId } : {},
+  });
   return response.data;
 }
 
-export async function getCurrentExamAttempt(examId) {
-  const response = await api.get(`/api/exams/${examId}/attempt`);
+export async function getCurrentExamAttempt(examId, clientSessionId = "") {
+  const response = await api.get(`/api/exams/${examId}/attempt`, {
+    params: clientSessionId ? { clientSessionId } : {},
+  });
   return response.data;
 }
 
@@ -48,6 +52,7 @@ export async function saveExamAttemptDraft(examId, payload) {
   const response = await api.put(`/api/exams/${examId}/attempt/draft`, {
     examId,
     answers: payload.answers || [],
+    clientSessionId: payload.clientSessionId || "",
   });
   return response.data;
 }
@@ -56,6 +61,7 @@ export async function submitExamAttempt(examId, payload) {
   const response = await api.post(`/api/exams/${examId}/attempt`, {
     examId,
     answers: payload.answers || [],
+    clientSessionId: payload.clientSessionId || "",
   });
   return response.data;
 }
@@ -70,13 +76,17 @@ export async function recordExamIntegrityEvent(examId, payload) {
   return response.data;
 }
 
-export async function getCurrentExamIntegritySummary(examId) {
-  const response = await api.get(`/api/exams/${examId}/attempt/integrity-summary`);
+export async function getCurrentExamIntegritySummary(examId, clientSessionId = "") {
+  const response = await api.get(`/api/exams/${examId}/attempt/integrity-summary`, {
+    params: clientSessionId ? { clientSessionId } : {},
+  });
   return response.data;
 }
 
-export async function sendExamHeartbeat(examId) {
-  const response = await api.post(`/api/exams/${examId}/attempt/heartbeat`);
+export async function sendExamHeartbeat(examId, clientSessionId = "") {
+  const response = await api.post(`/api/exams/${examId}/attempt/heartbeat`, {
+    clientSessionId,
+  });
   return response.data;
 }
 
@@ -122,6 +132,14 @@ export async function revokeExamStudentAccess(examId, studentId, reason = "Profe
 
 export async function requestExamDeviceChange(examId, reason = "Student requested device change approval.") {
   const response = await api.post(`/api/exams/${examId}/request-device-change`, { reason });
+ feature/alma-student-results-randomization
+
+  return response.data;
+}
+
+export async function removeExamStudentAccess(examId, studentId, reason = "Removed by professor during live monitoring.") {
+  const response = await api.post(`/api/exams/${examId}/students/${studentId}/remove-access`, { reason });
+ main
   return response.data;
 }
 

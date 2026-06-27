@@ -28,15 +28,20 @@ public class ExamsController : ControllerBase
     private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusRemoved = "Removed";
     private const string StudentAccessStatusDeviceChangeRequested = "DeviceChangeRequested";
-
     private const string StudentAccessStatusTemporarilyOffline = "TemporarilyOffline";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
     private const string StudentAccessStatusSubmitted = "Submitted";
     private const string ExamAttemptRemovedStatus = "Removed";
+    private const string ExamSessionStatusActive = "Active";
+    private const string ExamSessionStatusRevoked = "Revoked";
+    private const string ExamSessionStatusReplaced = "Replaced";
+    private const string ExamSessionStatusDisconnected = "Disconnected";
+    private const string ExamSessionStatusSubmitted = "Submitted";
     private const int ExamAccessCodeLifetimeMinutes = 3;
     private const int LivePresenceOfflineSeconds = 30;
+    private const int ExamSessionOfflineGraceSeconds = 45;
     private const int IntegrityFinalWarningThreshold = 2;
     private const int IntegrityAutoActionThreshold = 3;
     private const string IntegrityPolicyActionNone = "None";
@@ -515,7 +520,12 @@ public class ExamsController : ControllerBase
             EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
+        await MarkExamSessionBindingsSubmittedAsync(examId, userId.Value, now);
         try
         {
             await _context.SaveChangesAsync();
@@ -539,7 +549,8 @@ public class ExamsController : ControllerBase
             attempt.ExamId,
             attempt.StudentId,
             attempt.AutoScore,
-            attempt.RequiresManualGrading
+            attempt.RequiresManualGrading,
+            dto.ClientSessionId
         }, "ExamDelivery");
 
         return Ok(new ExamAttemptResultDto
@@ -557,7 +568,7 @@ public class ExamsController : ControllerBase
 
     [HttpGet("{examId:guid}/attempt")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<ExamAttemptDraftDto?>> GetCurrentAttempt(Guid examId)
+    public async Task<ActionResult<ExamAttemptDraftDto?>> GetCurrentAttempt(Guid examId, [FromQuery] string? clientSessionId = null)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -616,9 +627,13 @@ public class ExamsController : ControllerBase
             catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
             {
                 attempt = await _context.ExamAttempts
-                    .AsNoTracking()
                     .FirstAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
+                var duplicateBindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: true);
+                if (duplicateBindingError != null)
+                    return BadRequest(new { message = duplicateBindingError.Message, code = duplicateBindingError.Code });
+
+                await _context.SaveChangesAsync();
                 return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
             }
 
@@ -626,9 +641,14 @@ public class ExamsController : ControllerBase
             {
                 attempt.ExamId,
                 attempt.StudentId,
-                attempt.StartedAt
+                attempt.StartedAt,
+                clientSessionId
             }, "ExamDelivery");
         }
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         await MarkStudentAccessStartedAsync(examId, userId.Value, DateTime.UtcNow);
         EnsureAttemptQuestionVersion(attempt, exam.Questions);
@@ -712,6 +732,10 @@ public class ExamsController : ControllerBase
             EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         try
         {
@@ -736,7 +760,8 @@ public class ExamsController : ControllerBase
             attempt.ExamId,
             attempt.StudentId,
             attempt.Status,
-            attempt.LastSavedAt
+            attempt.LastSavedAt,
+            dto.ClientSessionId
         }, "ExamDelivery");
 
         return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
@@ -832,6 +857,10 @@ public class ExamsController : ControllerBase
             EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         await _context.SaveChangesAsync();
 
@@ -924,6 +953,10 @@ public class ExamsController : ControllerBase
         if (attempt.Status == ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "Cannot record integrity events for a submitted attempt." });
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true, cancellationToken);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
         var attemptViolationCount = await _context.ExamIntegrityEvents
             .Where(x => x.ExamAttemptId == attempt.Id)
@@ -995,7 +1028,10 @@ public class ExamsController : ControllerBase
 
     [HttpGet("{examId:guid}/attempt/integrity-summary")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(Guid examId, CancellationToken cancellationToken)
+    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(
+        Guid examId,
+        [FromQuery] string? clientSessionId = null,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1020,6 +1056,10 @@ public class ExamsController : ControllerBase
 
         if (attempt == null)
             return NotFound(new { message = "Attempt not found." });
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: false, cancellationToken);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         var events = await _context.ExamIntegrityEvents
             .AsNoTracking()
@@ -1103,7 +1143,7 @@ public class ExamsController : ControllerBase
 
     [HttpPost("{examId:guid}/attempt/heartbeat")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<ExamAccessStatusDto>> RecordStudentExamHeartbeat(Guid examId)
+    public async Task<ActionResult<ExamAccessStatusDto>> RecordStudentExamHeartbeat(Guid examId, [FromBody] ExamSessionHeartbeatDto? dto = null)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1129,6 +1169,15 @@ public class ExamsController : ControllerBase
 
         if (hasAccess)
         {
+            var attempt = await _context.ExamAttempts
+                .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+            if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+            {
+                var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto?.ClientSessionId, allowCreate: false);
+                if (bindingError != null)
+                    return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+            }
+
             if (requiresCode && access.AccessStatus != StudentAccessStatusSubmitted)
                 access.AccessStatus = StudentAccessStatusStarted;
             access.LastActivityAt = now;
@@ -1518,6 +1567,7 @@ public class ExamsController : ControllerBase
         access.ApprovedByUserId = userId.Value;
         access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Admission revoked by staff.";
         access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, studentId, userId.Value, access.ApprovalReason, now);
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("ExamAccess.AdmissionRevoked", "Exam", exam.Id, new
@@ -1544,9 +1594,102 @@ public class ExamsController : ControllerBase
 
     [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
     [Authorize(Roles = "Professor,Assistant")]
+ feature/alma-student-results-randomization
     public Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
     {
         return RevokeStudentExamAccess(examId, studentId, dto);
+    }
+
+    [HttpPost("{examId:guid}/request-device-change")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RequestDeviceChange(Guid examId, [FromBody] DeviceChangeRequestDto? dto = null
+    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+ main
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+ feature/alma-student-results-randomization
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        access.AccessStatus = StudentAccessStatusDeviceChangeRequested;
+        access.ApprovedAt = null;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            requestedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            
+        var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRemoved;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovedAt = null;
+        access.ApprovalReason = reason;
+        access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, studentId, userId.Value, reason, now);
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
+        if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+        {
+            attempt.Status = ExamAttemptRemovedStatus;
+            attempt.LastSavedAt = now;
+        }
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.StudentRemoved", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            removedByUserId = userId.Value,
+            removedAt = now,
+            reason,
+            attemptId = attempt?.Id,
+            preservedAnswers = attempt?.AnswersJson?.Length > 0
+        }, "ExamDelivery");
+
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = requiresCode, main
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+ feature/alma-student-results-randomization
+            RequestedAt = access.LastActivityAt,
+            ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+            ServerTimeUtc = now,
+
+            ServerTimeUtc = now,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
+        });
     }
 
     [HttpPost("{examId:guid}/request-device-change")]
@@ -1576,6 +1719,7 @@ public class ExamsController : ControllerBase
         access.ApprovedAt = null;
         access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
         access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, userId.Value, userId.Value, access.ApprovalReason, now);
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
@@ -1596,7 +1740,7 @@ public class ExamsController : ControllerBase
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
-            ServerTimeUtc = now,
+ main
             Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }
@@ -1661,7 +1805,7 @@ public class ExamsController : ControllerBase
                 FullName = item.Student.FullName,
                 Email = item.Student.Email,
                 StudentNumber = BuildStudentNumber(item.Student),
-                PhotoUrl = string.Empty,
+                PhotoUrl = BuildStudentPhotoUrl(item.Student, exam.Id),
                 Initials = BuildInitials(item.Student.FullName, item.Student.Email),
                 EnrollmentStatus = item.Enrollment.Status,
                 AccessStatus = ResolveLiveAccessStatus(access, attempt, lastActivityAt, now),
@@ -1703,6 +1847,176 @@ public class ExamsController : ControllerBase
     }
 
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
+
+    private sealed record ExamSessionGuardError(string Code, string Message);
+
+    private async Task<ExamSessionGuardError?> EnsureExamSessionBindingAsync(
+        Exam exam,
+        ExamAttempt attempt,
+        Guid studentId,
+        string? clientSessionId,
+        bool allowCreate,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedClientSessionId = NormalizeOptionalValue(clientSessionId);
+        if (string.IsNullOrWhiteSpace(normalizedClientSessionId))
+        {
+            await _auditLogService.LogAsync("ExamSession.MissingClientSession", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "Secure exam session reference is required.");
+        }
+
+        if (attempt.StudentId != studentId || attempt.ExamId != exam.Id)
+        {
+            await _auditLogService.LogAsync("ExamSession.AttemptOwnershipRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                attempt.StudentId,
+                attempt.ExamId
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("ATTEMPT_NOT_OWNED", "This attempt does not belong to the authenticated student.");
+        }
+
+        if (attempt.Status == ExamAttemptSubmittedStatus)
+            return new ExamSessionGuardError("EXAM_TIME_EXPIRED", "This attempt has already been submitted.");
+
+        var access = await _context.ExamStudentAccesses
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId, cancellationToken);
+
+        if (!IsStudentAccessGranted(access))
+        {
+            await _auditLogService.LogAsync("ExamSession.UnapprovedAccessRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                accessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "Physical approval is required before the exam session can continue.");
+        }
+
+        var now = DateTime.UtcNow;
+        var sessionHash = HashSessionReference(normalizedClientSessionId, exam.Id, studentId);
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == exam.Id && x.StudentId == studentId)
+            .OrderByDescending(x => x.BoundAt)
+            .ToListAsync(cancellationToken);
+
+        foreach (var stale in bindings.Where(x =>
+            x.Status == ExamSessionStatusActive &&
+            x.LastHeartbeatAt < now.AddSeconds(-ExamSessionOfflineGraceSeconds)))
+        {
+            stale.Status = ExamSessionStatusDisconnected;
+            stale.DisconnectedAt ??= stale.LastHeartbeatAt;
+        }
+
+        var sameSession = bindings.FirstOrDefault(x =>
+            x.SessionReferenceHash == sessionHash &&
+            x.Status is ExamSessionStatusActive or ExamSessionStatusDisconnected);
+        if (sameSession != null)
+        {
+            if (sameSession.AttemptId != attempt.Id)
+                return new ExamSessionGuardError("ATTEMPT_NOT_OWNED", "This secure browser session is bound to another attempt.");
+
+            sameSession.Status = ExamSessionStatusActive;
+            sameSession.LastHeartbeatAt = now;
+            sameSession.DisconnectedAt = null;
+            sameSession.UserAgent = Request.Headers.UserAgent.ToString();
+            return null;
+        }
+
+        var activeBinding = bindings.FirstOrDefault(x => x.Status == ExamSessionStatusActive);
+        if (activeBinding != null)
+        {
+            await _auditLogService.LogAsync("ExamSession.ConcurrentLoginRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                activeBindingId = activeBinding.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_ACTIVE_ON_ANOTHER_SESSION", "This exam is already active in another approved browser session.");
+        }
+
+        if (!allowCreate)
+        {
+            await _auditLogService.LogAsync("ExamSession.UnboundRequestRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "This browser session is not approved for the active attempt.");
+        }
+
+        var newBinding = new ExamSessionBinding
+        {
+            Id = Guid.NewGuid(),
+            ExamId = exam.Id,
+            StudentId = studentId,
+            AttemptId = attempt.Id,
+            ExamStudentAccessId = access?.Id,
+            SessionReferenceHash = sessionHash,
+            Status = ExamSessionStatusActive,
+            BoundAt = now,
+            LastHeartbeatAt = now,
+            UserAgent = Request.Headers.UserAgent.ToString()
+        };
+        _context.ExamSessionBindings.Add(newBinding);
+
+        await _auditLogService.LogAsync("ExamSession.Bound", "ExamAttempt", attempt.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            attemptId = attempt.Id,
+            bindingId = newBinding.Id,
+            accessStatus = access?.AccessStatus
+        }, "ExamSecurity", cancellationToken);
+
+        return null;
+    }
+
+    private async Task RevokeActiveExamSessionBindingsAsync(Guid examId, Guid studentId, Guid? actorUserId, string reason, DateTime now, CancellationToken cancellationToken = default)
+    {
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == examId && x.StudentId == studentId && x.Status == ExamSessionStatusActive)
+            .ToListAsync(cancellationToken);
+
+        foreach (var binding in bindings)
+        {
+            binding.Status = ExamSessionStatusRevoked;
+            binding.RevokedAt = now;
+            binding.RevokedByUserId = actorUserId;
+            binding.RevocationReason = reason;
+        }
+    }
+
+    private async Task MarkExamSessionBindingsSubmittedAsync(Guid examId, Guid studentId, DateTime now, CancellationToken cancellationToken = default)
+    {
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == examId && x.StudentId == studentId && x.Status == ExamSessionStatusActive)
+            .ToListAsync(cancellationToken);
+
+        foreach (var binding in bindings)
+        {
+            binding.Status = ExamSessionStatusSubmitted;
+            binding.LastHeartbeatAt = now;
+        }
+    }
+
+    private static string HashSessionReference(string clientSessionId, Guid examId, Guid studentId)
+    {
+        var normalized = clientSessionId.Trim();
+        var input = $"{examId:N}:{studentId:N}:{normalized}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes);
+    }
 
     private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission, bool enforceEntryCode = true, bool enforceRemoval = true)
     {
@@ -1837,18 +2151,29 @@ public class ExamsController : ControllerBase
             FullName = student.FullName,
             Email = student.Email,
             StudentNumber = BuildStudentNumber(student),
-            PhotoUrl = string.Empty,
+            PhotoUrl = BuildStudentPhotoUrl(student),
             Initials = BuildInitials(student.FullName, student.Email)
         };
     }
 
     private static string BuildStudentNumber(User student)
     {
+        if (!string.IsNullOrWhiteSpace(student.StudentNumber))
+            return student.StudentNumber.Trim();
+
         var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
             return localPart.Trim();
 
         return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
+    }
+
+    private string BuildStudentPhotoUrl(User student, Guid? examId = null)
+    {
+        if (string.IsNullOrWhiteSpace(student.OfficialPhotoFileName))
+            return string.Empty;
+
+        return Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = student.Id, examId }) ?? string.Empty;
     }
 
     private static string BuildInitials(string? fullName, string? email)

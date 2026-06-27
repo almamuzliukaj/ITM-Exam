@@ -9,6 +9,7 @@ node_modules/
 dist/
 temp_build*/
 temp_build_verify*/
+backend/OnlineExam.Api/App_Data/
 .env
 .env.*
 !.env.example

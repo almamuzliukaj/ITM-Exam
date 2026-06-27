@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -53,6 +55,10 @@ public class QuestionsController : ControllerBase
 
                 return BadRequest(new { message = accessError });
             }
+
+            var sessionError = await GetSecureExamSessionErrorAsync(userId.Value, question.Exam, Request.Query["clientSessionId"].FirstOrDefault());
+            if (sessionError != null)
+                return BadRequest(new { message = sessionError.Value.Message, code = sessionError.Value.Code });
         }
         else if (!await CanAccessExamAsync(question.Exam))
         {
@@ -200,7 +206,7 @@ public class QuestionsController : ControllerBase
     }
 
     [HttpGet("/api/exams/{examId:guid}/questions")]
-    public async Task<IActionResult> GetByExam(Guid examId)
+    public async Task<IActionResult> GetByExam(Guid examId, [FromQuery] string? clientSessionId = null)
     {
         var exam = await _context.Exams
             .Include(x => x.Questions)
@@ -222,6 +228,10 @@ public class QuestionsController : ControllerBase
 
                 return BadRequest(new { message = accessError });
             }
+
+            var sessionError = await GetSecureExamSessionErrorAsync(userId.Value, exam, clientSessionId);
+            if (sessionError != null)
+                return BadRequest(new { message = sessionError.Value.Message, code = sessionError.Value.Code });
         }
         else if (!await CanAccessExamAsync(exam))
         {
@@ -551,6 +561,52 @@ public class QuestionsController : ControllerBase
         }
 
         return null;
+    }
+
+    private async Task<(string Code, string Message)?> GetSecureExamSessionErrorAsync(Guid userId, Exam exam, string? clientSessionId)
+    {
+        var normalizedClientSessionId = NormalizeOptionalValue(clientSessionId);
+        if (string.IsNullOrWhiteSpace(normalizedClientSessionId))
+            return ("EXAM_SESSION_NOT_APPROVED", "Secure exam session reference is required before questions can be loaded.");
+
+        var attempt = await _context.ExamAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId);
+        if (attempt == null)
+            return ("EXAM_SESSION_NOT_APPROVED", "Start the approved exam session before loading questions.");
+
+        if (attempt.Status == ExamAttemptSubmittedStatus)
+            return ("EXAM_TIME_EXPIRED", "This attempt has already been submitted.");
+
+        var sessionHash = HashSessionReference(normalizedClientSessionId, exam.Id, userId);
+        var binding = await _context.ExamSessionBindings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.ExamId == exam.Id &&
+                x.StudentId == userId &&
+                x.AttemptId == attempt.Id &&
+                x.SessionReferenceHash == sessionHash &&
+                (x.Status == "Active" || x.Status == "Disconnected"));
+
+        if (binding == null)
+        {
+            await _auditLogService.LogAsync("ExamSession.QuestionReadRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId = userId,
+                attemptId = attempt.Id
+            }, "ExamSecurity");
+            return ("EXAM_ACTIVE_ON_ANOTHER_SESSION", "Questions are available only in the approved browser session.");
+        }
+
+        return null;
+    }
+
+    private static string HashSessionReference(string clientSessionId, Guid examId, Guid studentId)
+    {
+        var input = $"{examId:N}:{studentId:N}:{clientSessionId.Trim()}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes);
     }
 
     private async Task<bool> CanManageExamAsync(Exam exam)

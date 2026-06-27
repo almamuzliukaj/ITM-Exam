@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OnlineExam.Api.Data;
@@ -11,9 +12,11 @@ using OnlineExam.Api.Data;
 namespace OnlineExam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626224745_AddOfficialStudentIdentity")]
+    partial class AddOfficialStudentIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -411,12 +414,6 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("AttemptQuestionOrderJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AttemptVersionSignature")
-                        .HasColumnType("text");
-
                     b.Property<double>("AutoScore")
                         .HasColumnType("double precision");
 
@@ -552,75 +549,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.ToTable("ExamIntegrityEvents");
                 });
-
-            modelBuilder.Entity("OnlineExam.Api.Models.ExamSessionBinding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AttemptId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("BoundAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DisconnectedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ExamId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ExamStudentAccessId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("LastHeartbeatAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("ReplacedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ReplacedByBindingId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("RevocationReason")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("RevokedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("SessionReferenceHash")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("StudentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("UserAgent")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AttemptId");
-
-                    b.HasIndex("ExamStudentAccessId");
-
-                    b.HasIndex("ExamId", "StudentId", "SessionReferenceHash");
-
-                    b.HasIndex("ExamId", "StudentId", "Status");
-
-                    b.ToTable("ExamSessionBindings");
-                });
-
 
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {
@@ -942,16 +870,6 @@ namespace OnlineExam.Api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("d4c36f34-d494-42f7-9af6-77cf635b2d22"),
-                            CreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6820),
-                            Email = "assistant@onlineexam.com",
-                            FullName = "Assistant",
-                            IsActive = true,
-                            PasswordHash = "Password123!",
-                            Role = "Assistant"
-                        },
-                        new
-                        {
                             Id = new Guid("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"),
                             CreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6822),
                             Email = "student@onlineexam.com",
@@ -1060,33 +978,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.Navigation("ExamAttempt");
                 });
-
-            modelBuilder.Entity("OnlineExam.Api.Models.ExamSessionBinding", b =>
-                {
-                    b.HasOne("OnlineExam.Api.Models.ExamAttempt", "Attempt")
-                        .WithMany()
-                        .HasForeignKey("AttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OnlineExam.Api.Models.Exam", "Exam")
-                        .WithMany()
-                        .HasForeignKey("ExamId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OnlineExam.Api.Models.ExamStudentAccess", "ExamStudentAccess")
-                        .WithMany()
-                        .HasForeignKey("ExamStudentAccessId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Attempt");
-
-                    b.Navigation("Exam");
-
-                    b.Navigation("ExamStudentAccess");
-                });
-
 
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {

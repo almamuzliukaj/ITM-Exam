@@ -18,6 +18,7 @@ const statusFilters = [
   { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "ApprovalRequested", label: "Waiting approval" },
   { value: "DeviceChangeRequested", label: "Device change" },
+  { value: "CodeVerified", label: "Code verified" },
   { value: "ManuallyApproved", label: "Approved" },
   { value: "Started", label: "Active" },
   { value: "Submitted", label: "Submitted" },
@@ -182,9 +183,9 @@ export default function ExamMonitorPage() {
             <section className="monitorMetricGrid">
               <MonitorMetric label="Waiting approval" value={waitingCount || summary.waitingForPhysicalVerification || 0} tone={waitingCount > 0 ? "warn" : "clear"} />
               <MonitorMetric label="In progress" value={activeCount} tone="live" />
+              <MonitorMetric label="Enrolled" value={totalEnrolled} />
               <MonitorMetric label="Submitted" value={submittedCount} />
               <MonitorMetric label="Students flagged" value={flaggedCount} tone={flaggedCount > 0 ? "danger" : "clear"} />
-              <MonitorMetric label="Enrolled" value={totalEnrolled} />
             </section>
 
             <section className="surfaceCard monitorRosterCard">
@@ -360,19 +361,12 @@ function AccessStatusBadge({ status }) {
   return <span className="statusPill statusDraft">Not joined</span>;
 }
 
-function AttemptStatusBadge({ student }) {
-  if (student.attemptStatus === "Submitted") {
-    return <span className="statusPill statusLive">Submitted</span>;
-  }
-
-  if (student.attemptStatus === "InProgress") {
-    return <span className="statusPill statusPublished">In progress</span>;
-  }
-
-  if (student.accessStatus === "Removed") {
-    return <span className="statusPill statusDanger">Closed</span>;
-  }
-
+function AttemptStatusBadge({ student, status, accessStatus }) {
+  const attemptStatus = status ?? student?.attemptStatus;
+  const resolvedAccessStatus = accessStatus ?? student?.accessStatus;
+  if (attemptStatus === "Submitted") return <span className="statusPill statusLive">Submitted</span>;
+  if (attemptStatus === "InProgress") return <span className="statusPill statusPublished">In progress</span>;
+  if (resolvedAccessStatus === "Removed") return <span className="statusPill statusDanger">Closed</span>;
   return <span className="statusPill statusDraft">Not started</span>;
 }
 

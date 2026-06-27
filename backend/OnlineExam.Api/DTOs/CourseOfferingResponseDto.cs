@@ -62,3 +62,16 @@ public class CourseOfferingStaffAssignmentResponseDto
     public Guid? RevokedBy { get; set; }
     public bool IsActive { get; set; }
 }
+
+public class CourseOfferingStudentRosterDto
+{
+    public Guid EnrollmentId { get; set; }
+    public Guid StudentId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string StudentNumber { get; set; } = string.Empty;
+    public string EnrollmentSource { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public bool EligibleForExam { get; set; }
+    public DateTime CreatedAt { get; set; }
+}

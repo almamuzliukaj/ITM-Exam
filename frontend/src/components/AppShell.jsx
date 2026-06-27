@@ -46,8 +46,10 @@ const navigationByRole = {
     {
       titleKey: "shell.sections.teachingSupport",
       items: [
-        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
+        { to: "/exams/new", labelKey: "shell.nav.assistantCreateExam", icon: "NE", fallbackLabel: "Create exam" },
+        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
+        { to: "/gradebook", labelKey: "shell.nav.assistantGradebook", icon: "GB", fallbackLabel: "Gradebook" },
         { to: "/reports", labelKey: "shell.nav.assistantReports", icon: "RP" },
       ],
     },

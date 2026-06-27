@@ -461,28 +461,16 @@ public class QuestionsController : ControllerBase
         return NoContent();
     }
 
-    private async Task<bool> CanAuthorExamAsync(Exam exam)
+    private Task<bool> CanAuthorExamAsync(Exam exam)
     {
         if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
-            return false;
+            return Task.FromResult(false);
 
         var userId = GetCurrentUserId();
         if (userId == null)
-            return false;
+            return Task.FromResult(false);
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
-
-        if (!exam.CourseOfferingId.HasValue)
-            return false;
-
-        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
-            a.IsActive &&
-            a.RoleInOffering == assignmentRole);
+        return Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<bool> CanAccessExamAsync(Exam exam)
@@ -499,16 +487,7 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
         {
-            if (exam.CreatedByUserId == userId.Value)
-                return true;
-
-            if (!exam.CourseOfferingId.HasValue)
-                return false;
-
-            return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == exam.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive);
+            return exam.CreatedByUserId == userId.Value;
         }
 
         if (User.IsInRole("Student"))
@@ -605,30 +584,22 @@ public class QuestionsController : ControllerBase
         return Convert.ToHexString(bytes);
     }
 
-    private async Task<bool> CanManageExamAsync(Exam exam)
+    private Task<bool> CanManageExamAsync(Exam exam)
     {
         if (IsQuestionBankContainer(exam))
-            return false;
+            return Task.FromResult(false);
 
         if (User.IsInRole("Admin"))
-            return true;
+            return Task.FromResult(true);
 
         var userId = GetCurrentUserId();
         if (userId == null)
-            return false;
+            return Task.FromResult(false);
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
+        if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
+            return Task.FromResult(false);
 
-        if (!exam.CourseOfferingId.HasValue)
-            return false;
-
-        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
-            a.IsActive &&
-            a.RoleInOffering == assignmentRole);
+        return Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<CourseOffering?> GetAccessibleOfferingAsync(Guid offeringId, Guid userId)

@@ -141,9 +141,7 @@ public class ExamsController : ControllerBase
 
             var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
             var assignedOfferingIds = await GetAssignedOfferingIdsAsync(userId.Value, assignmentRole);
-            query = query.Where(x =>
-                x.CreatedByUserId == userId.Value ||
-                (x.CourseOfferingId.HasValue && assignedOfferingIds.Contains(x.CourseOfferingId.Value)));
+            query = query.Where(x => x.CreatedByUserId == userId.Value);
 
             if (assignedOnly == true)
             {
@@ -3289,22 +3287,10 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return false;
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
-
-        if (!exam.CourseOfferingId.HasValue)
+        if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
             return false;
 
-        var assignmentRole = User.IsInRole("Professor")
-            ? "Professor"
-            : User.IsInRole("Assistant")
-                ? "Assistant"
-                : string.Empty;
-
-        if (string.IsNullOrWhiteSpace(assignmentRole))
-            return false;
-
-        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
+        return await Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)

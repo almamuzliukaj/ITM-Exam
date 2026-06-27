@@ -141,6 +141,49 @@ public class CourseOfferingsController : ControllerBase
         return Ok(offerings);
     }
 
+    [HttpGet("{id:guid}/students")]
+    [Authorize(Roles = "Professor,Assistant")]
+    public async Task<IActionResult> GetOfferingStudents(Guid id)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == null)
+            return Unauthorized();
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        var hasAccess = await UserHasOfferingAccessAsync(id, currentUserId.Value, assignmentRole);
+        if (!hasAccess)
+            return Forbid();
+
+        var offeringExists = await _context.CourseOfferings.AsNoTracking().AnyAsync(x => x.Id == id);
+        if (!offeringExists)
+            return NotFound();
+
+        var students = await _context.StudentCourseEnrollments
+            .AsNoTracking()
+            .Where(x => x.CourseOfferingId == id)
+            .Join(
+                _context.Users.AsNoTracking().Where(x => x.Role == "Student"),
+                enrollment => enrollment.StudentId,
+                student => student.Id,
+                (enrollment, student) => new CourseOfferingStudentRosterDto
+                {
+                    EnrollmentId = enrollment.Id,
+                    StudentId = student.Id,
+                    FullName = student.FullName,
+                    Email = student.Email,
+                    StudentNumber = student.StudentNumber ?? string.Empty,
+                    EnrollmentSource = enrollment.EnrollmentSource,
+                    Status = enrollment.Status,
+                    EligibleForExam = enrollment.EligibleForExam,
+                    CreatedAt = enrollment.CreatedAt
+                })
+            .OrderBy(x => x.FullName)
+            .ThenBy(x => x.Email)
+            .ToListAsync();
+
+        return Ok(students);
+    }
+
     [HttpPost]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateOffering([FromBody] CreateCourseOfferingDto dto)
@@ -515,6 +558,25 @@ public class CourseOfferingsController : ControllerBase
             return "AssistantId must reference an active assistant.";
 
         return null;
+    }
+
+    private async Task<bool> UserHasOfferingAccessAsync(Guid offeringId, Guid userId, string assignmentRole)
+    {
+        var hasStaffAssignment = await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
+            a.CourseOfferingId == offeringId &&
+            a.UserId == userId &&
+            a.IsActive &&
+            a.RoleInOffering == assignmentRole);
+
+        if (hasStaffAssignment)
+            return true;
+
+        return assignmentRole switch
+        {
+            "Professor" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.PrimaryProfessorId == userId),
+            "Assistant" => await _context.CourseOfferings.AnyAsync(x => x.Id == offeringId && x.AssistantId == userId),
+            _ => false
+        };
     }
 
     private Guid? GetCurrentUserId()

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OnlineExam.Api.Data;
@@ -11,9 +12,11 @@ using OnlineExam.Api.Data;
 namespace OnlineExam.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626224034_AddExamSessionBindings")]
+    partial class AddExamSessionBindings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -411,12 +414,6 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("AttemptQuestionOrderJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AttemptVersionSignature")
-                        .HasColumnType("text");
-
                     b.Property<double>("AutoScore")
                         .HasColumnType("double precision");
 
@@ -620,7 +617,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.ToTable("ExamSessionBindings");
                 });
-
 
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {
@@ -868,23 +864,6 @@ namespace OnlineExam.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("OfficialPhotoContentType")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<string>("OfficialPhotoFileName")
-                        .HasMaxLength(180)
-                        .HasColumnType("character varying(180)");
-
-                    b.Property<long?>("OfficialPhotoSizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid?>("OfficialPhotoUpdatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("OfficialPhotoUploadedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -893,16 +872,7 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("StudentNumber")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasDefaultValue("");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("StudentNumber");
 
                     b.ToTable("Users");
 
@@ -915,8 +885,7 @@ namespace OnlineExam.Api.Migrations
                             FullName = "Admin User",
                             IsActive = true,
                             PasswordHash = "Password123!",
-                            Role = "Admin",
-                            StudentNumber = ""
+                            Role = "Admin"
                         },
                         new
                         {
@@ -926,19 +895,7 @@ namespace OnlineExam.Api.Migrations
                             FullName = "Professor",
                             IsActive = true,
                             PasswordHash = "Password123!",
-                            Role = "Professor",
-                            StudentNumber = ""
-                        },
-                        new
-                        {
-                            Id = new Guid("d4c36f34-d494-42f7-9af6-77cf635b2d22"),
-                            CreatedAt = new DateTime(2026, 5, 9, 19, 13, 39, 246, DateTimeKind.Utc).AddTicks(6820),
-                            Email = "assistant@onlineexam.com",
-                            FullName = "Assistant",
-                            IsActive = true,
-                            PasswordHash = "Password123!",
-                            Role = "Assistant",
-                            StudentNumber = ""
+                            Role = "Professor"
                         },
                         new
                         {
@@ -958,8 +915,7 @@ namespace OnlineExam.Api.Migrations
                             FullName = "Student",
                             IsActive = true,
                             PasswordHash = "Password123!",
-                            Role = "Student",
-                            StudentNumber = "STU-DEMO-001"
+                            Role = "Student"
                         });
                 });
 
@@ -1086,7 +1042,6 @@ namespace OnlineExam.Api.Migrations
 
                     b.Navigation("ExamStudentAccess");
                 });
-
 
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {

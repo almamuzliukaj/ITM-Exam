@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
+import StudentIdentityCard from "./StudentIdentityCard";
 import { logout } from "../lib/auth";
 
 const navigationByRole = {
@@ -45,8 +46,10 @@ const navigationByRole = {
     {
       titleKey: "shell.sections.teachingSupport",
       items: [
-        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
         { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
+        { to: "/exams/new", labelKey: "shell.nav.assistantCreateExam", icon: "NE", fallbackLabel: "Create exam" },
+        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
+        { to: "/gradebook", labelKey: "shell.nav.assistantGradebook", icon: "GB", fallbackLabel: "Gradebook" },
         { to: "/reports", labelKey: "shell.nav.assistantReports", icon: "RP" },
       ],
     },
@@ -108,15 +111,21 @@ export default function AppShell({
           </button>
 
           <div className="sidebarIdentity">
-            <div className="avatarCircle">{getInitials(user?.email)}</div>
-            <div>
-              <div className="sidebarLabel">{t("common.signedIn")}</div>
-              <div className="sidebarValue">{user?.email || t("common.unknownUser")}</div>
-              <div className="sidebarMeta">
-                <span className="roleDot" aria-hidden="true" />
-                {user?.role || t("common.guest")}
-              </div>
-            </div>
+            {user?.role === "Student" ? (
+              <StudentIdentityCard identity={user} compact />
+            ) : (
+              <>
+                <div className="avatarCircle">{getInitials(user?.email)}</div>
+                <div>
+                  <div className="sidebarLabel">{t("common.signedIn")}</div>
+                  <div className="sidebarValue">{user?.email || t("common.unknownUser")}</div>
+                  <div className="sidebarMeta">
+                    <span className="roleDot" aria-hidden="true" />
+                    {user?.role || t("common.guest")}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

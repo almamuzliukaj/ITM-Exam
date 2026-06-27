@@ -23,17 +23,25 @@ public class ExamsController : ControllerBase
     private const string ExamAttemptInProgressStatus = "InProgress";
     private const string ExamAttemptSubmittedStatus = "Submitted";
     private const string StudentAccessStatusNotVerified = "NotVerified";
+    private const string StudentAccessStatusWaitingForPhysicalVerification = "WaitingForPhysicalVerification";
     private const string StudentAccessStatusApprovalRequested = "ApprovalRequested";
     private const string StudentAccessStatusRejected = "Rejected";
     private const string StudentAccessStatusRemoved = "Removed";
+    private const string StudentAccessStatusDeviceChangeRequested = "DeviceChangeRequested";
     private const string StudentAccessStatusTemporarilyOffline = "TemporarilyOffline";
     private const string StudentAccessStatusCodeVerified = "CodeVerified";
     private const string StudentAccessStatusManuallyApproved = "ManuallyApproved";
     private const string StudentAccessStatusStarted = "Started";
     private const string StudentAccessStatusSubmitted = "Submitted";
     private const string ExamAttemptRemovedStatus = "Removed";
+    private const string ExamSessionStatusActive = "Active";
+    private const string ExamSessionStatusRevoked = "Revoked";
+    private const string ExamSessionStatusReplaced = "Replaced";
+    private const string ExamSessionStatusDisconnected = "Disconnected";
+    private const string ExamSessionStatusSubmitted = "Submitted";
     private const int ExamAccessCodeLifetimeMinutes = 3;
     private const int LivePresenceOfflineSeconds = 30;
+    private const int ExamSessionOfflineGraceSeconds = 45;
     private const int IntegrityFinalWarningThreshold = 2;
     private const int IntegrityAutoActionThreshold = 3;
     private const string IntegrityPolicyActionNone = "None";
@@ -133,9 +141,7 @@ public class ExamsController : ControllerBase
 
             var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
             var assignedOfferingIds = await GetAssignedOfferingIdsAsync(userId.Value, assignmentRole);
-            query = query.Where(x =>
-                x.CreatedByUserId == userId.Value ||
-                (x.CourseOfferingId.HasValue && assignedOfferingIds.Contains(x.CourseOfferingId.Value)));
+            query = query.Where(x => x.CreatedByUserId == userId.Value);
 
             if (assignedOnly == true)
             {
@@ -161,9 +167,14 @@ public class ExamsController : ControllerBase
             var offeringIds = await GetVisibleOfferingIdsForStudentAsync(userId.Value);
             query = query.Where(x =>
                 x.IsPublished &&
-                x.Status == "Published" &&
-                x.CourseOfferingId.HasValue &&
-                offeringIds.Contains(x.CourseOfferingId.Value));
+                x.Status == "Published");
+
+            if (offeringIds.Count > 0)
+            {
+                query = query.Where(x =>
+                    x.CourseOfferingId.HasValue &&
+                    offeringIds.Contains(x.CourseOfferingId.Value));
+            }
 
             if (courseOfferingId.HasValue)
                 query = query.Where(x => x.CourseOfferingId == courseOfferingId.Value);
@@ -179,7 +190,9 @@ public class ExamsController : ControllerBase
         else if (needsGrading == false)
             query = query.Where(x => !_context.ExamAttempts.Any(a => a.ExamId == x.Id && a.Status == ExamAttemptSubmittedStatus && !a.IsGraded));
 
-        return await query.OrderByDescending(x => x.CreatedAt).ToListAsync();
+        var exams = await query.OrderByDescending(x => x.StartsAt).ThenByDescending(x => x.CreatedAt).ToListAsync();
+        await EnrichExamDirectoryMetadataAsync(exams);
+        return Ok(exams);
     }
 
     [HttpGet("{id:guid}")]
@@ -480,6 +493,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
             createdNewAttempt = true;
         }
         else
@@ -501,9 +515,15 @@ public class ExamsController : ControllerBase
             attempt.GradingNotes = null;
             attempt.PublishedAt = null;
             attempt.PublishedByUserId = null;
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
+        await MarkExamSessionBindingsSubmittedAsync(examId, userId.Value, now);
         try
         {
             await _context.SaveChangesAsync();
@@ -527,7 +547,8 @@ public class ExamsController : ControllerBase
             attempt.ExamId,
             attempt.StudentId,
             attempt.AutoScore,
-            attempt.RequiresManualGrading
+            attempt.RequiresManualGrading,
+            dto.ClientSessionId
         }, "ExamDelivery");
 
         return Ok(new ExamAttemptResultDto
@@ -537,6 +558,7 @@ public class ExamsController : ControllerBase
             StartedAt = attempt.StartedAt,
             LastSavedAt = attempt.LastSavedAt,
             SubmittedAt = attempt.SubmittedAt,
+            AttemptVersionSignature = attempt.AttemptVersionSignature,
             Score = attempt.FinalScore,
             Questions = details
         });
@@ -544,7 +566,7 @@ public class ExamsController : ControllerBase
 
     [HttpGet("{examId:guid}/attempt")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<ExamAttemptDraftDto?>> GetCurrentAttempt(Guid examId)
+    public async Task<ActionResult<ExamAttemptDraftDto?>> GetCurrentAttempt(Guid examId, [FromQuery] string? clientSessionId = null)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -594,6 +616,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
             await MarkStudentAccessStartedAsync(examId, userId.Value, now);
             try
             {
@@ -602,9 +625,13 @@ public class ExamsController : ControllerBase
             catch (DbUpdateException ex) when (IsDuplicateExamAttemptException(ex))
             {
                 attempt = await _context.ExamAttempts
-                    .AsNoTracking()
                     .FirstAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
+                var duplicateBindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: true);
+                if (duplicateBindingError != null)
+                    return BadRequest(new { message = duplicateBindingError.Message, code = duplicateBindingError.Code });
+
+                await _context.SaveChangesAsync();
                 return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
             }
 
@@ -612,11 +639,17 @@ public class ExamsController : ControllerBase
             {
                 attempt.ExamId,
                 attempt.StudentId,
-                attempt.StartedAt
+                attempt.StartedAt,
+                clientSessionId
             }, "ExamDelivery");
         }
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         await MarkStudentAccessStartedAsync(examId, userId.Value, DateTime.UtcNow);
+        EnsureAttemptQuestionVersion(attempt, exam.Questions);
         await _context.SaveChangesAsync();
 
         return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
@@ -685,6 +718,7 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
             createdNewAttempt = true;
         }
         else
@@ -693,7 +727,12 @@ public class ExamsController : ControllerBase
             attempt.StartedAt = attempt.StartedAt == default ? now : attempt.StartedAt;
             attempt.LastSavedAt = now;
             attempt.AnswersJson = JsonSerializer.Serialize(answers);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         try
@@ -719,7 +758,8 @@ public class ExamsController : ControllerBase
             attempt.ExamId,
             attempt.StudentId,
             attempt.Status,
-            attempt.LastSavedAt
+            attempt.LastSavedAt,
+            dto.ClientSessionId
         }, "ExamDelivery");
 
         return Ok(MapToDraftDto(attempt, exam.DurationMinutes));
@@ -805,13 +845,19 @@ public class ExamsController : ControllerBase
             };
 
             _context.ExamAttempts.Add(attempt);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
         else
         {
             attempt.Status = ExamAttemptInProgressStatus;
             attempt.LastSavedAt = now;
             attempt.AnswersJson = JsonSerializer.Serialize(answers);
+            EnsureAttemptQuestionVersion(attempt, exam.Questions);
         }
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         await _context.SaveChangesAsync();
@@ -905,6 +951,10 @@ public class ExamsController : ControllerBase
         if (attempt.Status == ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "Cannot record integrity events for a submitted attempt." });
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true, cancellationToken);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
         var attemptViolationCount = await _context.ExamIntegrityEvents
             .Where(x => x.ExamAttemptId == attempt.Id)
@@ -976,7 +1026,10 @@ public class ExamsController : ControllerBase
 
     [HttpGet("{examId:guid}/attempt/integrity-summary")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(Guid examId, CancellationToken cancellationToken)
+    public async Task<ActionResult<StudentExamIntegritySummaryDto>> GetCurrentAttemptIntegritySummary(
+        Guid examId,
+        [FromQuery] string? clientSessionId = null,
+        CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1001,6 +1054,10 @@ public class ExamsController : ControllerBase
 
         if (attempt == null)
             return NotFound(new { message = "Attempt not found." });
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, clientSessionId, allowCreate: false, cancellationToken);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         var events = await _context.ExamIntegrityEvents
             .AsNoTracking()
@@ -1074,16 +1131,17 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access?.VerifiedAt,
             ApprovedAt = access?.ApprovedAt,
+            RequestedAt = access?.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
             ServerTimeUtc = now,
-            RequestedAt = access?.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access?.ApprovalReason ?? string.Empty,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = BuildAccessStatusMessage(hasAccess, access?.AccessStatus, requiresCode)
         });
     }
 
     [HttpPost("{examId:guid}/attempt/heartbeat")]
     [Authorize(Roles = "Student")]
-    public async Task<ActionResult<ExamAccessStatusDto>> RecordStudentExamHeartbeat(Guid examId)
+    public async Task<ActionResult<ExamAccessStatusDto>> RecordStudentExamHeartbeat(Guid examId, [FromBody] ExamSessionHeartbeatDto? dto = null)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1109,6 +1167,15 @@ public class ExamsController : ControllerBase
 
         if (hasAccess)
         {
+            var attempt = await _context.ExamAttempts
+                .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+            if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+            {
+                var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto?.ClientSessionId, allowCreate: false);
+                if (bindingError != null)
+                    return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+            }
+
             if (requiresCode && access.AccessStatus != StudentAccessStatusSubmitted)
                 access.AccessStatus = StudentAccessStatusStarted;
             access.LastActivityAt = now;
@@ -1122,8 +1189,9 @@ public class ExamsController : ControllerBase
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = access.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             Message = BuildAccessStatusMessage(hasAccess, access.AccessStatus, requiresCode)
         });
     }
@@ -1160,8 +1228,9 @@ public class ExamsController : ControllerBase
                 AccessStatus = access.AccessStatus,
                 VerifiedAt = access.VerifiedAt,
                 ApprovedAt = access.ApprovedAt,
-                RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+                RequestedAt = access.AccessStatus is StudentAccessStatusApprovalRequested or StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
                 ApprovalReason = access.ApprovalReason,
+                StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
                 Message = "Access confirmed. You can continue to the rules screen."
             });
         }
@@ -1188,6 +1257,7 @@ public class ExamsController : ControllerBase
             ApprovedAt = access.ApprovedAt,
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = "Approval request sent. Wait for your professor before starting the exam."
         });
@@ -1251,32 +1321,35 @@ public class ExamsController : ControllerBase
         }
 
         var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
-        access.AccessStatus = StudentAccessStatusCodeVerified;
+        access.AccessStatus = StudentAccessStatusWaitingForPhysicalVerification;
         access.VerifiedAt = now;
         access.LastActivityAt = now;
+        access.ApprovalReason = "Access code verified. Waiting for physical identity approval.";
 
         await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.CodeVerified", "Exam", exam.Id, new
+        await _auditLogService.LogAsync("ExamAccess.CodeVerifiedPhysicalApprovalRequired", "Exam", exam.Id, new
         {
             examId = exam.Id,
             studentId = userId.Value,
-            access.VerifiedAt
+            access.VerifiedAt,
+            status = access.AccessStatus
         }, "ExamDelivery");
 
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = true,
+            HasAccess = false,
             HasActiveCode = true,
-            HasAccess = true,
             AccessStatus = access.AccessStatus,
             ActiveCodeExpiresAt = activeCode.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
-            ServerTimeUtc = now,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
+            RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+            ServerTimeUtc = now,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            Message = "Access confirmed. You can start the exam."
+            Message = "Access code verified. Please wait for the professor to approve your physical identity before the rules screen opens."
         });
     }
 
@@ -1385,11 +1458,11 @@ public class ExamsController : ControllerBase
         access.AccessStatus = StudentAccessStatusManuallyApproved;
         access.ApprovedByUserId = userId.Value;
         access.ApprovedAt = now;
-        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Professor approval";
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Physical identity approved by staff.";
         access.LastActivityAt = now;
 
         await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.ManualApproval", "Exam", exam.Id, new
+        await _auditLogService.LogAsync("ExamAccess.PhysicalIdentityApproved", "Exam", exam.Id, new
         {
             examId = exam.Id,
             studentId,
@@ -1410,8 +1483,8 @@ public class ExamsController : ControllerBase
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+            RequestedAt = null,
             ServerTimeUtc = now,
-            RequestedAt = access.AccessStatus == StudentAccessStatusApprovalRequested ? access.LastActivityAt : null,
             ApprovalReason = access.ApprovalReason,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
             Message = "Student access approved."
@@ -1467,9 +1540,9 @@ public class ExamsController : ControllerBase
         });
     }
 
-    [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
+    [HttpPost("{examId:guid}/students/{studentId:guid}/revoke-access")]
     [Authorize(Roles = "Professor,Assistant")]
-    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    public async Task<ActionResult<ExamAccessStatusDto>> RevokeStudentExamAccess(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -1486,6 +1559,86 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "This student is not eligible for this exam." });
 
         var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        access.AccessStatus = StudentAccessStatusRemoved;
+        access.ApprovedAt = null;
+        access.ApprovedByUserId = userId.Value;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Admission revoked by staff.";
+        access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, studentId, userId.Value, access.ApprovalReason, now);
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.AdmissionRevoked", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            revokedByUserId = userId.Value,
+            revokedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = null,
+            ApprovalReason = access.ApprovalReason,
+            Message = "Student admission revoked."
+        });
+    }
+
+    [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
+    [Authorize(Roles = "Professor,Assistant")]
+ feature/alma-student-results-randomization
+    public Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+    {
+        return RevokeStudentExamAccess(examId, studentId, dto);
+    }
+
+    [HttpPost("{examId:guid}/request-device-change")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RequestDeviceChange(Guid examId, [FromBody] DeviceChangeRequestDto? dto = null
+    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
+ main
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        if (!await CanManageExamAsync(exam))
+            return Forbid();
+
+        if (!await IsStudentEligibleForExamAsync(studentId, exam))
+            return BadRequest(new { message = "This student is not eligible for this exam." });
+
+        var now = DateTime.UtcNow;
+ feature/alma-student-results-randomization
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        access.AccessStatus = StudentAccessStatusDeviceChangeRequested;
+        access.ApprovedAt = null;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
+        access.LastActivityAt = now;
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            requestedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            
         var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
         var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
         access.AccessStatus = StudentAccessStatusRemoved;
@@ -1493,6 +1646,7 @@ public class ExamsController : ControllerBase
         access.ApprovedAt = null;
         access.ApprovalReason = reason;
         access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, studentId, userId.Value, reason, now);
 
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
@@ -1518,15 +1672,74 @@ public class ExamsController : ControllerBase
 
         return Ok(new ExamAccessStatusDto
         {
-            RequiresCode = requiresCode,
+            RequiresCode = requiresCode, main
             HasAccess = false,
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
             ApprovedAt = access.ApprovedAt,
+ feature/alma-student-results-randomization
+            RequestedAt = access.LastActivityAt,
+            ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+            ServerTimeUtc = now,
+
             ServerTimeUtc = now,
             RequestedAt = null,
             ApprovalReason = access.ApprovalReason,
             Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
+        });
+    }
+
+    [HttpPost("{examId:guid}/request-device-change")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ExamAccessStatusDto>> RequestDeviceChange(Guid examId, [FromBody] DeviceChangeRequestDto? dto = null)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var exam = await _context.Exams.FindAsync(examId);
+        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
+            return NotFound(new { message = "Exam not found." });
+
+        var baseAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceEntryCode: false);
+        if (baseAccessError != null)
+        {
+            if (baseAccessError == StudentExamNotEligibleMessage)
+                return Forbid();
+
+            return BadRequest(new { message = baseAccessError });
+        }
+
+        var now = DateTime.UtcNow;
+        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        access.AccessStatus = StudentAccessStatusDeviceChangeRequested;
+        access.ApprovedAt = null;
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
+        access.LastActivityAt = now;
+        await RevokeActiveExamSessionBindingsAsync(exam.Id, userId.Value, userId.Value, access.ApprovalReason, now);
+
+        await _context.SaveChangesAsync();
+        await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            studentId = userId.Value,
+            requestedAt = access.LastActivityAt,
+            access.ApprovalReason
+        }, "ExamDelivery");
+
+        return Ok(new ExamAccessStatusDto
+        {
+            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            HasAccess = false,
+            AccessStatus = access.AccessStatus,
+            VerifiedAt = access.VerifiedAt,
+            ApprovedAt = access.ApprovedAt,
+            RequestedAt = access.LastActivityAt,
+            ApprovalReason = access.ApprovalReason,
+            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+ main
+            Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }
 
@@ -1589,6 +1802,9 @@ public class ExamsController : ControllerBase
                 StudentId = item.Student.Id,
                 FullName = item.Student.FullName,
                 Email = item.Student.Email,
+                StudentNumber = BuildStudentNumber(item.Student),
+                PhotoUrl = BuildStudentPhotoUrl(item.Student, exam.Id),
+                Initials = BuildInitials(item.Student.FullName, item.Student.Email),
                 EnrollmentStatus = item.Enrollment.Status,
                 AccessStatus = ResolveLiveAccessStatus(access, attempt, lastActivityAt, now),
                 AttemptStatus = attempt?.Status ?? "NotStarted",
@@ -1597,6 +1813,9 @@ public class ExamsController : ControllerBase
                 StartedAt = attempt?.StartedAt,
                 SubmittedAt = attempt?.SubmittedAt,
                 LastActivityAt = lastActivityAt,
+                AdmissionReason = access?.ApprovalReason ?? string.Empty,
+                HasDeviceChangeRequest = access?.AccessStatus == StudentAccessStatusDeviceChangeRequested,
+                DeviceChangeRequestedAt = access?.AccessStatus == StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
                 DurationUsedMinutes = durationUsed,
                 ViolationCount = attempt?.IntegrityViolationCount ?? 0,
                 LatestViolationAt = latestEvent?.OccurredAt,
@@ -1614,7 +1833,8 @@ public class ExamsController : ControllerBase
             Summary = new ExamLiveMonitorSummaryDto
             {
                 TotalEnrolled = rows.Count,
-                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted or StudentAccessStatusTemporarilyOffline),
+                WaitingForPhysicalVerification = rows.Count(x => x.AccessStatus is StudentAccessStatusWaitingForPhysicalVerification or StudentAccessStatusApprovalRequested),
+                Verified = rows.Count(x => x.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted),
                 Active = rows.Count(x => x.AttemptStatus == ExamAttemptInProgressStatus),
                 Submitted = rows.Count(x => x.AttemptStatus == ExamAttemptSubmittedStatus),
                 NotJoined = rows.Count(x => x.AttemptStatus == "NotStarted"),
@@ -1626,9 +1846,179 @@ public class ExamsController : ControllerBase
 
     private const string StudentExamNotEligibleMessage = "You are not eligible to access this exam.";
 
+    private sealed record ExamSessionGuardError(string Code, string Message);
+
+    private async Task<ExamSessionGuardError?> EnsureExamSessionBindingAsync(
+        Exam exam,
+        ExamAttempt attempt,
+        Guid studentId,
+        string? clientSessionId,
+        bool allowCreate,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedClientSessionId = NormalizeOptionalValue(clientSessionId);
+        if (string.IsNullOrWhiteSpace(normalizedClientSessionId))
+        {
+            await _auditLogService.LogAsync("ExamSession.MissingClientSession", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "Secure exam session reference is required.");
+        }
+
+        if (attempt.StudentId != studentId || attempt.ExamId != exam.Id)
+        {
+            await _auditLogService.LogAsync("ExamSession.AttemptOwnershipRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                attempt.StudentId,
+                attempt.ExamId
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("ATTEMPT_NOT_OWNED", "This attempt does not belong to the authenticated student.");
+        }
+
+        if (attempt.Status == ExamAttemptSubmittedStatus)
+            return new ExamSessionGuardError("EXAM_TIME_EXPIRED", "This attempt has already been submitted.");
+
+        var access = await _context.ExamStudentAccesses
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId, cancellationToken);
+
+        if (!IsStudentAccessGranted(access))
+        {
+            await _auditLogService.LogAsync("ExamSession.UnapprovedAccessRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                accessStatus = access?.AccessStatus ?? StudentAccessStatusNotVerified
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "Physical approval is required before the exam session can continue.");
+        }
+
+        var now = DateTime.UtcNow;
+        var sessionHash = HashSessionReference(normalizedClientSessionId, exam.Id, studentId);
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == exam.Id && x.StudentId == studentId)
+            .OrderByDescending(x => x.BoundAt)
+            .ToListAsync(cancellationToken);
+
+        foreach (var stale in bindings.Where(x =>
+            x.Status == ExamSessionStatusActive &&
+            x.LastHeartbeatAt < now.AddSeconds(-ExamSessionOfflineGraceSeconds)))
+        {
+            stale.Status = ExamSessionStatusDisconnected;
+            stale.DisconnectedAt ??= stale.LastHeartbeatAt;
+        }
+
+        var sameSession = bindings.FirstOrDefault(x =>
+            x.SessionReferenceHash == sessionHash &&
+            x.Status is ExamSessionStatusActive or ExamSessionStatusDisconnected);
+        if (sameSession != null)
+        {
+            if (sameSession.AttemptId != attempt.Id)
+                return new ExamSessionGuardError("ATTEMPT_NOT_OWNED", "This secure browser session is bound to another attempt.");
+
+            sameSession.Status = ExamSessionStatusActive;
+            sameSession.LastHeartbeatAt = now;
+            sameSession.DisconnectedAt = null;
+            sameSession.UserAgent = Request.Headers.UserAgent.ToString();
+            return null;
+        }
+
+        var activeBinding = bindings.FirstOrDefault(x => x.Status == ExamSessionStatusActive);
+        if (activeBinding != null)
+        {
+            await _auditLogService.LogAsync("ExamSession.ConcurrentLoginRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id,
+                activeBindingId = activeBinding.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_ACTIVE_ON_ANOTHER_SESSION", "This exam is already active in another approved browser session.");
+        }
+
+        if (!allowCreate)
+        {
+            await _auditLogService.LogAsync("ExamSession.UnboundRequestRejected", "ExamAttempt", attempt.Id, new
+            {
+                examId = exam.Id,
+                studentId,
+                attemptId = attempt.Id
+            }, "ExamSecurity", cancellationToken);
+            return new ExamSessionGuardError("EXAM_SESSION_NOT_APPROVED", "This browser session is not approved for the active attempt.");
+        }
+
+        var newBinding = new ExamSessionBinding
+        {
+            Id = Guid.NewGuid(),
+            ExamId = exam.Id,
+            StudentId = studentId,
+            AttemptId = attempt.Id,
+            ExamStudentAccessId = access?.Id,
+            SessionReferenceHash = sessionHash,
+            Status = ExamSessionStatusActive,
+            BoundAt = now,
+            LastHeartbeatAt = now,
+            UserAgent = Request.Headers.UserAgent.ToString()
+        };
+        _context.ExamSessionBindings.Add(newBinding);
+
+        await _auditLogService.LogAsync("ExamSession.Bound", "ExamAttempt", attempt.Id, new
+        {
+            examId = exam.Id,
+            studentId,
+            attemptId = attempt.Id,
+            bindingId = newBinding.Id,
+            accessStatus = access?.AccessStatus
+        }, "ExamSecurity", cancellationToken);
+
+        return null;
+    }
+
+    private async Task RevokeActiveExamSessionBindingsAsync(Guid examId, Guid studentId, Guid? actorUserId, string reason, DateTime now, CancellationToken cancellationToken = default)
+    {
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == examId && x.StudentId == studentId && x.Status == ExamSessionStatusActive)
+            .ToListAsync(cancellationToken);
+
+        foreach (var binding in bindings)
+        {
+            binding.Status = ExamSessionStatusRevoked;
+            binding.RevokedAt = now;
+            binding.RevokedByUserId = actorUserId;
+            binding.RevocationReason = reason;
+        }
+    }
+
+    private async Task MarkExamSessionBindingsSubmittedAsync(Guid examId, Guid studentId, DateTime now, CancellationToken cancellationToken = default)
+    {
+        var bindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == examId && x.StudentId == studentId && x.Status == ExamSessionStatusActive)
+            .ToListAsync(cancellationToken);
+
+        foreach (var binding in bindings)
+        {
+            binding.Status = ExamSessionStatusSubmitted;
+            binding.LastHeartbeatAt = now;
+        }
+    }
+
+    private static string HashSessionReference(string clientSessionId, Guid examId, Guid studentId)
+    {
+        var normalized = clientSessionId.Trim();
+        var input = $"{examId:N}:{studentId:N}:{normalized}";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes);
+    }
+
     private async Task<string?> GetStudentExamSessionAccessErrorAsync(Guid userId, Exam exam, bool blockResubmission, bool enforceEntryCode = true, bool enforceRemoval = true)
     {
-        if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
+        if (!exam.IsPublished || exam.Status != "Published")
             return "This exam is not available for students.";
 
         var now = DateTime.UtcNow;
@@ -1637,12 +2027,17 @@ public class ExamsController : ControllerBase
 
         var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
             x.StudentId == userId &&
+            exam.CourseOfferingId.HasValue &&
             x.CourseOfferingId == exam.CourseOfferingId.Value &&
             x.EligibleForExam &&
             x.Status == "Eligible");
 
         if (!hasEligibleEnrollment)
-            return StudentExamNotEligibleMessage;
+        {
+            var canUseCurrentTermFallback = await CanUseStudentExamFallbackAsync(exam);
+            if (!canUseCurrentTermFallback)
+                return StudentExamNotEligibleMessage;
+        }
 
         if (enforceRemoval)
         {
@@ -1670,6 +2065,18 @@ public class ExamsController : ControllerBase
             var access = await _context.ExamStudentAccesses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId);
+
+            if (access?.AccessStatus == StudentAccessStatusRemoved)
+                return "Your exam admission was revoked by staff.";
+
+            if (access?.AccessStatus == StudentAccessStatusRejected)
+                return "Your exam admission request was rejected by staff.";
+
+            if (access?.AccessStatus == StudentAccessStatusDeviceChangeRequested)
+                return "Device change approval is required before continuing this exam.";
+
+            if (access?.AccessStatus == StudentAccessStatusWaitingForPhysicalVerification)
+                return "Physical professor approval is required before starting this exam.";
 
             if (!IsStudentAccessGranted(access))
                 return "Enter the exam access code before starting this exam.";
@@ -1727,9 +2134,63 @@ public class ExamsController : ControllerBase
         return access;
     }
 
+    private async Task<StudentIdentityDto?> BuildStudentIdentityDtoAsync(Guid studentId)
+    {
+        var student = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == studentId);
+
+        if (student == null)
+            return null;
+
+        return new StudentIdentityDto
+        {
+            StudentId = student.Id,
+            FullName = student.FullName,
+            Email = student.Email,
+            StudentNumber = BuildStudentNumber(student),
+            PhotoUrl = BuildStudentPhotoUrl(student),
+            Initials = BuildInitials(student.FullName, student.Email)
+        };
+    }
+
+    private static string BuildStudentNumber(User student)
+    {
+        if (!string.IsNullOrWhiteSpace(student.StudentNumber))
+            return student.StudentNumber.Trim();
+
+        var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
+            return localPart.Trim();
+
+        return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
+    }
+
+    private string BuildStudentPhotoUrl(User student, Guid? examId = null)
+    {
+        if (string.IsNullOrWhiteSpace(student.OfficialPhotoFileName))
+            return string.Empty;
+
+        return Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = student.Id, examId }) ?? string.Empty;
+    }
+
+    private static string BuildInitials(string? fullName, string? email)
+    {
+        var parts = (fullName ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(part => char.ToUpperInvariant(part[0]))
+            .ToArray();
+
+        if (parts.Length > 0)
+            return new string(parts);
+
+        return string.IsNullOrWhiteSpace(email) ? "ST" : email[..1].ToUpperInvariant();
+    }
+
     private static bool IsStudentAccessGranted(ExamStudentAccess? access)
     {
-        return access?.AccessStatus is StudentAccessStatusCodeVerified or StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
+        return access?.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
     }
 
     private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
@@ -1739,9 +2200,11 @@ public class ExamsController : ControllerBase
 
         return accessStatus switch
         {
+            StudentAccessStatusWaitingForPhysicalVerification => "Access code verified. Wait for physical identity approval from your professor before starting.",
             StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor before starting the exam.",
             StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or enter a valid code.",
             StudentAccessStatusRemoved => "You were removed from this live exam session by staff.",
+            StudentAccessStatusDeviceChangeRequested => "Device change request sent. Wait for staff approval before continuing.",
             _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
             _ => "Access is available."
         };
@@ -1852,6 +2315,114 @@ public class ExamsController : ControllerBase
         return exception.InnerException is PostgresException postgresException &&
                postgresException.SqlState == PostgresErrorCodes.UniqueViolation &&
                string.Equals(postgresException.ConstraintName, "IX_ExamAttempts_ExamId_StudentId", StringComparison.Ordinal);
+    }
+
+    private async Task EnrichExamDirectoryMetadataAsync(List<Exam> exams)
+    {
+        if (exams.Count == 0)
+            return;
+
+        var creatorIds = exams.Select(x => x.CreatedByUserId).Distinct().ToList();
+        var creators = await _context.Users
+            .AsNoTracking()
+            .Where(x => creatorIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id);
+
+        Dictionary<Guid, ExamAttempt> studentAttempts = [];
+        if (User.IsInRole("Student"))
+        {
+            var userId = GetCurrentUserId();
+            if (userId.HasValue)
+            {
+                var examIds = exams.Select(x => x.Id).ToList();
+                studentAttempts = await _context.ExamAttempts
+                    .AsNoTracking()
+                    .Where(x => x.StudentId == userId.Value && examIds.Contains(x.ExamId))
+                    .ToDictionaryAsync(x => x.ExamId);
+            }
+        }
+
+        foreach (var exam in exams)
+        {
+            creators.TryGetValue(exam.CreatedByUserId, out var creator);
+            exam.InstructorType = ResolveInstructorType(creator?.Role);
+            exam.InstructorName = creator?.FullName ?? "Instructor";
+            exam.InstructorEmail = creator?.Email ?? string.Empty;
+
+            if (studentAttempts.TryGetValue(exam.Id, out var attempt))
+            {
+                exam.HasSubmittedAttempt = attempt.Status == ExamAttemptSubmittedStatus;
+                exam.StudentExamStatus = attempt.Status;
+                exam.StudentSubmittedAt = attempt.SubmittedAt;
+            }
+            else
+            {
+                exam.HasSubmittedAttempt = false;
+                exam.StudentExamStatus = exam.IsPublished ? "Available" : exam.Status;
+                exam.StudentSubmittedAt = null;
+            }
+        }
+    }
+
+    private static string ResolveInstructorType(string? role)
+    {
+        return string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase) ? "Assistant" : "Professor";
+    }
+
+    private static void EnsureAttemptQuestionVersion(ExamAttempt attempt, List<Question> questions)
+    {
+        if (!string.IsNullOrWhiteSpace(attempt.AttemptQuestionOrderJson) &&
+            !string.IsNullOrWhiteSpace(attempt.AttemptVersionSignature))
+        {
+            return;
+        }
+
+        var orderedQuestions = questions
+            .OrderBy(question => BuildStableRandomKey(attempt.Id, question.Id, "question"))
+            .ToList();
+
+        var items = orderedQuestions.Select(question =>
+        {
+            var options = ParseOptions(question.OptionsJson);
+            var optionOrder = options
+                .OrderBy(option => BuildStableRandomKey(attempt.Id, question.Id, option))
+                .ToList();
+
+            return new AttemptQuestionItemSnapshot
+            {
+                QuestionId = question.Id,
+                OptionOrder = optionOrder
+            };
+        }).ToList();
+
+        var signatureSource = string.Join("|", items.Select(item =>
+            $"{item.QuestionId:N}:{string.Join(",", item.OptionOrder.Select(option => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(option)))))}"));
+        var signature = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signatureSource)));
+
+        attempt.AttemptQuestionOrderJson = JsonSerializer.Serialize(new AttemptQuestionOrderSnapshot
+        {
+            Questions = items,
+            CreatedAt = attempt.StartedAt == default ? DateTime.UtcNow : attempt.StartedAt
+        });
+        attempt.AttemptVersionSignature = signature;
+    }
+
+    private static string BuildStableRandomKey(Guid attemptId, Guid questionId, string value)
+    {
+        var input = $"{attemptId:N}:{questionId:N}:{value}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
+    }
+
+    private sealed class AttemptQuestionOrderSnapshot
+    {
+        public DateTime CreatedAt { get; set; }
+        public List<AttemptQuestionItemSnapshot> Questions { get; set; } = [];
+    }
+
+    private sealed class AttemptQuestionItemSnapshot
+    {
+        public Guid QuestionId { get; set; }
+        public List<string> OptionOrder { get; set; } = [];
     }
 
     [HttpPost("{id:guid}/publish")]
@@ -2434,26 +3005,19 @@ public class ExamsController : ControllerBase
             return Unauthorized();
 
         var rawResults = await _context.ExamAttempts
+            .AsNoTracking()
+            .Include(x => x.Exam)
+                .ThenInclude(x => x.CourseOffering)
+                    .ThenInclude(x => x!.Course)
             .Where(x => x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus && x.IsPublished)
-            .Join(
-                _context.Exams,
-                attempt => attempt.ExamId,
-                exam => exam.Id,
-                (attempt, exam) => new
-                {
-                    AttemptId = attempt.Id,
-                    ExamId = attempt.ExamId,
-                    ExamTitle = exam.Title,
-                    SubmittedAt = attempt.SubmittedAt,
-                    Status = "Published",
-                    IsPublished = attempt.IsPublished,
-                    FinalScore = attempt.FinalScore,
-                    AutoScore = attempt.AutoScore,
-                    GradingNotes = attempt.GradingNotes,
-                    PublishedAt = attempt.PublishedAt
-                })
-            .OrderByDescending(x => x.SubmittedAt)
+            .OrderByDescending(x => x.SubmittedAt ?? x.StartedAt)
             .ToListAsync();
+
+        var creatorIds = rawResults.Select(x => x.Exam.CreatedByUserId).Distinct().ToList();
+        var creators = await _context.Users
+            .AsNoTracking()
+            .Where(x => creatorIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id);
 
         var examPointLookup = await _context.Exams
             .Select(exam => new { exam.Id, exam.MaximumPoints })
@@ -2462,15 +3026,24 @@ public class ExamsController : ControllerBase
         var results = rawResults
             .Select(item =>
             {
+                creators.TryGetValue(item.Exam.CreatedByUserId, out var creator);
                 var examMaxPoints = examPointLookup.GetValueOrDefault(item.ExamId, 0);
                 var scorePercentage = CalculateScorePercentage(item.FinalScore, examMaxPoints);
                 return new StudentExamResultDto
                 {
-                    AttemptId = item.AttemptId,
+                    AttemptId = item.Id,
                     ExamId = item.ExamId,
-                    ExamTitle = item.ExamTitle,
+                    ExamTitle = item.Exam.Title,
+                    CourseCode = item.Exam.CourseOffering?.Course?.Code ?? string.Empty,
+                    CourseName = item.Exam.CourseOffering?.Course?.Name ?? string.Empty,
+                    AcademicYear = item.Exam.AcademicYear,
+                    SemesterLabel = item.Exam.SemesterLabel,
+                    InstructorType = ResolveInstructorType(creator?.Role),
+                    InstructorName = creator?.FullName ?? "Instructor",
                     SubmittedAt = item.SubmittedAt,
-                    Status = item.Status,
+                    ExamTakenAt = item.SubmittedAt ?? item.StartedAt,
+                    ScheduledAt = item.Exam.StartsAt,
+                    Status = "Published",
                     IsPublished = item.IsPublished,
                     FinalScore = item.FinalScore,
                     AutoScore = item.AutoScore,
@@ -2504,41 +3077,34 @@ public class ExamsController : ControllerBase
             return Unauthorized();
 
         var rawResult = await _context.ExamAttempts
+            .AsNoTracking()
+            .Include(x => x.Exam)
+                .ThenInclude(x => x.CourseOffering)
+                    .ThenInclude(x => x!.Course)
             .Where(x => x.Id == attemptId && x.StudentId == userId.Value && x.Status == ExamAttemptSubmittedStatus)
-            .Join(
-                _context.Exams,
-                attempt => attempt.ExamId,
-                exam => exam.Id,
-                (attempt, exam) => new
-                {
-                    AttemptId = attempt.Id,
-                    ExamId = attempt.ExamId,
-                    ExamTitle = exam.Title,
-                    SubmittedAt = attempt.SubmittedAt,
-                    Status = attempt.IsPublished ? "Published" : (attempt.IsGraded ? "ReadyToPublish" : "Pending"),
-                    IsPublished = attempt.IsPublished,
-                    FinalScore = attempt.FinalScore,
-                    AutoScore = attempt.AutoScore,
-                    GradingNotes = attempt.GradingNotes,
-                    PublishedAt = attempt.PublishedAt,
-                    RequiresManualGrading = attempt.RequiresManualGrading,
-                    IsGraded = attempt.IsGraded,
-                    ExamMaximumPoints = exam.MaximumPoints
-                })
             .FirstOrDefaultAsync();
 
         if (rawResult == null)
             return NotFound(new { message = "Result not found." });
 
-        var resultExamPoints = Math.Max(rawResult.ExamMaximumPoints, 0);
+        var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == rawResult.Exam.CreatedByUserId);
+        var resultExamPoints = Math.Max(rawResult.Exam.MaximumPoints, 0);
         var resultScorePercentage = rawResult.IsPublished ? CalculateScorePercentage(rawResult.FinalScore, resultExamPoints) : (double?)null;
         var result = new StudentExamResultDetailDto
         {
-            AttemptId = rawResult.AttemptId,
+            AttemptId = rawResult.Id,
             ExamId = rawResult.ExamId,
-            ExamTitle = rawResult.ExamTitle,
+            ExamTitle = rawResult.Exam.Title,
+            CourseCode = rawResult.Exam.CourseOffering?.Course?.Code ?? string.Empty,
+            CourseName = rawResult.Exam.CourseOffering?.Course?.Name ?? string.Empty,
+            AcademicYear = rawResult.Exam.AcademicYear,
+            SemesterLabel = rawResult.Exam.SemesterLabel,
+            InstructorType = ResolveInstructorType(creator?.Role),
+            InstructorName = creator?.FullName ?? "Instructor",
             SubmittedAt = rawResult.SubmittedAt,
-            Status = rawResult.Status,
+            ExamTakenAt = rawResult.SubmittedAt ?? rawResult.StartedAt,
+            ScheduledAt = rawResult.Exam.StartsAt,
+            Status = rawResult.IsPublished ? "Published" : (rawResult.IsGraded ? "ReadyToPublish" : "Pending"),
             IsPublished = rawResult.IsPublished,
             FinalScore = rawResult.IsPublished ? rawResult.FinalScore : null,
             AutoScore = rawResult.IsPublished ? rawResult.AutoScore : null,
@@ -2882,22 +3448,10 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return false;
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
-
-        if (!exam.CourseOfferingId.HasValue)
+        if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
             return false;
 
-        var assignmentRole = User.IsInRole("Professor")
-            ? "Professor"
-            : User.IsInRole("Assistant")
-                ? "Assistant"
-                : string.Empty;
-
-        if (string.IsNullOrWhiteSpace(assignmentRole))
-            return false;
-
-        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
+        return await Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)
@@ -4437,23 +4991,48 @@ public class ExamsController : ControllerBase
 
     private async Task<List<Guid>> GetVisibleOfferingIdsForStudentAsync(Guid userId)
     {
-        return await _context.StudentCourseEnrollments
+        var eligibleOfferingIds = await _context.StudentCourseEnrollments
             .Where(x => x.StudentId == userId && x.EligibleForExam && x.Status == "Eligible")
             .Select(x => x.CourseOfferingId)
+            .ToListAsync();
+
+        if (eligibleOfferingIds.Count > 0)
+            return eligibleOfferingIds;
+
+        return await _context.CourseOfferings
+            .Where(x =>
+                x.Term != null &&
+                (x.Term.IsCurrent || x.Term.Status == "Open" || x.Term.Status == "Active" || x.Term.Status == "Draft") &&
+                _context.Exams.Any(e =>
+                    e.CourseOfferingId == x.Id &&
+                    e.IsPublished &&
+                    e.Status == "Published" &&
+                    !e.Description.StartsWith(QuestionBankMarker)))
+            .Select(x => x.Id)
             .ToListAsync();
     }
 
     private async Task<bool> CanStudentAccessExamAsync(Guid userId, Exam exam)
     {
-        if (!exam.IsPublished || exam.Status != "Published" || !exam.CourseOfferingId.HasValue)
+        if (!exam.IsPublished || exam.Status != "Published")
             return false;
 
         var hasEligibleEnrollment = await _context.StudentCourseEnrollments.AnyAsync(x =>
             x.StudentId == userId &&
+            exam.CourseOfferingId.HasValue &&
             x.CourseOfferingId == exam.CourseOfferingId.Value &&
             x.EligibleForExam &&
             x.Status == "Eligible");
 
-        return hasEligibleEnrollment;
+        return hasEligibleEnrollment || await CanUseStudentExamFallbackAsync(exam);
+    }
+
+    private async Task<bool> CanUseStudentExamFallbackAsync(Exam exam)
+    {
+        if (!exam.CourseOfferingId.HasValue)
+            return true;
+
+        return await _context.CourseOfferings.AnyAsync(x =>
+            x.Id == exam.CourseOfferingId.Value);
     }
 }

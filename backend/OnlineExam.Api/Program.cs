@@ -61,6 +61,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IStudentPhotoStorageService, StudentPhotoStorageService>();
 builder.Services.Configure<SmuIntegrationOptions>(builder.Configuration.GetSection("SmuIntegration"));
 builder.Services.AddScoped<ISmuMappingService, SmuMappingService>();
 builder.Services.AddScoped<ISmuSyncService, SmuSyncService>();
@@ -277,10 +278,10 @@ static void EnsureDemoUsers(WebApplication app)
 
     var demoUsers = new[]
     {
-        new { Id = Guid.Parse("f9635e15-1d90-4e3b-b722-331a8fc2fbe9"), FullName = "Admin User", Email = "admin@onlineexam.com", Password = "Password123!", Role = "Admin" },
-        new { Id = Guid.Parse("b5769729-e575-4789-b6e7-f7327ede1acc"), FullName = "Professor", Email = "prof@onlineexam.com", Password = "Password123!", Role = "Professor" },
-        new { Id = Guid.Parse("d4c36f34-d494-42f7-9af6-77cf635b2d22"), FullName = "Assistant", Email = "assistant@onlineexam.com", Password = "Password123!", Role = "Assistant" },
-        new { Id = Guid.Parse("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"), FullName = "Student", Email = "student@onlineexam.com", Password = "Password123!", Role = "Student" }
+        new { Id = Guid.Parse("f9635e15-1d90-4e3b-b722-331a8fc2fbe9"), FullName = "Admin User", Email = "admin@onlineexam.com", Password = "Password123!", Role = "Admin", StudentNumber = "" },
+        new { Id = Guid.Parse("b5769729-e575-4789-b6e7-f7327ede1acc"), FullName = "Professor", Email = "prof@onlineexam.com", Password = "Password123!", Role = "Professor", StudentNumber = "" },
+        new { Id = Guid.Parse("d4c36f34-d494-42f7-9af6-77cf635b2d22"), FullName = "Assistant", Email = "assistant@onlineexam.com", Password = "Password123!", Role = "Assistant", StudentNumber = "" },
+        new { Id = Guid.Parse("4c7b418b-5853-4c9c-9ef4-5e1d4e65cad1"), FullName = "Student", Email = "student@onlineexam.com", Password = "Password123!", Role = "Student", StudentNumber = "STU-DEMO-001" }
     };
 
     foreach (var demo in demoUsers)
@@ -297,6 +298,7 @@ static void EnsureDemoUsers(WebApplication app)
                 Email = demo.Email,
                 PasswordHash = passwordHash,
                 Role = demo.Role,
+                StudentNumber = demo.StudentNumber,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             });
@@ -306,6 +308,7 @@ static void EnsureDemoUsers(WebApplication app)
 
         user.FullName = demo.FullName;
         user.Role = demo.Role;
+        user.StudentNumber = demo.StudentNumber;
         user.IsActive = true;
         user.PasswordHash = passwordHash;
     }
@@ -318,6 +321,27 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
     try
     {
         db.Database.ExecuteSqlRaw("""
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "StudentNumber" character varying(40) NOT NULL DEFAULT '';
+
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "OfficialPhotoFileName" character varying(180) NULL;
+
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "OfficialPhotoContentType" character varying(80) NULL;
+
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "OfficialPhotoSizeBytes" bigint NULL;
+
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "OfficialPhotoUploadedAt" timestamp with time zone NULL;
+
+            ALTER TABLE IF EXISTS "Users"
+            ADD COLUMN IF NOT EXISTS "OfficialPhotoUpdatedByUserId" uuid NULL;
+
+            CREATE INDEX IF NOT EXISTS "IX_Users_StudentNumber"
+            ON "Users" ("StudentNumber");
+
             ALTER TABLE IF EXISTS "Exams"
             ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'Draft';
 
@@ -465,6 +489,12 @@ static void EnsureRuntimeSchema(AppDbContext db, ILogger logger)
 
             ALTER TABLE IF EXISTS "ExamAttempts"
             ADD COLUMN IF NOT EXISTS "PublishedByUserId" uuid NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "AttemptQuestionOrderJson" text NULL;
+
+            ALTER TABLE IF EXISTS "ExamAttempts"
+            ADD COLUMN IF NOT EXISTS "AttemptVersionSignature" text NULL;
 
             ALTER TABLE IF EXISTS "Questions"
             ADD COLUMN IF NOT EXISTS "Topic" text NULL;

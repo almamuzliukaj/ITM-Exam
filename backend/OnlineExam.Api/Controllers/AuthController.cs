@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
@@ -77,7 +78,12 @@ namespace OnlineExam.Api.Controllers
                 Token = tokenHandler.WriteToken(token),
                 FullName = user.FullName,
                 Email = user.Email,
-                Role = user.Role
+                Role = user.Role,
+                StudentNumber = user.Role == "Student" ? BuildStudentNumber(user) : string.Empty,
+                PhotoUrl = user.Role == "Student" && !string.IsNullOrWhiteSpace(user.OfficialPhotoFileName)
+                    ? Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = user.Id }) ?? string.Empty
+                    : string.Empty,
+                Initials = BuildInitials(user.FullName, user.Email)
             });
         }
 
@@ -85,15 +91,25 @@ namespace OnlineExam.Api.Controllers
         [HttpGet("me")]
         public IActionResult Me()
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var email = User.FindFirst(ClaimTypes.Name)?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var userIdRaw = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdRaw, out var parsedUserId))
+                return Unauthorized(new { message = "Invalid user session." });
+
+            var user = _db.Users.AsNoTracking().FirstOrDefault(x => x.Id == parsedUserId);
+            if (user == null || !user.IsActive)
+                return Unauthorized(new { message = "Invalid user session." });
 
             return Ok(new
             {
-                userId,
-                email,
-                role
+                userId = user.Id,
+                email = user.Email,
+                fullName = user.FullName,
+                role = user.Role,
+                studentNumber = user.Role == "Student" ? BuildStudentNumber(user) : string.Empty,
+                photoUrl = user.Role == "Student" && !string.IsNullOrWhiteSpace(user.OfficialPhotoFileName)
+                    ? Url.Action("GetStudentPhoto", "StudentIdentities", new { studentId = user.Id }) ?? string.Empty
+                    : string.Empty,
+                initials = BuildInitials(user.FullName, user.Email)
             });
         }
 
@@ -126,6 +142,32 @@ namespace OnlineExam.Api.Controllers
             {
                 return false;
             }
+        }
+
+        private static string BuildStudentNumber(OnlineExam.Api.Models.User student)
+        {
+            if (!string.IsNullOrWhiteSpace(student.StudentNumber))
+                return student.StudentNumber.Trim();
+
+            var localPart = student.Email.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(localPart) && localPart.Any(char.IsDigit))
+                return localPart.Trim();
+
+            return $"STU-{student.Id.ToString("N")[..8].ToUpperInvariant()}";
+        }
+
+        private static string BuildInitials(string? fullName, string? email)
+        {
+            var parts = (fullName ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(2)
+                .Select(part => char.ToUpperInvariant(part[0]))
+                .ToArray();
+
+            if (parts.Length > 0)
+                return new string(parts);
+
+            return string.IsNullOrWhiteSpace(email) ? "ST" : email[..1].ToUpperInvariant();
         }
     }
 }

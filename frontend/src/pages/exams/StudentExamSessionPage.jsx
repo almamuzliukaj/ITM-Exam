@@ -3,7 +3,7 @@ import Editor from "@monaco-editor/react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
-import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, runTechnicalExamAnswer, sendExamHeartbeat, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, requestExamDeviceChange, runTechnicalExamAnswer, sendExamHeartbeat, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -54,7 +54,7 @@ export default function StudentExamSessionPage() {
   const shouldShowFinalWarning = Boolean(integrityPolicy?.shouldShowFinalWarning) || effectiveViolationCount >= finalWarningThreshold;
   const shouldAutoSubmit = Boolean(integrityPolicy?.shouldAutoSubmit) || effectiveViolationCount >= autoActionThreshold;
   const interactionLocked = Boolean(integrityPolicy?.shouldBlockInteraction) || shouldAutoSubmit;
-  const waitingForApproval = accessStatus?.accessStatus === "ApprovalRequested";
+  const waitingForApproval = ["ApprovalRequested", "WaitingForPhysicalVerification", "DeviceChangeRequested"].includes(accessStatus?.accessStatus);
   const approvalRejected = accessStatus?.accessStatus === "Rejected";
   const sessionRemoved = sessionControlState?.accessStatus === "Removed";
   const sessionRejected = sessionControlState?.accessStatus === "Rejected";
@@ -95,10 +95,11 @@ export default function StudentExamSessionPage() {
         setSessionTiming(provisionalTiming);
         setTimeRemaining(calculateRemainingSeconds(provisionalTiming));
 
-        const attemptData = await getCurrentExamAttempt(examId);
+        const clientSessionId = clientSessionIdRef.current;
+        const attemptData = await getCurrentExamAttempt(examId, clientSessionId);
         const [questionData, integritySummary] = await Promise.all([
-          listQuestions(examId),
-          getCurrentExamIntegritySummary(examId).catch(() => null),
+          listQuestions(examId, clientSessionId),
+          getCurrentExamIntegritySummary(examId, clientSessionId).catch(() => null),
         ]);
         if (!active) return;
 
@@ -425,6 +426,7 @@ export default function StudentExamSessionPage() {
           questionId,
           response: String(response || "").trim(),
         })),
+        clientSessionId: clientSessionIdRef.current,
       };
       const submission = await submitExamAttempt(examId, payload);
       if (document.fullscreenElement && document.exitFullscreen) {
@@ -529,7 +531,7 @@ export default function StudentExamSessionPage() {
       }
 
       try {
-        const updated = await sendExamHeartbeat(examId);
+        const updated = await sendExamHeartbeat(examId, clientSessionIdRef.current);
         if (!active) return;
         setAccessStatus(updated);
         setNetworkOnline(true);
@@ -562,7 +564,7 @@ export default function StudentExamSessionPage() {
 
   useEffect(() => {
     if (!examId || isLiveSession || !accessStatus?.requiresCode || accessStatus?.hasAccess) return;
-    if (!["ApprovalRequested", "Rejected"].includes(accessStatus?.accessStatus)) return;
+    if (!["ApprovalRequested", "WaitingForPhysicalVerification", "DeviceChangeRequested", "Rejected"].includes(accessStatus?.accessStatus)) return;
 
     let active = true;
     const refreshAccessStatus = async () => {
@@ -646,6 +648,25 @@ export default function StudentExamSessionPage() {
       setAccessStatus(updatedAccess);
     } catch (err) {
       setError(getApiMessage(err, "Approval request could not be sent."));
+    } finally {
+      setRequestingApproval(false);
+    }
+  }
+
+  async function requestDeviceChangeApproval() {
+    if (!examId || requestingApproval) return;
+
+    try {
+      setRequestingApproval(true);
+      setError("");
+      const updatedAccess = await requestExamDeviceChange(examId, "Student requested device change approval from the exam session.");
+      setAccessStatus(updatedAccess);
+      setSessionControlState(updatedAccess);
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen().catch(() => {});
+      }
+    } catch (err) {
+      setError(getApiMessage(err, "Device change request could not be sent."));
     } finally {
       setRequestingApproval(false);
     }
@@ -816,10 +837,11 @@ export default function StudentExamSessionPage() {
           <span>Violations</span>
           <strong>{effectiveViolationCount}/{autoActionThreshold}</strong>
         </div>
-        <div className="secureExamStudent">
-          <strong>{user.fullName || user.email}</strong>
-          <span>{faceProctoring.status === "active" ? "Camera active" : "Camera check"}</span>
-        </div>
+        <SecureExamIdentityBanner
+          identity={accessStatus?.studentIdentity}
+          fallbackUser={user}
+          cameraStatus={faceProctoring.status}
+        />
       </header>
 
       <main className="secureExamMain">
@@ -837,11 +859,11 @@ export default function StudentExamSessionPage() {
         {sessionControlState ? (
           <LiveSessionStatePanel
             tone={sessionRemoved || sessionRejected ? "danger" : "warning"}
-            title={sessionRemoved ? "Removed by professor" : sessionRejected ? "Admission rejected" : "Session paused"}
+            title={sessionRemoved ? "Removed by professor" : sessionRejected ? "Admission rejected" : sessionControlState.accessStatus === "DeviceChangeRequested" ? "Device change pending" : "Session paused"}
             message={sessionControlState.message || "Your live exam access changed. The exam workspace has been closed for review."}
             detail={sessionControlState.approvalReason || "Contact your professor before trying to re-enter."}
-            actionLabel="Return to exams"
-            onAction={() => navigate("/exams")}
+            actionLabel={sessionRemoved || sessionRejected ? "Return to exams" : "Request device change"}
+            onAction={sessionRemoved || sessionRejected ? () => navigate("/exams") : requestDeviceChangeApproval}
           />
         ) : null}
 
@@ -1350,22 +1372,24 @@ function AutoSubmitNoticeModal({ notice, countdown, submitting, onSubmitNow }) {
 
 function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingApproval, onEntryCodeChange, onVerify, onRequestApproval }) {
   const verified = Boolean(accessStatus?.hasAccess);
-  const waiting = accessStatus?.accessStatus === "ApprovalRequested";
+  const waiting = ["ApprovalRequested", "WaitingForPhysicalVerification", "DeviceChangeRequested"].includes(accessStatus?.accessStatus);
   const rejected = accessStatus?.accessStatus === "Rejected";
 
   return (
     <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
       <div className="sectionHeader">
         <div>
-          <h3>{verified ? "Exam access confirmed" : "Enter exam access code"}</h3>
+          <h3>{verified ? "Physical admission approved" : waiting ? "Waiting for physical verification" : "Enter exam access code"}</h3>
           <span className="small">
             {verified
-              ? "You can now start the monitored exam session."
+              ? "You can now continue to the rules screen and start the monitored exam session."
+              : waiting
+                ? "Your identity must be approved by the professor or assistant before the exam can start."
               : "Use the short code from the professor, or request manual admission if you cannot use the active code."}
           </span>
         </div>
         <span className={`statusPill ${verified ? "statusPublished" : rejected ? "statusWarn" : waiting ? "statusDraft" : "statusDraft"}`}>
-          {verified ? accessStatus.accessStatus || "Verified" : waiting ? "Waiting approval" : rejected ? "Rejected" : "Code required"}
+          {verified ? "Approved" : waiting ? "Physical check" : rejected ? "Rejected" : "Code required"}
         </span>
       </div>
       {!verified ? (
@@ -1389,7 +1413,7 @@ function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingAppr
           <div className="manualAdmissionActions">
             <div>
               <strong>Need manual admission?</strong>
-              <span>{waiting ? "Your request is visible to the professor. This page refreshes the status automatically." : "Ask the professor to approve your entry from the live monitor."}</span>
+              <span>{waiting ? "Your admission is visible to the professor. This page refreshes the status automatically." : "Ask the professor to approve your entry from the live monitor."}</span>
             </div>
             <button className="btn" type="button" onClick={onRequestApproval} disabled={requestingApproval || waiting}>
               {requestingApproval ? "Sending..." : waiting ? "Request sent" : rejected ? "Request again" : "Request approval"}
@@ -1406,12 +1430,13 @@ function ApprovalWaitingPanel({ accessStatus }) {
     <section className="surfaceCard manualAdmissionPanel manualAdmissionWaiting">
       <div className="sectionHeader">
         <div>
-          <h3>Waiting for professor approval</h3>
+          <h3>Waiting for physical identity approval</h3>
           <span className="small">Do not refresh or start the exam yet. The timer has not started.</span>
         </div>
-        <span className="statusPill statusDraft">Pending</span>
+        <span className="statusPill statusDraft">Physical check</span>
       </div>
       <div className="sectionBody">
+        <StudentIdentityCard identity={accessStatus?.studentIdentity} />
         <p>{accessStatus?.message || "Your manual admission request has been sent to the professor."}</p>
         <div className="manualAdmissionTimeline">
           <span>Request sent</span>
@@ -1419,6 +1444,46 @@ function ApprovalWaitingPanel({ accessStatus }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function StudentIdentityCard({ identity }) {
+  if (!identity) return null;
+
+  return (
+    <div className="studentAdmissionIdentity">
+      <div className="studentAdmissionPhoto" aria-hidden="true">
+        {identity.photoUrl ? <img src={identity.photoUrl} alt="" /> : <span>{identity.initials || "ST"}</span>}
+      </div>
+      <div>
+        <span className="summaryLabel">Student identity</span>
+        <strong>{identity.fullName || "Student"}</strong>
+        <small>{identity.email}</small>
+        <small>ID: {identity.studentNumber || identity.studentId}</small>
+      </div>
+    </div>
+  );
+}
+
+function SecureExamIdentityBanner({ identity, fallbackUser, cameraStatus }) {
+  const fullName = identity?.fullName || fallbackUser?.fullName || "Student";
+  const email = identity?.email || fallbackUser?.email || "";
+  const studentNumber = identity?.studentNumber || identity?.studentId || "Pending ID";
+  const initials = identity?.initials || buildInitials(fullName, email);
+
+  return (
+    <div className="secureExamIdentityBanner" aria-label="Verified student identity">
+      <div className="secureExamIdentityPhoto" aria-hidden="true">
+        {identity?.photoUrl ? <img src={identity.photoUrl} alt="" /> : <span>{initials}</span>}
+      </div>
+      <div className="secureExamIdentityText">
+        <span>Verified student</span>
+        <strong>{fullName}</strong>
+        <small>{email}</small>
+        <small>ID: {studentNumber}</small>
+      </div>
+      <em>{cameraStatus === "active" ? "Camera active" : "Camera check"}</em>
+    </div>
   );
 }
 
@@ -1643,6 +1708,20 @@ function formatSavedAt(value) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+}
+
+function buildInitials(fullName, email) {
+  const parts = String(fullName || "")
+    .split(" ")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length > 0) {
+    return parts.map((part) => part[0]?.toUpperCase()).join("");
+  }
+
+  return String(email || "ST").slice(0, 2).toUpperCase();
 }
 
 function formatSaveState(saveState) {

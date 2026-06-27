@@ -36,6 +36,12 @@ export default function ExamsListPage() {
     assessmentType: "",
     examPeriod: "",
     academicYear: "",
+    semester: "",
+    course: "",
+    instructorType: "",
+    instructor: "",
+    scheduledFrom: "",
+    scheduledTo: "",
   });
   const [examPage, setExamPage] = useState(1);
   const [examPageSize, setExamPageSize] = useState(10);
@@ -63,15 +69,34 @@ export default function ExamsListPage() {
 
   const canCreate = canCreateExams(user?.role);
   const isStudent = user?.role === "Student";
+  const filterOptions = useMemo(() => ({
+    academicYears: uniqueSorted(exams.map((exam) => exam.academicYear)),
+    semesters: uniqueSorted(exams.map((exam) => exam.semesterLabel)),
+    courses: uniqueSorted(exams.map((exam) => formatCourseLabel(exam))),
+    instructors: uniqueSorted(exams
+      .filter((exam) => !filters.instructorType || exam.instructorType === filters.instructorType)
+      .map((exam) => exam.instructorName)),
+  }), [exams, filters.instructorType]);
   const filteredExams = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
     return exams.filter((exam) => {
-      if (examStatusFilter === "published" && !exam.isPublished) return false;
-      if (examStatusFilter === "draft" && exam.isPublished) return false;
-      if (examStatusFilter === "lockdown" && !exam.requiresLockdown) return false;
+      if (isStudent) {
+        const submitted = exam.hasSubmittedAttempt || exam.studentExamStatus === "Submitted";
+        if (examStatusFilter === "published" && (!exam.isPublished || submitted)) return false;
+        if (examStatusFilter === "submitted" && !submitted) return false;
+      } else {
+        if (examStatusFilter === "published" && !exam.isPublished) return false;
+        if (examStatusFilter === "draft" && exam.isPublished) return false;
+      }
       if (filters.assessmentType && normalizeAssessmentTypeForUi(exam.assessmentType) !== filters.assessmentType) return false;
       if (filters.examPeriod && normalizeExamPeriodForUi(exam.examPeriod) !== filters.examPeriod) return false;
       if (filters.academicYear && exam.academicYear !== filters.academicYear) return false;
+      if (filters.semester && exam.semesterLabel !== filters.semester) return false;
+      if (filters.course && formatCourseLabel(exam) !== filters.course) return false;
+      if (filters.instructorType && exam.instructorType !== filters.instructorType) return false;
+      if (filters.instructor && exam.instructorName !== filters.instructor) return false;
+      if (filters.scheduledFrom && toDateInputValue(exam.startsAt) < filters.scheduledFrom) return false;
+      if (filters.scheduledTo && toDateInputValue(exam.startsAt) > filters.scheduledTo) return false;
 
       if (!search) return true;
       const haystack = [
@@ -82,11 +107,13 @@ export default function ExamsListPage() {
         exam.academicYear,
         exam.semesterLabel,
         exam.cohortLabel,
+        exam.instructorType,
+        exam.instructorName,
         formatExamOffering(exam),
       ].join(" ").toLowerCase();
       return haystack.includes(search);
     });
-  }, [examStatusFilter, exams, filters]);
+  }, [examStatusFilter, exams, filters, isStudent]);
   const examPageCount = Math.max(1, Math.ceil(filteredExams.length / examPageSize));
   const visibleExams = useMemo(() => {
     const startIndex = (examPage - 1) * examPageSize;
@@ -178,9 +205,9 @@ export default function ExamsListPage() {
           <div className="sectionBody stackLg">
             <div className="segmentedControl" aria-label="Exam status filter">
               <button className={examStatusFilter === "all" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("all")}>All</button>
-              <button className={examStatusFilter === "published" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("published")}>{t("examsList.published")}</button>
+              <button className={examStatusFilter === "published" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("published")}>{isStudent ? "Published / Available" : t("examsList.published")}</button>
+              {isStudent ? <button className={examStatusFilter === "submitted" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("submitted")}>Submitted</button> : null}
               {!isStudent ? <button className={examStatusFilter === "draft" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("draft")}>{t("examsList.draft")}</button> : null}
-              <button className={examStatusFilter === "lockdown" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("lockdown")}>Lockdown</button>
             </div>
 
             <div className="assessmentFiltersGrid">
@@ -211,14 +238,66 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
-                  {academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                  {uniqueSorted([...academicYears, ...filterOptions.academicYears]).map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
               </div>
+              {isStudent ? (
+                <>
+                  <div className="field">
+                    <label className="label">Semester</label>
+                    <select className="input" value={filters.semester} onChange={(e) => setFilters((current) => ({ ...current, semester: e.target.value }))}>
+                      <option value="">All semesters</option>
+                      {filterOptions.semesters.map((semester) => <option key={semester} value={semester}>{semester}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label">Course</label>
+                    <select className="input" value={filters.course} onChange={(e) => setFilters((current) => ({ ...current, course: e.target.value }))}>
+                      <option value="">All courses</option>
+                      {filterOptions.courses.map((course) => <option key={course} value={course}>{course}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label">Source</label>
+                    <select className="input" value={filters.instructorType} onChange={(e) => setFilters((current) => ({ ...current, instructorType: e.target.value, instructor: "" }))}>
+                      <option value="">Professor and Assistant</option>
+                      <option value="Professor">Professor</option>
+                      <option value="Assistant">Assistant</option>
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label">Instructor</label>
+                    <select className="input" value={filters.instructor} onChange={(e) => setFilters((current) => ({ ...current, instructor: e.target.value }))}>
+                      <option value="">All instructors</option>
+                      {filterOptions.instructors.map((instructor) => <option key={instructor} value={instructor}>{instructor}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="label">Scheduled from</label>
+                    <input className="input" type="date" value={filters.scheduledFrom} onChange={(e) => setFilters((current) => ({ ...current, scheduledFrom: e.target.value }))} />
+                  </div>
+                  <div className="field">
+                    <label className="label">Scheduled to</label>
+                    <input className="input" type="date" value={filters.scheduledTo} onChange={(e) => setFilters((current) => ({ ...current, scheduledTo: e.target.value }))} />
+                  </div>
+                </>
+              ) : null}
               <div className="field assessmentFilterReset">
                 <label className="label">Filters</label>
                 <button className="btn" type="button" onClick={() => {
                   setExamStatusFilter("all");
-                  setFilters({ search: "", assessmentType: "", examPeriod: "", academicYear: "" });
+                  setFilters({
+                    search: "",
+                    assessmentType: "",
+                    examPeriod: "",
+                    academicYear: "",
+                    semester: "",
+                    course: "",
+                    instructorType: "",
+                    instructor: "",
+                    scheduledFrom: "",
+                    scheduledTo: "",
+                  });
                 }}>
                   Reset
                 </button>
@@ -241,17 +320,16 @@ export default function ExamsListPage() {
                 <article key={exam.id} className="resourceCard">
                   <div className="resourceMetaRow">
                     <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
-                      {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
+                      {exam.hasSubmittedAttempt ? "Submitted" : exam.isPublished ? "Available" : t("examsList.draft")}
                     </span>
-                    {exam.requiresLockdown ? (
-                      <span className="statusPill statusWarn">Lockdown</span>
-                    ) : null}
+                    <span className="statusPill statusDraft">{exam.instructorType || "Professor"}</span>
                     <span className="small">{exam.durationMinutes || 60} min</span>
                   </div>
                   <h3>{exam.title}</h3>
-                  <p>{exam.description || t("examsList.noDescription")}</p>
+                  <p>{formatCourseLabel(exam)} · {exam.instructorName || "Instructor"}</p>
+                  <p>Scheduled {formatDateTime(exam.startsAt)}</p>
                   <div className="resourceFooter">
-                    <div className="small">{t("examsList.openHint")}</div>
+                    <div className="small">{exam.hasSubmittedAttempt ? `Submitted ${formatDateTime(exam.studentSubmittedAt)}` : t("examsList.openHint")}</div>
                     <div className="resourceActionGroup">
                       {canCreate && !exam.isPublished ? (
                         <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
@@ -266,9 +344,13 @@ export default function ExamsListPage() {
                           {deletingId === exam.id ? "Deleting..." : "Delete draft"}
                         </button>
                       ) : null}
-                      <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                        {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
-                      </Link>
+                      {exam.hasSubmittedAttempt ? (
+                        <Link className="btn" to="/results">View result status</Link>
+                      ) : (
+                        <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
+                          {isStudent ? "Start" : t("examsList.open")}
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </article>
@@ -404,6 +486,24 @@ function formatExamOffering(exam) {
   const section = offering.sectionCode ? `Section ${offering.sectionCode}` : "";
 
   return [courseLabel, term, section].filter(Boolean).join(" | ");
+}
+
+function formatCourseLabel(exam) {
+  const course = exam?.courseOffering?.course;
+  if (course?.code && course?.name) return `${course.code} - ${course.name}`;
+  return course?.code || course?.name || "Course";
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function toDateInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
 }
 
 function groupExamsByOffering(exams) {

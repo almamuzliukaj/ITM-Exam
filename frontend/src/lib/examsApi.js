@@ -115,7 +115,6 @@ export async function rejectExamStudentAccess(examId, studentId, reason = "Profe
   return response.data;
 }
 
- feature/alma-physical-admission-monitoring
 export async function revokeExamStudentAccess(examId, studentId, reason = "Professor revoked exam admission.") {
   const response = await api.post(`/api/exams/${examId}/students/${studentId}/revoke-access`, { reason });
   return response.data;
@@ -123,10 +122,6 @@ export async function revokeExamStudentAccess(examId, studentId, reason = "Profe
 
 export async function requestExamDeviceChange(examId, reason = "Student requested device change approval.") {
   const response = await api.post(`/api/exams/${examId}/request-device-change`, { reason });
-
-export async function removeExamStudentAccess(examId, studentId, reason = "Removed by professor during live monitoring.") {
-  const response = await api.post(`/api/exams/${examId}/students/${studentId}/remove-access`, { reason });
- main
   return response.data;
 }
 

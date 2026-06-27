@@ -2,27 +2,27 @@ import { Link, useParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
- feature/alma-physical-admission-monitoring
-import { allowExamStudentAccess, getExam, getExamLiveMonitor, rejectExamStudentAccess, revokeExamStudentAccess } from "../../lib/examsApi";
 import {
   allowExamStudentAccess,
   getExam,
   getExamLiveMonitor,
   rejectExamStudentAccess,
+  revokeExamStudentAccess,
 } from "../../lib/examsApi";
- main
 
 const REFRESH_MS = 5000;
 
 const statusFilters = [
   { value: "all", label: "All students" },
   { value: "NotVerified", label: "Not verified" },
+  { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "ApprovalRequested", label: "Waiting approval" },
-  { value: "CodeVerified", label: "Code verified" },
+  { value: "DeviceChangeRequested", label: "Device change" },
   { value: "ManuallyApproved", label: "Approved" },
   { value: "Started", label: "Active" },
   { value: "Submitted", label: "Submitted" },
   { value: "Rejected", label: "Rejected" },
+  { value: "Removed", label: "Revoked" },
   { value: "flagged", label: "With violations" },
 ];
 
@@ -33,7 +33,6 @@ export default function ExamMonitorPage() {
   const [monitor, setMonitor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [actionStudentId, setActionStudentId] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
@@ -56,27 +55,8 @@ export default function ExamMonitorPage() {
         getExamLiveMonitor(examId),
       ]);
 
- feature/alma-physical-admission-monitoring
-      const nextEvents = flattenMonitorEvents(monitorData?.students || []);
-      const nextNewIds = new Set();
-      for (const event of nextEvents) {
-        if (!seenEventIdsRef.current.has(event.eventId)) {
-          nextNewIds.add(event.eventId);
-        }
-      }
-
-      if (seenEventIdsRef.current.size === 0) {
-        nextNewIds.clear();
-      }
-
-      seenEventIdsRef.current = new Set(nextEvents.map((event) => event.eventId));
-      setNewEventIds(nextNewIds);
-      setExam(examData);
-      setSummary(monitorData);
-
       setExam(examData);
       setMonitor(monitorData);
- main
       setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(readApiMessage(err) || "Failed to load live exam dashboard.");
@@ -96,53 +76,8 @@ export default function ExamMonitorPage() {
     return () => window.clearInterval(timer);
   }, [autoRefresh, loadMonitor]);
 
- feature/alma-physical-admission-monitoring
-  const students = useMemo(() => Array.isArray(summary?.students) ? summary.students : [], [summary]);
-  const activeStudents = useMemo(() => students.filter((student) => student.attemptStatus === "InProgress"), [students]);
-  const submittedStudents = useMemo(() => students.filter((student) => student.attemptStatus === "Submitted"), [students]);
-  const waitingStudents = useMemo(() => students.filter((student) => ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus)), [students]);
-  const flaggedStudents = useMemo(() => students.filter((student) => Number(student.violationCount || 0) > 0), [students]);
-  const latestEvents = useMemo(() => flattenMonitorEvents(students).slice(0, 10), [students]);
-
-  async function performStudentAction(student, action) {
-    if (!examId || !student?.studentId) return;
-    const reason = window.prompt(
-      action === "approve"
-        ? "Approval note"
-        : action === "reject"
-          ? "Rejection reason"
-          : "Revocation reason",
-      action === "approve"
-        ? "Physical identity verified by staff."
-        : action === "reject"
-          ? "Physical identity was not approved."
-          : "Admission/session revoked by staff.",
-    );
-
-    if (reason === null) return;
-
-    try {
-      setActionStudentId(student.studentId);
-      setError("");
-      if (action === "approve") {
-        await allowExamStudentAccess(examId, student.studentId, reason);
-      } else if (action === "reject") {
-        await rejectExamStudentAccess(examId, student.studentId, reason);
-      } else {
-        await revokeExamStudentAccess(examId, student.studentId, reason);
-      }
-      await loadMonitor(true);
-    } catch (err) {
-      setError(readApiMessage(err) || "Student admission action failed.");
-    } finally {
-      setActionStudentId("");
-    }
-  }
-
-  const students = useMemo(
-    () => (Array.isArray(monitor?.students) ? monitor.students : []),
-    [monitor],
-  );
+  const students = useMemo(() => (Array.isArray(monitor?.students) ? monitor.students : []), [monitor]);
+  const summary = monitor?.summary || {};
 
   const filteredStudents = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -150,6 +85,7 @@ export default function ExamMonitorPage() {
       const matchesSearch = !term || [
         student.fullName,
         student.email,
+        student.studentNumber,
         student.enrollmentStatus,
         student.accessStatus,
         student.attemptStatus,
@@ -162,17 +98,11 @@ export default function ExamMonitorPage() {
     });
   }, [search, statusFilter, students]);
 
-  const summary = monitor?.summary || {};
+  const waitingCount = students.filter((student) => ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus)).length;
+  const activeCount = Number(summary.active || students.filter((student) => student.attemptStatus === "InProgress").length || 0);
+  const submittedCount = Number(summary.submitted || students.filter((student) => student.attemptStatus === "Submitted").length || 0);
+  const flaggedCount = Number(summary.withViolations || students.filter((student) => Number(student.violationCount || 0) > 0).length || 0);
   const totalEnrolled = Number(summary.totalEnrolled || students.length || 0);
-  const activeCount = Number(summary.active || 0);
-  const submittedCount = Number(summary.submitted || 0);
-  const notJoinedCount = Number(summary.notJoined || 0);
-  const violationsCount = Number(summary.withViolations || 0);
-  const verifiedCount = Number(summary.verified || 0);
- main
-
-  if (userLoading) return <div className="pageState">Loading monitor...</div>;
-  if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
 
   async function onConfirmAction() {
     if (!examId || !pendingAction?.student?.studentId) return;
@@ -184,26 +114,36 @@ export default function ExamMonitorPage() {
 
       if (pendingAction.type === "approve") {
         await allowExamStudentAccess(examId, pendingAction.student.studentId, reason);
-      } else {
+      } else if (pendingAction.type === "reject") {
         await rejectExamStudentAccess(examId, pendingAction.student.studentId, reason);
+      } else {
+        await revokeExamStudentAccess(examId, pendingAction.student.studentId, reason);
       }
 
       setPendingAction(null);
       setActionReason("");
       await loadMonitor(true);
     } catch (err) {
-      setError(readApiMessage(err) || "Student access action failed.");
+      setError(readApiMessage(err) || "Student admission action failed.");
     } finally {
       setActionSaving(false);
     }
   }
+
+  function openAction(type, student) {
+    setPendingAction({ type, student });
+    setActionReason(defaultReasonForAction(type));
+  }
+
+  if (userLoading) return <div className="pageState">Loading monitor...</div>;
+  if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
 
   return (
     <AppShell
       user={user}
       badge="Live exam dashboard"
       title={exam?.title ? `${exam.title} live dashboard` : "Live exam dashboard"}
-      subtitle="Monitor enrolled students, classroom entry status, attempt activity, and integrity risk in one operational view."
+      subtitle="Monitor enrolled students, physical admission, attempt activity, and integrity risk in one operational view."
       actions={
         <>
           <Link className="btn" to={`/exams/${examId}`}>Exam details</Link>
@@ -240,104 +180,18 @@ export default function ExamMonitorPage() {
             </section>
 
             <section className="monitorMetricGrid">
- feature/alma-physical-admission-monitoring
-              <MonitorMetric label="Waiting approval" value={waitingStudents.length || summary?.summary?.waitingForPhysicalVerification || 0} tone={waitingStudents.length > 0 ? "warn" : "clear"} />
-              <MonitorMetric label="In progress" value={activeStudents.length || summary?.summary?.active || 0} tone="live" />
-              <MonitorMetric label="Submitted" value={submittedStudents.length || summary?.summary?.submitted || 0} />
-              <MonitorMetric label="Students flagged" value={flaggedStudents.length || summary?.summary?.withViolations || 0} tone={flaggedStudents.length > 0 ? "danger" : "clear"} />
-              <MonitorMetric label="Enrolled" value={summary?.summary?.totalEnrolled || students.length} />
-            </section>
-
-            <section className="monitorLayout">
-              <div className="surfaceCard monitorRosterCard">
-                <div className="sectionHeader">
-                  <div>
-                    <h3>Physical admission roster</h3>
-                    <span className="sectionMeta">Verify classroom identity, control access, and monitor live exam state.</span>
-                  </div>
-                  <span className="statusPill statusDraft">{students.length} students</span>
-                </div>
-                <div className="sectionBody">
-                  {students.length === 0 ? (
-                    <div className="emptyState">
-                      <strong>No enrolled students found</strong>
-                      <span>Eligible students will appear here after the exam is linked to an offering.</span>
-                    </div>
-                  ) : (
-                    <div className="monitorTableWrap">
-                      <table className="dataTable monitorTable">
-                        <thead>
-                          <tr>
-                            <th>Student</th>
-                            <th>Admission</th>
-                            <th>Attempt</th>
-                            <th>Violations</th>
-                            <th>Last activity</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {students.map((student) => (
-                            <tr key={student.studentId} className={Number(student.violationCount || 0) > 0 ? "monitorFlaggedRow" : ""}>
-                              <td>
-                                <div className="monitorStudentIdentity">
-                                  <div className="monitorStudentAvatar">
-                                    {student.photoUrl ? <img src={student.photoUrl} alt="" /> : <span>{student.initials || "ST"}</span>}
-                                  </div>
-                                  <div>
-                                    <strong>{student.fullName || "Student"}</strong>
-                                    <span>{student.email}</span>
-                                    <small>ID: {student.studentNumber || student.studentId}</small>
-                                  </div>
-                                </div>
-                              </td>
-                              <td><AccessStatusBadge status={student.accessStatus} /></td>
-                              <td><AttemptStatusBadge student={student} /></td>
-                              <td>
-                                <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
-                                  {student.violationCount || 0}/3
-                                </span>
-                              </td>
-                              <td>
-                                <div className="monitorActivityCell">
-                                  <strong>{formatDateTime(student.lastActivityAt || student.startedAt || student.verifiedAt)}</strong>
-                                  <span>{student.latestViolationType ? formatEventType(student.latestViolationType) : student.admissionReason || "No security event"}</span>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="monitorActionGroup">
-                                  <button className="btn btnTiny btnPrimary" type="button" onClick={() => performStudentAction(student, "approve")} disabled={actionStudentId === student.studentId || student.accessStatus === "ManuallyApproved" || student.attemptStatus === "Submitted"}>
-                                    {student.accessStatus === "DeviceChangeRequested" ? "Approve device" : "Approve"}
-                                  </button>
-                                  <button className="btn btnTiny" type="button" onClick={() => performStudentAction(student, "reject")} disabled={actionStudentId === student.studentId || student.attemptStatus === "Submitted"}>
-                                    Reject
-                                  </button>
-                                  <button className="btn btnTiny btnDangerSoft" type="button" onClick={() => performStudentAction(student, "revoke")} disabled={actionStudentId === student.studentId || student.accessStatus === "Removed" || student.attemptStatus === "Submitted"}>
-                                    Revoke
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-              <MonitorMetric label="Enrolled" value={totalEnrolled} />
-              <MonitorMetric label="Verified" value={verifiedCount} tone="live" />
-              <MonitorMetric label="Active" value={activeCount} tone="live" />
+              <MonitorMetric label="Waiting approval" value={waitingCount || summary.waitingForPhysicalVerification || 0} tone={waitingCount > 0 ? "warn" : "clear"} />
+              <MonitorMetric label="In progress" value={activeCount} tone="live" />
               <MonitorMetric label="Submitted" value={submittedCount} />
-              <MonitorMetric label="Not joined" value={notJoinedCount} tone={notJoinedCount > 0 ? "warn" : "clear"} />
-              <MonitorMetric label="With violations" value={violationsCount} tone={violationsCount > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Students flagged" value={flaggedCount} tone={flaggedCount > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Enrolled" value={totalEnrolled} />
             </section>
 
             <section className="surfaceCard monitorRosterCard">
               <div className="sectionHeader">
                 <div>
-                  <h3>Student roster</h3>
-                  <span className="sectionMeta">Search, filter, approve, or reject classroom access for eligible students.</span>
- main
+                  <h3>Physical admission roster</h3>
+                  <span className="sectionMeta">Search, filter, approve, reject, revoke, and monitor classroom access.</span>
                 </div>
                 <span className="statusPill statusDraft">{filteredStudents.length} shown</span>
               </div>
@@ -373,10 +227,10 @@ export default function ExamMonitorPage() {
                       <thead>
                         <tr>
                           <th>Student</th>
-                          <th>Access</th>
+                          <th>Admission</th>
                           <th>Attempt</th>
-                          <th>Last activity</th>
                           <th>Violations</th>
+                          <th>Last activity</th>
                           <th>Started / submitted</th>
                           <th>Actions</th>
                         </tr>
@@ -385,18 +239,30 @@ export default function ExamMonitorPage() {
                         {filteredStudents.map((student) => (
                           <tr key={student.studentId} className={Number(student.violationCount || 0) > 0 ? "monitorFlaggedRow" : ""}>
                             <td>
-                              <strong>{student.fullName || "Student"}</strong>
-                              <span>{student.email}</span>
-                              <small>{student.enrollmentStatus || "Eligible"}</small>
+                              <div className="monitorStudentIdentity">
+                                <div className="monitorStudentAvatar">
+                                  {student.photoUrl ? <img src={student.photoUrl} alt="" /> : <span>{student.initials || "ST"}</span>}
+                                </div>
+                                <div>
+                                  <strong>{student.fullName || "Student"}</strong>
+                                  <span>{student.email}</span>
+                                  <small>ID: {student.studentNumber || student.studentId}</small>
+                                </div>
+                              </div>
                             </td>
                             <td><AccessStatusBadge status={student.accessStatus} /></td>
-                            <td><AttemptStatusBadge status={student.attemptStatus} /></td>
-                            <td>{student.lastActivityAt ? formatDateTime(student.lastActivityAt) : "No activity"}</td>
+                            <td><AttemptStatusBadge student={student} /></td>
                             <td>
                               <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
-                                {student.violationCount || 0}
+                                {student.violationCount || 0}/3
                               </span>
                               <small>{student.latestViolationType ? formatEventType(student.latestViolationType) : "No events"}</small>
+                            </td>
+                            <td>
+                              <div className="monitorActivityCell">
+                                <strong>{formatDateTime(student.lastActivityAt || student.startedAt || student.verifiedAt)}</strong>
+                                <span>{student.admissionReason || student.enrollmentStatus || "No security event"}</span>
+                              </div>
                             </td>
                             <td>
                               <div className="monitorTimeStack">
@@ -405,28 +271,30 @@ export default function ExamMonitorPage() {
                               </div>
                             </td>
                             <td>
-                              <div className="tableActionGroup">
+                              <div className="monitorActionGroup">
+                                <button
+                                  className="btn btnTiny btnPrimary"
+                                  type="button"
+                                  onClick={() => openAction("approve", student)}
+                                  disabled={student.attemptStatus === "Submitted" || ["ManuallyApproved", "Started", "Submitted"].includes(student.accessStatus)}
+                                >
+                                  {student.accessStatus === "DeviceChangeRequested" ? "Approve device" : "Approve"}
+                                </button>
                                 <button
                                   className="btn btnTiny"
                                   type="button"
-                                  onClick={() => {
-                                    setPendingAction({ type: "approve", student });
-                                    setActionReason(defaultReasonForAction("approve"));
-                                  }}
-                                  disabled={student.attemptStatus === "Submitted" || student.accessStatus === "ManuallyApproved"}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  className="btn btnTiny btnDanger"
-                                  type="button"
-                                  onClick={() => {
-                                    setPendingAction({ type: "reject", student });
-                                    setActionReason(defaultReasonForAction("reject"));
-                                  }}
+                                  onClick={() => openAction("reject", student)}
                                   disabled={student.attemptStatus === "Submitted" || student.accessStatus === "Rejected"}
                                 >
                                   Reject
+                                </button>
+                                <button
+                                  className="btn btnTiny btnDangerSoft"
+                                  type="button"
+                                  onClick={() => openAction("revoke", student)}
+                                  disabled={student.attemptStatus === "Submitted" || student.accessStatus === "Removed"}
+                                >
+                                  Revoke
                                 </button>
                               </div>
                             </td>
@@ -469,12 +337,11 @@ function MonitorMetric({ label, value, tone = "neutral" }) {
 }
 
 function AccessStatusBadge({ status }) {
- feature/alma-physical-admission-monitoring
-  if (status === "ManuallyApproved" || status === "Started" || status === "Submitted") {
+  if (["ManuallyApproved", "Started", "Submitted"].includes(status)) {
     return <span className="statusPill statusLive">Approved</span>;
   }
 
-  if (status === "WaitingForPhysicalVerification" || status === "ApprovalRequested") {
+  if (["WaitingForPhysicalVerification", "ApprovalRequested"].includes(status)) {
     return <span className="statusPill statusWarn">Waiting physical check</span>;
   }
 
@@ -509,53 +376,27 @@ function AttemptStatusBadge({ student }) {
   return <span className="statusPill statusDraft">Not started</span>;
 }
 
-function flattenMonitorEvents(students) {
-  return students
-    .filter((student) => student.latestViolationAt || student.accessStatus === "DeviceChangeRequested" || student.accessStatus === "Removed")
-    .map((student) => ({
-      eventId: `${student.studentId}-${student.latestViolationAt || student.lastActivityAt || student.accessStatus}`,
-      eventType: student.latestViolationType || student.accessStatus,
-      studentName: student.fullName || student.email || "Student",
-      occurredAt: student.latestViolationAt || student.lastActivityAt || student.verifiedAt,
-      attemptViolationCount: student.violationCount || 0,
-    }))
-    .sort((left, right) => Date.parse(right.occurredAt || "") - Date.parse(left.occurredAt || ""));
-
-  const normalized = status || "NotVerified";
-  const tone = normalized === "Started" || normalized === "CodeVerified" || normalized === "ManuallyApproved"
-    ? "statusLive"
-    : normalized === "Rejected" || normalized === "Removed"
-      ? "statusWarn"
-      : "statusDraft";
-  return <span className={`statusPill ${tone}`}>{formatAccessStatus(normalized)}</span>;
-}
-
-function AttemptStatusBadge({ status }) {
-  if (status === "Submitted") return <span className="statusPill statusLive">Submitted</span>;
-  if (status === "InProgress") return <span className="statusPill statusPublished">Active</span>;
-  return <span className="statusPill statusDraft">Not started</span>;
-}
-
 function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, onConfirm }) {
-  const isApprove = action.type === "approve";
+  const labels = {
+    approve: ["Physical approval", "Approve exam admission", "Approve access"],
+    reject: ["Reject admission", "Reject physical admission", "Reject access"],
+    revoke: ["Revoke admission", "Revoke exam admission", "Revoke access"],
+  };
+  const [eyebrow, title, actionLabel] = labels[action.type] || labels.reject;
   const studentName = action.student.fullName || action.student.email || "this student";
 
   return (
     <div className="modalBackdrop" role="presentation">
-      <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={`${isApprove ? "Approve" : "Reject"} student access`}>
+      <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modalHeader">
           <div>
-            <span className="summaryLabel">{isApprove ? "Manual approval" : "Reject admission"}</span>
-            <h3>{isApprove ? "Allow exam access" : "Reject access request"}</h3>
+            <span className="summaryLabel">{eyebrow}</span>
+            <h3>{title}</h3>
           </div>
           <button className="btn btnTiny" type="button" onClick={onCancel} aria-label="Close">Close</button>
         </div>
         <div className="modalBody stackLg">
-          <p className="small">
-            {isApprove
-              ? `Allow ${studentName} to enter this exam without the active entry code?`
-              : `Reject the manual admission request for ${studentName}?`}
-          </p>
+          <p className="small">This action changes exam admission for {studentName} and is recorded for audit review.</p>
           <div className="field">
             <label className="label">Reason</label>
             <textarea
@@ -568,8 +409,8 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
         </div>
         <div className="modalFooter">
           <button className="btn" type="button" onClick={onCancel} disabled={saving}>Cancel</button>
-          <button className={`btn ${isApprove ? "btnPrimary" : "btnDanger"}`} type="button" onClick={onConfirm} disabled={saving}>
-            {saving ? "Saving..." : isApprove ? "Approve access" : "Reject access"}
+          <button className={`btn ${action.type === "approve" ? "btnPrimary" : "btnDanger"}`} type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? "Saving..." : actionLabel}
           </button>
         </div>
       </div>
@@ -578,22 +419,9 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
 }
 
 function defaultReasonForAction(type) {
-  return type === "approve" ? "Professor approved classroom admission." : "Professor rejected manual admission.";
-}
-
-function formatAccessStatus(value) {
-  const labels = {
-    NotVerified: "Not verified",
-    ApprovalRequested: "Waiting approval",
-    CodeVerified: "Code verified",
-    ManuallyApproved: "Approved",
-    Started: "Started",
-    Submitted: "Submitted",
-    Rejected: "Rejected",
-    Removed: "Removed",
-  };
-  return labels[value] || value || "Not verified";
- main
+  if (type === "approve") return "Physical identity verified by staff.";
+  if (type === "revoke") return "Admission/session revoked by staff.";
+  return "Physical identity was not approved.";
 }
 
 function formatDateTime(value) {
@@ -620,14 +448,10 @@ function formatTime(value) {
 }
 
 function formatEventType(value) {
-  return String(value || "")
+  return String(value || "No events")
     .replaceAll("_", " ")
     .toLowerCase()
- feature/alma-physical-admission-monitoring
     .replace(/\b\w/g, (char) => char.toUpperCase());
-
-    .replace(/\b\w/g, (char) => char.toUpperCase()) || "No events";
-    main
 }
 
 function readApiMessage(err) {

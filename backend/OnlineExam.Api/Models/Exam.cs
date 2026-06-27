@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace OnlineExam.Api.Models;
 
 public class Exam
@@ -30,4 +32,22 @@ public class Exam
 
     public List<Question> Questions { get; set; } = new();
     public List<ExamAttempt> Attempts { get; set; } = new();
+
+    [NotMapped]
+    public string InstructorType { get; set; } = string.Empty;
+
+    [NotMapped]
+    public string InstructorName { get; set; } = string.Empty;
+
+    [NotMapped]
+    public string InstructorEmail { get; set; } = string.Empty;
+
+    [NotMapped]
+    public bool HasSubmittedAttempt { get; set; }
+
+    [NotMapped]
+    public string StudentExamStatus { get; set; } = string.Empty;
+
+    [NotMapped]
+    public DateTime? StudentSubmittedAt { get; set; }
 }

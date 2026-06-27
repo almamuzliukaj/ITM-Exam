@@ -15,10 +15,14 @@ const REFRESH_MS = 5000;
 const statusFilters = [
   { value: "all", label: "All students" },
   { value: "NotVerified", label: "Not verified" },
+  { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "ApprovalRequested", label: "Waiting approval" },
+ feature/alma-student-results-randomization
+  { value: "DeviceChangeRequested", label: "Device change" },
   { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "DeviceChangeRequested", label: "Device change" },
   { value: "CodeVerified", label: "Code verified" },
+ main
   { value: "ManuallyApproved", label: "Approved" },
   { value: "Started", label: "Active" },
   { value: "Submitted", label: "Submitted" },
@@ -77,10 +81,14 @@ export default function ExamMonitorPage() {
     return () => window.clearInterval(timer);
   }, [autoRefresh, loadMonitor]);
 
+ feature/alma-student-results-randomization
+  const students = useMemo(() => (Array.isArray(monitor?.students) ? monitor.students : []), [monitor]);
+  const summary = monitor?.summary || {};
+
   const students = useMemo(
     () => (Array.isArray(monitor?.students) ? monitor.students : []),
     [monitor],
-  );
+  ); main
 
   const filteredStudents = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -102,8 +110,13 @@ export default function ExamMonitorPage() {
     });
   }, [search, statusFilter, students]);
 
-  const summary = monitor?.summary || {};
+  const waitingCount = students.filter((student) => ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus)).length;
+  const activeCount = Number(summary.active || students.filter((student) => student.attemptStatus === "InProgress").length || 0);
+  const submittedCount = Number(summary.submitted || students.filter((student) => student.attemptStatus === "Submitted").length || 0);
+  const flaggedCount = Number(summary.withViolations || students.filter((student) => Number(student.violationCount || 0) > 0).length || 0);
   const totalEnrolled = Number(summary.totalEnrolled || students.length || 0);
+ feature/alma-student-results-randomization
+
   const verifiedCount = Number(summary.verified || 0);
   const activeCount = Number(summary.active || 0);
   const submittedCount = Number(summary.submitted || 0);
@@ -113,6 +126,7 @@ export default function ExamMonitorPage() {
 
   if (userLoading) return <div className="pageState">Loading monitor...</div>;
   if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
+  main
 
   async function onConfirmAction() {
     if (!examId || !pendingAction?.student?.studentId) return;
@@ -134,18 +148,26 @@ export default function ExamMonitorPage() {
       setActionReason("");
       await loadMonitor(true);
     } catch (err) {
-      setError(readApiMessage(err) || "Student access action failed.");
+      setError(readApiMessage(err) || "Student admission action failed.");
     } finally {
       setActionSaving(false);
     }
   }
+
+  function openAction(type, student) {
+    setPendingAction({ type, student });
+    setActionReason(defaultReasonForAction(type));
+  }
+
+  if (userLoading) return <div className="pageState">Loading monitor...</div>;
+  if (!user) return <div className="pageState">{userError || "You must be signed in."}</div>;
 
   return (
     <AppShell
       user={user}
       badge="Live exam dashboard"
       title={exam?.title ? `${exam.title} live dashboard` : "Live exam dashboard"}
-      subtitle="Monitor enrolled students, classroom entry status, attempt activity, and integrity risk in one operational view."
+      subtitle="Monitor enrolled students, physical admission, attempt activity, and integrity risk in one operational view."
       actions={
         <>
           <Link className="btn" to={`/exams/${examId}`}>Exam details</Link>
@@ -182,20 +204,29 @@ export default function ExamMonitorPage() {
             </section>
 
             <section className="monitorMetricGrid">
+ feature/alma-student-results-randomization
+              <MonitorMetric label="Waiting approval" value={waitingCount || summary.waitingForPhysicalVerification || 0} tone={waitingCount > 0 ? "warn" : "clear"} />
+              <MonitorMetric label="In progress" value={activeCount} tone="live" />
               <MonitorMetric label="Enrolled" value={totalEnrolled} />
               <MonitorMetric label="Verified" value={verifiedCount} tone="live" />
               <MonitorMetric label="Waiting check" value={waitingCount} tone={waitingCount > 0 ? "warn" : "clear"} />
               <MonitorMetric label="Active" value={activeCount} tone="live" />
+ main
               <MonitorMetric label="Submitted" value={submittedCount} />
-              <MonitorMetric label="Not joined" value={notJoinedCount} tone={notJoinedCount > 0 ? "warn" : "clear"} />
-              <MonitorMetric label="With violations" value={violationsCount} tone={violationsCount > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Students flagged" value={flaggedCount} tone={flaggedCount > 0 ? "danger" : "clear"} />
+              <MonitorMetric label="Enrolled" value={totalEnrolled} />
             </section>
 
             <section className="surfaceCard monitorRosterCard">
               <div className="sectionHeader">
                 <div>
+ feature/alma-student-results-randomization
+                  <h3>Physical admission roster</h3>
+                  <span className="sectionMeta">Search, filter, approve, reject, revoke, and monitor classroom access.</span>
+
                   <h3>Student roster</h3>
                   <span className="sectionMeta">Search, filter, approve, reject, or revoke classroom access for eligible students.</span>
+ main
                 </div>
                 <span className="statusPill statusDraft">{filteredStudents.length} shown</span>
               </div>
@@ -231,11 +262,15 @@ export default function ExamMonitorPage() {
                       <thead>
                         <tr>
                           <th>Student</th>
-                          <th>Access</th>
+                          <th>Admission</th>
                           <th>Attempt</th>
+ feature/alma-student-results-randomization
+                          <th>Violations</th>
+                          <th>Last activity</th>
+                          <th>Started / submitted</th>
                           <th>Started</th>
                           <th>Last activity</th>
-                          <th>Violations</th>
+                          <th>Violations</t main
                           <th>Actions</th>
                         </tr>
                       </thead>
@@ -255,6 +290,25 @@ export default function ExamMonitorPage() {
                               </div>
                             </td>
                             <td><AccessStatusBadge status={student.accessStatus} /></td>
+ feature/alma-student-results-randomization
+                            <td><AttemptStatusBadge student={student} /></td>
+                            <td>
+                              <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
+                                {student.violationCount || 0}/3
+                              </span>
+                              <small>{student.latestViolationType ? formatEventType(student.latestViolationType) : "No events"}</small>
+                            </td>
+                            <td>
+                              <div className="monitorActivityCell">
+                                <strong>{formatDateTime(student.lastActivityAt || student.startedAt || student.verifiedAt)}</strong>
+                                <span>{student.admissionReason || student.enrollmentStatus || "No security event"}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="monitorTimeStack">
+                                <span>{student.startedAt ? `Start ${formatDateTime(student.startedAt)}` : "Not started"}</span>
+                                <span>{student.submittedAt ? `Submit ${formatDateTime(student.submittedAt)}` : `${student.durationUsedMinutes || 0} min used`}</span>
+                              </div>
                             <td><AttemptStatusBadge status={student.attemptStatus} accessStatus={student.accessStatus} /></td>
                             <td>{formatDateTime(student.startedAt)}</td>
                             <td>
@@ -267,39 +321,54 @@ export default function ExamMonitorPage() {
                               <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
                                 {student.violationCount || 0}/3
                               </span>
+ main
                             </td>
                             <td>
                               <div className="monitorActionGroup">
                                 <button
                                   className="btn btnTiny btnPrimary"
                                   type="button"
+ feature/alma-student-results-randomization
+                                  onClick={() => openAction("approve", student)}
+                                  disabled={student.attemptStatus === "Submitted" || ["ManuallyApproved", "Started", "Submitted"].includes(student.accessStatus)}
+
                                   onClick={() => {
                                     setPendingAction({ type: "approve", student });
                                     setActionReason(defaultReasonForAction("approve"));
                                   }}
                                   disabled={student.accessStatus === "ManuallyApproved" || student.attemptStatus === "Submitted"}
+ main
                                 >
                                   {student.accessStatus === "DeviceChangeRequested" ? "Approve device" : "Approve"}
                                 </button>
                                 <button
                                   className="btn btnTiny"
                                   type="button"
+ feature/alma-student-results-randomization
+                                  onClick={() => openAction("reject", student)}
+                                  disabled={student.attemptStatus === "Submitted" || student.accessStatus === "Rejected"}
+
                                   onClick={() => {
                                     setPendingAction({ type: "reject", student });
                                     setActionReason(defaultReasonForAction("reject"));
                                   }}
                                   disabled={student.accessStatus === "Rejected" || student.attemptStatus === "Submitted"}
+ main
                                 >
                                   Reject
                                 </button>
                                 <button
                                   className="btn btnTiny btnDangerSoft"
                                   type="button"
+ feature/alma-student-results-randomization
+                                  onClick={() => openAction("revoke", student)}
+                                  disabled={student.attemptStatus === "Submitted" || student.accessStatus === "Removed"}
                                   onClick={() => {
                                     setPendingAction({ type: "revoke", student });
                                     setActionReason(defaultReasonForAction("revoke"));
                                   }}
                                   disabled={student.accessStatus === "Removed" || student.attemptStatus === "Submitted"}
+ main
                                 >
                                   Revoke
                                 </button>
@@ -344,11 +413,15 @@ function MonitorMetric({ label, value, tone = "neutral" }) {
 }
 
 function AccessStatusBadge({ status }) {
+ feature/alma-student-results-randomization
+  if (["ManuallyApproved", "Started", "Submitted"].includes(status)) {
+
   if (status === "ManuallyApproved" || status === "Started" || status === "Submitted") {
+ main
     return <span className="statusPill statusLive">Approved</span>;
   }
 
-  if (status === "WaitingForPhysicalVerification" || status === "ApprovalRequested") {
+  if (["WaitingForPhysicalVerification", "ApprovalRequested"].includes(status)) {
     return <span className="statusPill statusWarn">Waiting physical check</span>;
   }
 
@@ -368,6 +441,16 @@ function AccessStatusBadge({ status }) {
     return <span className="statusPill statusPublished">Code verified</span>;
   }
 
+ feature/alma-student-results-randomization
+  if (student.attemptStatus === "InProgress") {
+    return <span className="statusPill statusPublished">In progress</span>;
+  }
+
+  if (student.accessStatus === "Removed") {
+    return <span className="statusPill statusDanger">Closed</span>;
+  }
+
+
   return <span className="statusPill statusDraft">Not joined</span>;
 }
 
@@ -375,11 +458,19 @@ function AttemptStatusBadge({ status, accessStatus }) {
   if (status === "Submitted") return <span className="statusPill statusLive">Submitted</span>;
   if (status === "InProgress") return <span className="statusPill statusPublished">In progress</span>;
   if (accessStatus === "Removed") return <span className="statusPill statusDanger">Closed</span>;
+ main
   return <span className="statusPill statusDraft">Not started</span>;
 }
 
 function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, onConfirm }) {
   const labels = {
+ feature/alma-student-results-randomization
+    approve: ["Physical approval", "Approve exam admission", "Approve access"],
+    reject: ["Reject admission", "Reject physical admission", "Reject access"],
+    revoke: ["Revoke admission", "Revoke exam admission", "Revoke access"],
+  };
+  const [eyebrow, title, actionLabel] = labels[action.type] || labels.reject;
+
     approve: {
       eyebrow: "Manual approval",
       title: "Allow exam access",
@@ -404,20 +495,33 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
   };
 
   const copy = labels[action.type] || labels.reject;
+ main
   const studentName = action.student.fullName || action.student.email || "this student";
 
   return (
     <div className="modalBackdrop" role="presentation">
+ feature/alma-student-results-randomization
+      <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">{eyebrow}</span>
+            <h3>{title}</h3>
+
       <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={copy.title}>
         <div className="modalHeader">
           <div>
             <span className="summaryLabel">{copy.eyebrow}</span>
             <h3>{copy.title}</h3>
+ main
           </div>
           <button className="btn btnTiny" type="button" onClick={onCancel} aria-label="Close">Close</button>
         </div>
         <div className="modalBody stackLg">
+ feature/alma-student-results-randomization
+          <p className="small">This action changes exam admission for {studentName} and is recorded for audit review.</p>
+
           <p className="small">{copy.body.replace("this student", studentName)}</p>
+ main
           <div className="field">
             <label className="label">Reason</label>
             <textarea
@@ -430,8 +534,13 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
         </div>
         <div className="modalFooter">
           <button className="btn" type="button" onClick={onCancel} disabled={saving}>Cancel</button>
+ feature/alma-student-results-randomization
+          <button className={`btn ${action.type === "approve" ? "btnPrimary" : "btnDanger"}`} type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? "Saving..." : actionLabel}
+
           <button className={`btn ${copy.tone}`} type="button" onClick={onConfirm} disabled={saving}>
             {saving ? "Saving..." : copy.button}
+ main
           </button>
         </div>
       </div>
@@ -440,9 +549,15 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
 }
 
 function defaultReasonForAction(type) {
+ feature/alma-student-results-randomization
+  if (type === "approve") return "Physical identity verified by staff.";
+  if (type === "revoke") return "Admission/session revoked by staff.";
+  return "Physical identity was not approved.";
+
   if (type === "approve") return "Professor approved classroom admission.";
   if (type === "revoke") return "Professor revoked exam admission.";
   return "Professor rejected manual admission.";
+ main
 }
 
 function formatDateTime(value) {
@@ -469,10 +584,14 @@ function formatTime(value) {
 }
 
 function formatEventType(value) {
-  return String(value || "")
+  return String(value || "No events")
     .replaceAll("_", " ")
     .toLowerCase()
+ feature/alma-student-results-randomization
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
     .replace(/\b\w/g, (char) => char.toUpperCase()) || "No events";
+ main
 }
 
 function readApiMessage(err) {

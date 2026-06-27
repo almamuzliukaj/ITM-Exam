@@ -89,7 +89,15 @@ public class StudentExamResultDto
     public Guid AttemptId { get; set; }
     public Guid ExamId { get; set; }
     public string ExamTitle { get; set; } = string.Empty;
+    public string CourseCode { get; set; } = string.Empty;
+    public string CourseName { get; set; } = string.Empty;
+    public string AcademicYear { get; set; } = string.Empty;
+    public string SemesterLabel { get; set; } = string.Empty;
+    public string InstructorType { get; set; } = string.Empty;
+    public string InstructorName { get; set; } = string.Empty;
     public DateTime? SubmittedAt { get; set; }
+    public DateTime? ExamTakenAt { get; set; }
+    public DateTime ScheduledAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool IsPublished { get; set; }
     public double? FinalScore { get; set; }
@@ -107,7 +115,15 @@ public class StudentExamResultDetailDto
     public Guid AttemptId { get; set; }
     public Guid ExamId { get; set; }
     public string ExamTitle { get; set; } = string.Empty;
+    public string CourseCode { get; set; } = string.Empty;
+    public string CourseName { get; set; } = string.Empty;
+    public string AcademicYear { get; set; } = string.Empty;
+    public string SemesterLabel { get; set; } = string.Empty;
+    public string InstructorType { get; set; } = string.Empty;
+    public string InstructorName { get; set; } = string.Empty;
     public DateTime? SubmittedAt { get; set; }
+    public DateTime? ExamTakenAt { get; set; }
+    public DateTime ScheduledAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool IsPublished { get; set; }
     public double? FinalScore { get; set; }

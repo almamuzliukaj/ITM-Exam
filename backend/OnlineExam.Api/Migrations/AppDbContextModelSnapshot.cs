@@ -547,7 +547,6 @@ namespace OnlineExam.Api.Migrations
                     b.ToTable("ExamIntegrityEvents");
                 });
 
- feature/agnesa-secure-exam-session-enforcement
             modelBuilder.Entity("OnlineExam.Api.Models.ExamSessionBinding", b =>
                 {
                     b.Property<Guid>("Id")
@@ -617,7 +616,6 @@ namespace OnlineExam.Api.Migrations
                 });
 
 
- main
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1057,7 +1055,6 @@ namespace OnlineExam.Api.Migrations
                     b.Navigation("ExamAttempt");
                 });
 
- feature/agnesa-secure-exam-session-enforcement
             modelBuilder.Entity("OnlineExam.Api.Models.ExamSessionBinding", b =>
                 {
                     b.HasOne("OnlineExam.Api.Models.ExamAttempt", "Attempt")
@@ -1085,7 +1082,6 @@ namespace OnlineExam.Api.Migrations
                 });
 
 
- main
             modelBuilder.Entity("OnlineExam.Api.Models.ExamStudentAccess", b =>
                 {
                     b.HasOne("OnlineExam.Api.Models.Exam", "Exam")

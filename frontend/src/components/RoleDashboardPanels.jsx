@@ -469,6 +469,11 @@ function ProfessorDashboard({ config, offerings, offeringsLoading, offeringsErro
                             </div>
                           ) : null}
                         </dl>
+                        <div className="heroActions">
+                          <Link className="btn btnSmall" to={`/offerings/${offering.id}/roster`}>
+                            Student roster
+                          </Link>
+                        </div>
                       </article>
                     ))}
                   </div>

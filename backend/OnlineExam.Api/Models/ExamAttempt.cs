@@ -22,6 +22,8 @@ public class ExamAttempt
     public string? GradingNotes { get; set; }
     public DateTime? PublishedAt { get; set; }
     public Guid? PublishedByUserId { get; set; }
+    public string? AttemptQuestionOrderJson { get; set; }
+    public string? AttemptVersionSignature { get; set; }
     public int IntegrityViolationCount { get; set; }
     public DateTime? IntegrityLastViolationAt { get; set; }
     public string IntegrityPolicyAction { get; set; } = "None";

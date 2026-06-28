@@ -45,6 +45,16 @@ export async function listMyOfferings() {
   return response.data;
 }
 
+export async function getOffering(offeringId) {
+  const response = await api.get(`/api/course-offerings/${offeringId}`);
+  return response.data;
+}
+
+export async function listOfferingStudents(offeringId) {
+  const response = await api.get(`/api/course-offerings/${offeringId}/students`);
+  return response.data;
+}
+
 export async function createOffering(payload) {
   const response = await api.post("/api/course-offerings", payload);
   return response.data;

@@ -246,6 +246,10 @@ public class QuestionsController : ControllerBase
             .ToListAsync();
 
         var includeCorrectAnswer = !User.IsInRole("Student");
+        var attemptVersion = User.IsInRole("Student")
+            ? await GetStudentAttemptQuestionVersionAsync(examId)
+            : null;
+        questions = ApplyAttemptQuestionOrder(questions, attemptVersion);
 
         return Ok(questions.Select(q => new ExamQuestionResponseDto
         {
@@ -257,7 +261,7 @@ public class QuestionsController : ControllerBase
             Topic = includeCorrectAnswer ? q.Topic : null,
             Difficulty = includeCorrectAnswer ? q.Difficulty : null,
             CorrectAnswerCount = GetCorrectAnswers(q.CorrectAnswer).Count,
-            Options = ParseOptions(q.OptionsJson),
+            Options = ResolveQuestionOptions(q, attemptVersion),
             Points = q.Points,
             TechnicalMetadata = QuestionTechnicalMetadataMapper.BuildResponseMetadata(q, includePrivateFields: includeCorrectAnswer)
         }));
@@ -461,28 +465,16 @@ public class QuestionsController : ControllerBase
         return NoContent();
     }
 
-    private async Task<bool> CanAuthorExamAsync(Exam exam)
+    private Task<bool> CanAuthorExamAsync(Exam exam)
     {
         if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
-            return false;
+            return Task.FromResult(false);
 
         var userId = GetCurrentUserId();
         if (userId == null)
-            return false;
+            return Task.FromResult(false);
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
-
-        if (!exam.CourseOfferingId.HasValue)
-            return false;
-
-        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
-            a.IsActive &&
-            a.RoleInOffering == assignmentRole);
+        return Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<bool> CanAccessExamAsync(Exam exam)
@@ -499,16 +491,7 @@ public class QuestionsController : ControllerBase
 
         if (User.IsInRole("Professor") || User.IsInRole("Assistant"))
         {
-            if (exam.CreatedByUserId == userId.Value)
-                return true;
-
-            if (!exam.CourseOfferingId.HasValue)
-                return false;
-
-            return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-                a.CourseOfferingId == exam.CourseOfferingId.Value &&
-                a.UserId == userId.Value &&
-                a.IsActive);
+            return exam.CreatedByUserId == userId.Value;
         }
 
         if (User.IsInRole("Student"))
@@ -605,30 +588,22 @@ public class QuestionsController : ControllerBase
         return Convert.ToHexString(bytes);
     }
 
-    private async Task<bool> CanManageExamAsync(Exam exam)
+    private Task<bool> CanManageExamAsync(Exam exam)
     {
         if (IsQuestionBankContainer(exam))
-            return false;
+            return Task.FromResult(false);
 
         if (User.IsInRole("Admin"))
-            return true;
+            return Task.FromResult(true);
 
         var userId = GetCurrentUserId();
         if (userId == null)
-            return false;
+            return Task.FromResult(false);
 
-        if (exam.CreatedByUserId == userId.Value)
-            return true;
+        if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
+            return Task.FromResult(false);
 
-        if (!exam.CourseOfferingId.HasValue)
-            return false;
-
-        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
-        return await _context.CourseOfferingStaffAssignments.AnyAsync(a =>
-            a.CourseOfferingId == exam.CourseOfferingId.Value &&
-            a.UserId == userId.Value &&
-            a.IsActive &&
-            a.RoleInOffering == assignmentRole);
+        return Task.FromResult(exam.CreatedByUserId == userId.Value);
     }
 
     private async Task<CourseOffering?> GetAccessibleOfferingAsync(Guid offeringId, Guid userId)
@@ -857,6 +832,75 @@ public class QuestionsController : ControllerBase
         {
             return [];
         }
+    }
+
+    private async Task<AttemptQuestionOrderSnapshot?> GetStudentAttemptQuestionVersionAsync(Guid examId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return null;
+
+        var attempt = await _context.ExamAttempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ExamId == examId && x.StudentId == userId.Value);
+
+        if (string.IsNullOrWhiteSpace(attempt?.AttemptQuestionOrderJson))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<AttemptQuestionOrderSnapshot>(attempt.AttemptQuestionOrderJson);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<Question> ApplyAttemptQuestionOrder(List<Question> questions, AttemptQuestionOrderSnapshot? version)
+    {
+        if (version == null || version.Questions.Count == 0)
+            return questions.OrderBy(x => x.Text).ToList();
+
+        var order = version.Questions
+            .Select((item, index) => new { item.QuestionId, index })
+            .ToDictionary(x => x.QuestionId, x => x.index);
+
+        return questions
+            .OrderBy(question => order.TryGetValue(question.Id, out var index) ? index : int.MaxValue)
+            .ThenBy(question => question.Text)
+            .ToList();
+    }
+
+    private static List<string> ResolveQuestionOptions(Question question, AttemptQuestionOrderSnapshot? version)
+    {
+        var defaultOptions = ParseOptions(question.OptionsJson);
+        if (version == null || version.Questions.Count == 0 || defaultOptions.Count == 0)
+            return defaultOptions;
+
+        var item = version.Questions.FirstOrDefault(x => x.QuestionId == question.Id);
+        if (item == null || item.OptionOrder.Count == 0)
+            return defaultOptions;
+
+        var available = defaultOptions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ordered = item.OptionOrder
+            .Where(option => available.Contains(option))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        ordered.AddRange(defaultOptions.Where(option => !ordered.Contains(option, StringComparer.OrdinalIgnoreCase)));
+        return ordered;
+    }
+
+    private sealed class AttemptQuestionOrderSnapshot
+    {
+        public DateTime CreatedAt { get; set; }
+        public List<AttemptQuestionItemSnapshot> Questions { get; set; } = [];
+    }
+
+    private sealed class AttemptQuestionItemSnapshot
+    {
+        public Guid QuestionId { get; set; }
+        public List<string> OptionOrder { get; set; } = [];
     }
 
     private static List<string> GetCorrectAnswers(string? correctAnswer)

@@ -10,6 +10,7 @@ namespace OnlineExam.Api.DTOs
         public DateTime? StartedAt { get; set; }
         public DateTime? LastSavedAt { get; set; }
         public DateTime? SubmittedAt { get; set; }
+        public string? AttemptVersionSignature { get; set; }
         public double Score { get; set; }
         public List<QuestionScoreDetailDto> Questions { get; set; } = new();
     }

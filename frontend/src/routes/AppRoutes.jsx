@@ -23,6 +23,7 @@ import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
 import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
 import AdminEnrollmentsPage from "../pages/admin/AdminEnrollmentsPage";
 import ReportsPage from "../pages/reports/ReportsPage";
+import OfferingRosterPage from "../pages/offerings/OfferingRosterPage";
 
 export default function AppRoutes() {
   return (
@@ -62,6 +63,7 @@ export default function AppRoutes() {
           <Route path="/exams/new" element={<ExamCreatePage />} />
           <Route path="/exams/:examId/edit" element={<ExamCreatePage />} />
           <Route path="/gradebook" element={<ProfessorGradebookIndexPage />} />
+          <Route path="/offerings/:offeringId/roster" element={<OfferingRosterPage />} />
           <Route path="/exams/:examId/gradebook" element={<ExamGradebookPage />} />
           <Route path="/exams/:examId/monitor" element={<ExamMonitorPage />} />
         </Route>

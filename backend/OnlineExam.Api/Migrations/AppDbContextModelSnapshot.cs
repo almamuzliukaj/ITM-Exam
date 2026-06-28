@@ -411,6 +411,12 @@ namespace OnlineExam.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("AttemptQuestionOrderJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AttemptVersionSignature")
+                        .HasColumnType("text");
+
                     b.Property<double>("AutoScore")
                         .HasColumnType("double precision");
 

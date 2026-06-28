@@ -12,6 +12,10 @@ const navigationByRole = {
       items: [{ to: "/dashboard", labelKey: "shell.nav.adminOverview", icon: "OV" }],
     },
     {
+      titleKey: "shell.sections.account",
+      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
+    },
+    {
       titleKey: "shell.sections.academicOperations",
       items: [
         { to: "/admin/academic", labelKey: "shell.nav.adminAcademic", icon: "AC" },
@@ -26,6 +30,10 @@ const navigationByRole = {
     {
       titleKey: "shell.sections.overview",
       items: [{ to: "/dashboard", labelKey: "shell.nav.professorOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.account",
+      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
     },
     {
       titleKey: "shell.sections.teaching",
@@ -44,6 +52,10 @@ const navigationByRole = {
       items: [{ to: "/dashboard", labelKey: "shell.nav.assistantOverview", icon: "OV" }],
     },
     {
+      titleKey: "shell.sections.account",
+      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
+    },
+    {
       titleKey: "shell.sections.teachingSupport",
       items: [
         { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
@@ -56,6 +68,10 @@ const navigationByRole = {
     {
       titleKey: "shell.sections.overview",
       items: [{ to: "/dashboard", labelKey: "shell.nav.studentOverview", icon: "OV" }],
+    },
+    {
+      titleKey: "shell.sections.account",
+      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
     },
     {
       titleKey: "shell.sections.studentRecords",

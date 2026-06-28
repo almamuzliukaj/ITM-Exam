@@ -116,7 +116,7 @@ const resources = {
         creating: "Creating...",
         create: "Create exam",
         editTitle: "Edit exam",
-        editSubtitle: "Update the existing exam, including lockdown settings, without creating a new one.",
+        editSubtitle: "Update the existing assessment settings without creating a new one.",
         editorLoading: "Loading exam editor...",
         loadEditError: "Failed to load exam for editing.",
         savedMissingId: "Exam was saved, but the response did not include an exam id. Return to exams and refresh the list.",
@@ -627,6 +627,7 @@ const resources = {
         sections: {
           overview: "Overview",
           academicOperations: "Academic operations",
+          account: "Account",
           teaching: "Teaching",
           teachingSupport: "Teaching support",
           studentRecords: "Student records"
@@ -638,6 +639,7 @@ const resources = {
           adminUsers: "Users",
           adminSmu: "SMU sync",
           adminReports: "Reports",
+          settings: "Settings",
           adminExams: "Exams",
           professorOverview: "Overview",
           professorQuestionBank: "Question bank",
@@ -935,7 +937,7 @@ const resources = {
         creating: "Duke u krijuar...",
         create: "Krijo provim",
         editTitle: "Ndrysho provimin",
-        editSubtitle: "Perditeso provimin ekzistues, perfshire rregullat e lockdown, pa krijuar nje provim te ri.",
+        editSubtitle: "Perditeso konfigurimin e vleresimit ekzistues pa krijuar nje provim te ri.",
         editorLoading: "Duke u ngarkuar editori i provimit...",
         loadEditError: "Provimi nuk mund te ngarkohet per ndryshim.",
         savedMissingId: "Provimi u ruajt, por pergjigjja nuk permban id te provimit. Kthehu te provimet dhe rifresko listen.",
@@ -1446,6 +1448,7 @@ const resources = {
         sections: {
           overview: "Përmbledhje",
           academicOperations: "Operacione akademike",
+          account: "Llogaria",
           teaching: "Mësimdhënie",
           teachingSupport: "Mbështetje mësimore",
           studentRecords: "Regjistrat e studentit"
@@ -1457,6 +1460,7 @@ const resources = {
           adminUsers: "Përdoruesit",
           adminSmu: "SMU sync",
           adminReports: "Raportet",
+          settings: "Cilësimet",
           adminExams: "Provimet",
           professorOverview: "Përmbledhje",
           professorQuestionBank: "Banka e pyetjeve",

@@ -2462,7 +2462,8 @@ input[type="radio"]{
   width: min(1680px, calc(100% - 44px));
   margin: 0 auto;
   height: calc(100vh - 74px);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 0 14px;
 }
 
@@ -2530,9 +2531,9 @@ input[type="radio"]{
 }
 
 .secureExamNotice{
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, auto)) 1fr;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   min-height: 54px;
   margin-bottom: 18px;
@@ -2566,7 +2567,7 @@ input[type="radio"]{
 }
 
 .secureExamNotice strong{
-  justify-self: end;
+  margin-left: auto;
   color: #0c3f86;
   font-weight: 800;
 }
@@ -3368,8 +3369,7 @@ input[type="radio"]{
 }
 
 .secureExamShell .secureExamWorkspace{
-  height: calc(100vh - 128px);
-  min-height: 0;
+  min-height: calc(100vh - 128px);
   grid-template-columns: minmax(0, 1fr) 286px;
   gap: 18px;
 }
@@ -3377,7 +3377,7 @@ input[type="radio"]{
 .secureExamShell .secureQuestionPanel{
   min-height: 0;
   padding: 16px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .secureExamShell .secureQuestionHeader{
@@ -3397,8 +3397,7 @@ input[type="radio"]{
 }
 
 .secureExamShell .examQuestionCard{
-  height: calc(100vh - 260px);
-  min-height: 0;
+  min-height: calc(100vh - 260px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid #c9d8ea;
@@ -6194,6 +6193,39 @@ body{
   box-shadow: 0 0 0 2px rgba(217, 45, 32, 0.08);
 }
 
+.settingsLayout{
+  display: grid;
+  max-width: 760px;
+  gap: 16px;
+}
+
+.settingsSecurityPanel{
+  border-radius: 4px;
+}
+
+.settingsPasswordForm{
+  display: grid;
+  gap: 14px;
+}
+
+.settingsPasswordRules{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settingsPasswordRules strong{
+  color: var(--text);
+  font-size: 13px;
+}
+
 .technicalAuthoringTextarea{
   min-height: 180px;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
@@ -6417,6 +6449,29 @@ body{
   color: var(--heading);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.examMetricsGrid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.examMetricsGrid article{
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f8fbff;
+}
+
+.examMetricsGrid article span,
+.examMetricsGrid article strong{
+  display: block;
+}
+
+.examMetricsGrid article strong{
+  margin-top: 4px;
+  color: var(--heading);
 }
 
 .publishAssessmentWarning{

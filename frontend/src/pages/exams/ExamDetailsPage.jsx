@@ -662,10 +662,6 @@ export default function ExamDetailsPage() {
                 <span className="summaryLabel">Maximum points</span>
                 <strong>{examMaximumPoints || "-"}</strong>
               </article>
-              <article className="summaryCard">
-                <span className="summaryLabel">Lockdown</span>
-                <strong>{exam?.requiresLockdown ? "Required" : "Optional"}</strong>
-              </article>
             </section>
 
             {canEdit && exam?.isPublished ? (
@@ -695,7 +691,7 @@ export default function ExamDetailsPage() {
                 </span>
               </div>
               <div className="sectionBody">
-                <div className="lockdownReadinessGrid">
+                <div className="examMetricsGrid">
                   <article>
                     <span className="summaryLabel">Exam maximum</span>
                     <strong>{examMaximumPoints}</strong>
@@ -707,29 +703,6 @@ export default function ExamDetailsPage() {
                   <article>
                     <span className="summaryLabel">Difference</span>
                     <strong>{pointsDifference === 0 ? "0" : pointsDifference > 0 ? `+${pointsDifference}` : String(pointsDifference)}</strong>
-                  </article>
-                </div>
-              </div>
-            </section>
-
-            <section className="surfaceCard">
-              <div className="sectionHeader">
-                <h3>Exam integrity readiness</h3>
-                <span className="small">{exam?.requiresLockdown ? "Lockdown policy is configured for this exam." : "Standard browser guard is active for student sessions."}</span>
-              </div>
-              <div className="sectionBody">
-                <div className="lockdownReadinessGrid">
-                  <article>
-                    <span className="summaryLabel">Allowed client</span>
-                    <strong>{formatLockdownClient(exam?.allowedClient)}</strong>
-                  </article>
-                  <article>
-                    <span className="summaryLabel">Policy</span>
-                    <strong>{exam?.lockdownMode || "Advisory"}</strong>
-                  </article>
-                  <article>
-                    <span className="summaryLabel">Review path</span>
-                    <strong>Gradebook timeline</strong>
                   </article>
                 </div>
               </div>
@@ -1220,8 +1193,8 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
             <strong>{questionCount} questions / {totalPoints} pts</strong>
           </article>
           <article>
-            <span>Security</span>
-            <strong>{exam?.requiresLockdown ? formatLockdownClient(exam.allowedClient) : "Standard browser"}</strong>
+            <span>Access control</span>
+            <strong>Entry code and integrity guard</strong>
           </article>
         </div>
 
@@ -1677,14 +1650,6 @@ function ReplaceQuestionModal({
 function formatQuestionType(type) {
   if (type === "CSharp") return "C#";
   return type;
-}
-
-function formatLockdownClient(value) {
-  if (value === "SafeExamBrowser") return "Safe Exam Browser";
-  if (value === "KioskClient") return "Kiosk client";
-  if (value === "InstitutionalKiosk") return "Institutional kiosk";
-  if (value === "StandardBrowser") return "Standard browser";
-  return value || "Standard browser";
 }
 
 function parseTechnicalQuestion(question) {

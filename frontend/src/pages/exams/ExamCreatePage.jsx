@@ -21,8 +21,6 @@ const examPeriods = [
   { value: "October Exam Period", label: "October Exam Period" },
 ];
 
-const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
-
 export default function ExamCreatePage() {
   const { t } = useTranslation();
   const nav = useNavigate();
@@ -41,9 +39,6 @@ export default function ExamCreatePage() {
     academicYear: "",
     semesterLabel: "",
     cohortLabel: "",
-    requiresLockdown: false,
-    allowedClient: "StandardBrowser",
-    lockdownMode: "Advisory",
   });
   const [offerings, setOfferings] = useState([]);
   const [offeringsLoading, setOfferingsLoading] = useState(true);
@@ -123,9 +118,6 @@ export default function ExamCreatePage() {
           academicYear: exam?.academicYear || "",
           semesterLabel: exam?.semesterLabel || "",
           cohortLabel: exam?.cohortLabel || "",
-          requiresLockdown: Boolean(exam?.requiresLockdown),
-          allowedClient: exam?.allowedClient || "StandardBrowser",
-          lockdownMode: exam?.lockdownMode || "Advisory",
         });
       } catch (err) {
         if (active) {
@@ -214,9 +206,6 @@ export default function ExamCreatePage() {
         semesterLabel: form.semesterLabel,
         cohortLabel: form.cohortLabel,
         isPublished: false,
-        requiresLockdown: Boolean(form.requiresLockdown),
-        allowedClient: form.allowedClient || "StandardBrowser",
-        lockdownMode: form.lockdownMode || "Advisory",
       };
 
       if (isEditMode) {

@@ -21,8 +21,6 @@ const examPeriods = [
   { value: "October Exam Period", label: "October Exam Period" },
 ];
 
-const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
-
 export default function ExamsListPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
@@ -63,12 +61,19 @@ export default function ExamsListPage() {
 
   const canCreate = canCreateExams(user?.role);
   const isStudent = user?.role === "Student";
+  const academicYearOptions = useMemo(() => {
+    const years = new Set();
+    exams.forEach((exam) => {
+      const year = String(exam.academicYear || "").trim();
+      if (year) years.add(year);
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [exams]);
   const filteredExams = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
     return exams.filter((exam) => {
       if (examStatusFilter === "published" && !exam.isPublished) return false;
       if (examStatusFilter === "draft" && exam.isPublished) return false;
-      if (examStatusFilter === "lockdown" && !exam.requiresLockdown) return false;
       if (filters.assessmentType && normalizeAssessmentTypeForUi(exam.assessmentType) !== filters.assessmentType) return false;
       if (filters.examPeriod && normalizeExamPeriodForUi(exam.examPeriod) !== filters.examPeriod) return false;
       if (filters.academicYear && exam.academicYear !== filters.academicYear) return false;
@@ -180,7 +185,6 @@ export default function ExamsListPage() {
               <button className={examStatusFilter === "all" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("all")}>All</button>
               <button className={examStatusFilter === "published" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("published")}>{t("examsList.published")}</button>
               {!isStudent ? <button className={examStatusFilter === "draft" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("draft")}>{t("examsList.draft")}</button> : null}
-              <button className={examStatusFilter === "lockdown" ? "active" : ""} type="button" onClick={() => setExamStatusFilter("lockdown")}>Lockdown</button>
             </div>
 
             <div className="assessmentFiltersGrid">
@@ -211,7 +215,7 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
-                  {academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                  {academicYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
               </div>
               <div className="field assessmentFilterReset">
@@ -243,9 +247,6 @@ export default function ExamsListPage() {
                     <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
                       {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
                     </span>
-                    {exam.requiresLockdown ? (
-                      <span className="statusPill statusWarn">Lockdown</span>
-                    ) : null}
                     <span className="small">{exam.durationMinutes || 60} min</span>
                   </div>
                   <h3>{exam.title}</h3>
@@ -267,7 +268,7 @@ export default function ExamsListPage() {
                         </button>
                       ) : null}
                       <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                        {isStudent ? (exam.requiresLockdown ? "Check setup" : "Start") : t("examsList.open")}
+                        {isStudent ? "Open" : t("examsList.open")}
                       </Link>
                     </div>
                   </div>
@@ -303,7 +304,6 @@ export default function ExamsListPage() {
                         <th>Schedule</th>
                         <th>Created / published</th>
                         <th>Status</th>
-                        <th>Security</th>
                         <th>Next action</th>
                       </tr>
                     </thead>
@@ -338,13 +338,6 @@ export default function ExamsListPage() {
                             <span className={`statusPill ${exam.isPublished ? "statusLive" : "statusDraft"}`}>
                               {exam.isPublished ? t("examsList.published") : t("examsList.draft")}
                             </span>
-                          </td>
-                          <td>
-                            {exam.requiresLockdown ? (
-                              <span className="statusPill statusWarn">Lockdown</span>
-                            ) : (
-                              <span className="statusPill statusDraft">Standard</span>
-                            )}
                           </td>
                           <td>
                             <div className="examDirectoryActions">

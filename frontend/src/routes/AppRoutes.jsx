@@ -6,6 +6,7 @@ import RoleGuard from "./RoleGuard";
 
 import Login from "../pages/Login";
 import Dashboard from "../pages/Dashboard";
+import SettingsPage from "../pages/SettingsPage";
 import ExamsListPage from "../pages/exams/ExamsListPage";
 import ExamCreatePage from "../pages/exams/ExamCreatePage";
 import ExamDetailsPage from "../pages/exams/ExamDetailsPage";
@@ -20,7 +21,6 @@ import AdminAcademicStructurePage from "../pages/admin/AdminAcademicStructurePag
 import AdminSmuIntegrationPage from "../pages/admin/AdminSmuIntegrationPage";
 import QuestionBankPage from "../pages/question-bank/QuestionBankPage";
 import QuestionBankEditorPage from "../pages/question-bank/QuestionBankEditorPage";
-import GeneratedQuestionReviewPage from "../pages/question-bank/GeneratedQuestionReviewPage";
 import AdminEnrollmentsPage from "../pages/admin/AdminEnrollmentsPage";
 import ReportsPage from "../pages/reports/ReportsPage";
 
@@ -31,6 +31,7 @@ export default function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/settings" element={<SettingsPage />} />
 
         <Route element={<RoleGuard allow={["Admin"]} />}>
           <Route path="/admin/users" element={<AdminUsersPage />} />
@@ -56,7 +57,6 @@ export default function AppRoutes() {
 
         <Route element={<RoleGuard allow={["Professor", "Assistant"]} />}>
           <Route path="/question-bank" element={<QuestionBankPage />} />
-          <Route path="/question-bank/generated-review" element={<GeneratedQuestionReviewPage />} />
           <Route path="/question-bank/new" element={<QuestionBankEditorPage />} />
           <Route path="/question-bank/questions/:questionId/edit" element={<QuestionBankEditorPage />} />
           <Route path="/exams/new" element={<ExamCreatePage />} />

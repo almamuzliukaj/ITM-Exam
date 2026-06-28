@@ -58,6 +58,15 @@ export async function me() {
   }
 }
 
+export async function changeOwnPassword(payload) {
+  const response = await api.put("/auth/me/password", {
+    currentPassword: payload.currentPassword || "",
+    newPassword: payload.newPassword || "",
+    confirmPassword: payload.confirmPassword || "",
+  });
+  return response.data;
+}
+
 export async function login(email, password) {
   const response = await api.post("/auth/login", { email, password });
   const data = response.data;

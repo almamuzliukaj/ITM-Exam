@@ -454,6 +454,14 @@ public class ExamsController : ControllerBase
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
 
+        if (attempt == null)
+            return BadRequest(new { message = "Start the approved exam session before submitting.", code = "EXAM_SESSION_NOT_APPROVED" });
+
+        var activeAttempt = attempt;
+
+        if (activeAttempt.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "This attempt has already been submitted and cannot be submitted again.", code = "EXAM_ATTEMPT_ALREADY_SUBMITTED" });
+
         var submittedAnswers = dto.Answers ?? [];
         var validationError = ValidateAttemptAnswers(exam, submittedAnswers);
         if (validationError != null)
@@ -462,56 +470,26 @@ public class ExamsController : ControllerBase
         var (details, autoScore, _, requiresManualGrading) = BuildAttemptEvaluation(exam, submittedAnswers);
         var questionScores = BuildQuestionScoreBreakdown(exam.Questions, submittedAnswers);
         var now = DateTime.UtcNow;
-        var createdNewAttempt = false;
 
-        if (attempt == null)
-        {
-            attempt = new ExamAttempt
-            {
-                Id = Guid.NewGuid(),
-                ExamId = examId,
-                StudentId = userId.Value,
-                Status = ExamAttemptSubmittedStatus,
-                StartedAt = now,
-                LastSavedAt = now,
-                SubmittedAt = now,
-                AnswersJson = JsonSerializer.Serialize(submittedAnswers),
-                QuestionScoresJson = SerializeQuestionScores(questionScores),
-                AutoScore = autoScore,
-                ManualScore = 0,
-                FinalScore = autoScore,
-                RequiresManualGrading = requiresManualGrading,
-                IsGraded = !requiresManualGrading,
-                IsPublished = false,
-                IntegrityViolationCount = 0,
-                IntegrityPolicyAction = IntegrityPolicyActionNone
-            };
+        activeAttempt.Status = ExamAttemptSubmittedStatus;
+        activeAttempt.StartedAt = activeAttempt.StartedAt == default ? now : activeAttempt.StartedAt;
+        activeAttempt.LastSavedAt = now;
+        activeAttempt.SubmittedAt = now;
+        activeAttempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
+        activeAttempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
+        activeAttempt.AutoScore = autoScore;
+        activeAttempt.ManualScore = 0;
+        activeAttempt.FinalScore = autoScore;
+        activeAttempt.RequiresManualGrading = requiresManualGrading;
+        activeAttempt.IsGraded = !requiresManualGrading;
+        activeAttempt.IsPublished = false;
+        activeAttempt.GradedAt = null;
+        activeAttempt.GradedByUserId = null;
+        activeAttempt.GradingNotes = null;
+        activeAttempt.PublishedAt = null;
+        activeAttempt.PublishedByUserId = null;
 
-            _context.ExamAttempts.Add(attempt);
-            createdNewAttempt = true;
-        }
-        else
-        {
-            attempt.Status = ExamAttemptSubmittedStatus;
-            attempt.StartedAt = attempt.StartedAt == default ? now : attempt.StartedAt;
-            attempt.LastSavedAt = now;
-            attempt.SubmittedAt = now;
-            attempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
-            attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
-            attempt.AutoScore = autoScore;
-            attempt.ManualScore = 0;
-            attempt.FinalScore = autoScore;
-            attempt.RequiresManualGrading = requiresManualGrading;
-            attempt.IsGraded = !requiresManualGrading;
-            attempt.IsPublished = false;
-            attempt.GradedAt = null;
-            attempt.GradedByUserId = null;
-            attempt.GradingNotes = null;
-            attempt.PublishedAt = null;
-            attempt.PublishedByUserId = null;
-        }
-
-        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
         if (bindingError != null)
             return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
@@ -525,33 +503,23 @@ public class ExamsController : ControllerBase
         {
             return Conflict(new { message = "An attempt already exists for this exam. Refresh the page and submit again." });
         }
-        if (createdNewAttempt)
+        await _auditLogService.LogAsync("ExamAttempt.Submitted", "ExamAttempt", activeAttempt.Id, new
         {
-            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
-            {
-                attempt.ExamId,
-                attempt.StudentId,
-                attempt.StartedAt
-            }, "ExamDelivery");
-        }
-
-        await _auditLogService.LogAsync("ExamAttempt.Submitted", "ExamAttempt", attempt.Id, new
-        {
-            attempt.ExamId,
-            attempt.StudentId,
-            attempt.AutoScore,
-            attempt.RequiresManualGrading,
+            activeAttempt.ExamId,
+            activeAttempt.StudentId,
+            activeAttempt.AutoScore,
+            activeAttempt.RequiresManualGrading,
             dto.ClientSessionId
         }, "ExamDelivery");
 
         return Ok(new ExamAttemptResultDto
         {
-            ExamAttemptId = attempt.Id,
-            Status = attempt.Status,
-            StartedAt = attempt.StartedAt,
-            LastSavedAt = attempt.LastSavedAt,
-            SubmittedAt = attempt.SubmittedAt,
-            Score = attempt.FinalScore,
+            ExamAttemptId = activeAttempt.Id,
+            Status = activeAttempt.Status,
+            StartedAt = activeAttempt.StartedAt,
+            LastSavedAt = activeAttempt.LastSavedAt,
+            SubmittedAt = activeAttempt.SubmittedAt,
+            Score = activeAttempt.FinalScore,
             Questions = details
         });
     }
@@ -583,6 +551,9 @@ public class ExamsController : ControllerBase
 
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "This attempt has already been submitted. Re-entry requires staff authorization.", code = "EXAM_ATTEMPT_ALREADY_SUBMITTED" });
 
         if (attempt == null)
         {
@@ -683,6 +654,9 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = validationError });
         var attempt = await _context.ExamAttempts
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value);
+
+        if (attempt?.Status == ExamAttemptSubmittedStatus)
+            return BadRequest(new { message = "Submitted attempts cannot be modified. Re-entry requires staff authorization.", code = "EXAM_ATTEMPT_ALREADY_SUBMITTED" });
 
         var createdNewAttempt = false;
         if (attempt == null)
@@ -898,38 +872,7 @@ public class ExamsController : ControllerBase
             .FirstOrDefaultAsync(a => a.ExamId == examId && a.StudentId == userId.Value, cancellationToken);
 
         if (attempt == null)
-        {
-            var now = DateTime.UtcNow;
-            attempt = new ExamAttempt
-            {
-                Id = Guid.NewGuid(),
-                ExamId = examId,
-                StudentId = userId.Value,
-                Status = ExamAttemptInProgressStatus,
-                StartedAt = now,
-                LastSavedAt = null,
-                SubmittedAt = null,
-                AnswersJson = JsonSerializer.Serialize(new List<AnswerDto>()),
-                AutoScore = 0,
-                ManualScore = 0,
-                FinalScore = 0,
-                RequiresManualGrading = false,
-                IsGraded = false,
-                IsPublished = false,
-                IntegrityViolationCount = 0,
-                IntegrityPolicyAction = IntegrityPolicyActionNone
-            };
-
-            _context.ExamAttempts.Add(attempt);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            await _auditLogService.LogAsync("ExamAttempt.Started", "ExamAttempt", attempt.Id, new
-            {
-                attempt.ExamId,
-                attempt.StudentId,
-                attempt.StartedAt
-            }, "ExamDelivery", cancellationToken);
-        }
+            return BadRequest(new { message = "Start the approved exam session before recording integrity events.", code = "EXAM_SESSION_NOT_APPROVED" });
 
         if (dto.ExamAttemptId.HasValue && dto.ExamAttemptId.Value != attempt.Id)
             return BadRequest(new { message = "ExamAttemptId does not match the active attempt for this exam." });

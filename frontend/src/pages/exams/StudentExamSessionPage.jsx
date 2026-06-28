@@ -4,6 +4,7 @@ import AppShell from "../../components/AppShell";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useFaceProctoring } from "../../hooks/useFaceProctoring";
 import { getCurrentExamAttempt, getCurrentExamIntegritySummary, getExam, getExamAccessStatus, listQuestions, recordExamIntegrityEvent, requestExamApproval, requestExamDeviceChange, runTechnicalExamAnswer, sendExamHeartbeat, submitExamAttempt, verifyExamEntryCode } from "../../lib/examsApi";
+import { loadProtectedPhotoUrl } from "../../lib/studentIdentityApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function StudentExamSessionPage() {
@@ -31,6 +32,7 @@ export default function StudentExamSessionPage() {
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
+  const [entryPromptStarted, setEntryPromptStarted] = useState(false);
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
   const [requestingApproval, setRequestingApproval] = useState(false);
   const [integrityEvents, setIntegrityEvents] = useState([]);
@@ -140,7 +142,16 @@ export default function StudentExamSessionPage() {
           setSavedAt(restored.savedAt);
         }
       } catch (err) {
-        if (active) setError(getApiMessage(err, "Failed to load the exam session."));
+        const code = err?.response?.data?.code;
+        const message = getApiMessage(err, "Failed to load the exam session.");
+        if (active && (code === "EXAM_ATTEMPT_ALREADY_SUBMITTED" || code === "EXAM_TIME_EXPIRED" || message.toLowerCase().includes("already submitted"))) {
+          submittedRef.current = true;
+          setQuestions([]);
+          setResult({ reason: "submitted-lock", examAttemptId: "" });
+          setError("");
+        } else if (active) {
+          setError(message);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -170,6 +181,28 @@ export default function StudentExamSessionPage() {
     submittedRef.current = false;
     autoSubmitAttemptedRef.current = false;
   }, [isLiveSession]);
+
+  useEffect(() => {
+    if (!isLiveSession || questions.length === 0) return;
+
+    setAnswers((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      questions.forEach((question) => {
+        if (question.type !== "SQL" && question.type !== "CSharp") return;
+        if (isAnswerFilled(next[question.id])) return;
+
+        const starterCode = parseTechnicalQuestion(question).code;
+        if (!starterCode) return;
+
+        next[question.id] = starterCode;
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [isLiveSession, questions]);
 
   useEffect(() => {
     if (!sessionTiming) return;
@@ -598,7 +631,10 @@ export default function StudentExamSessionPage() {
   async function startLiveSession() {
     setError("");
     if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
-      setError(waitingForApproval ? "Wait for professor approval before starting this exam." : "Enter the exam access code or request professor approval before starting this exam.");
+      setEntryPromptStarted(true);
+      if (waitingForApproval) {
+        setError("Wait for professor approval before starting this exam. The timer has not started.");
+      }
       return;
     }
 
@@ -611,15 +647,21 @@ export default function StudentExamSessionPage() {
       setError("Camera permission was not granted. The exam can start, but this will be recorded as an integrity warning.");
     }
 
-    if (document.fullscreenEnabled && !document.fullscreenElement) {
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        // The session will still open; the integrity guard records fullscreen failures inside the exam.
-      }
-    }
+    await enterFullscreen();
 
     navigate(`/exams/${examId}/session`);
+  }
+
+  async function enterFullscreen() {
+    if (!document.fullscreenEnabled || document.fullscreenElement) return;
+
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {
+      if (isLiveSession) {
+        await recordViolation("FullscreenRequestFailed", "Fullscreen mode could not be entered.");
+      }
+    }
   }
 
   async function verifyEntryCode() {
@@ -630,6 +672,7 @@ export default function StudentExamSessionPage() {
       setError("");
       const updatedAccess = await verifyExamEntryCode(examId, entryCode);
       setAccessStatus(updatedAccess);
+      setEntryPromptStarted(true);
       setEntryCode("");
     } catch (err) {
       setError(getApiMessage(err, "The entry code could not be verified."));
@@ -731,15 +774,17 @@ export default function StudentExamSessionPage() {
           ) : (
             <>
               {accessStatus?.requiresCode ? (
-                <ExamEntryCodePanel
-                  accessStatus={accessStatus}
-                  entryCode={entryCode}
-                  verifying={verifyingEntryCode}
-                  requestingApproval={requestingApproval}
-                  onEntryCodeChange={setEntryCode}
-                  onVerify={verifyEntryCode}
-                  onRequestApproval={requestProfessorApproval}
-                />
+                entryPromptStarted || waitingForApproval || approvalRejected || accessStatus?.hasAccess ? (
+                  <ExamEntryCodePanel
+                    accessStatus={accessStatus}
+                    entryCode={entryCode}
+                    verifying={verifyingEntryCode}
+                    requestingApproval={requestingApproval}
+                    onEntryCodeChange={setEntryCode}
+                    onVerify={verifyEntryCode}
+                    onRequestApproval={requestProfessorApproval}
+                  />
+                ) : null
               ) : null}
               {waitingForApproval ? (
                 <ApprovalWaitingPanel accessStatus={accessStatus} />
@@ -756,8 +801,12 @@ export default function StudentExamSessionPage() {
                     monitors integrity events, and automatically submits if the violation limit is reached.
                   </p>
                 </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={accessStatus?.requiresCode && !accessStatus?.hasAccess}>
-                  Start exam
+                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={waitingForApproval}>
+                  {accessStatus?.requiresCode && !accessStatus?.hasAccess
+                    ? "Start"
+                    : accessStatus?.hasAccess
+                      ? "Continue to rules"
+                      : "Start exam"}
                 </button>
               </section>
 
@@ -913,6 +962,11 @@ export default function StudentExamSessionPage() {
               <span className="secureNoticeItem">{fullscreenActive ? "Fullscreen active" : "Fullscreen exited"}</span>
               <span className="secureNoticeItem">{networkOnline ? "Online" : "Connection lost"}</span>
               <span className="secureNoticeItem">{savedAt ? `${formatSaveState(saveState)} ${formatSavedAt(savedAt)}` : formatSaveState(saveState)}</span>
+              {!fullscreenActive ? (
+                <button className="btn btnCompact" type="button" onClick={enterFullscreen} disabled={submitting || Boolean(result)}>
+                  Return to fullscreen
+                </button>
+              ) : null}
               <strong>{answeredCount}/{questions.length} answered</strong>
             </section>
 
@@ -1100,35 +1154,6 @@ function FaceProctoringPanel({ proctoring }) {
   );
 }
 
-function LockdownReadinessPanel({ readiness }) {
-  const requiredClient = formatLockdownClient(readiness.allowedClient);
-  const currentClient = formatLockdownClient(readiness.currentClient);
-
-  return (
-    <section className={`lockdownStudentPanel ${readiness.canStartAttempt ? "lockdownReady" : "lockdownBlocked"}`}>
-      <div>
-        <span className="summaryLabel">Lockdown readiness</span>
-        <strong>{readiness.canStartAttempt ? "Ready to start" : "Protected client required"}</strong>
-        <p>{readiness.message || "Exam client readiness was checked before starting this attempt."}</p>
-      </div>
-      <div className="lockdownReadinessGrid">
-        <article>
-          <span className="summaryLabel">Required client</span>
-          <strong>{requiredClient}</strong>
-        </article>
-        <article>
-          <span className="summaryLabel">Detected client</span>
-          <strong>{currentClient}</strong>
-        </article>
-        <article>
-          <span className="summaryLabel">Mode</span>
-          <strong>{readiness.lockdownMode || "Advisory"}</strong>
-        </article>
-      </div>
-    </section>
-  );
-}
-
 function QuestionAnswerCard({ index, question, value, flagged, runResult, running, disabled, onChange, onRun, onToggleFlag }) {
   const parsed = parseTechnicalQuestion(question);
   const isTechnical = question.type === "SQL" || question.type === "CSharp";
@@ -1163,7 +1188,7 @@ function QuestionAnswerCard({ index, question, value, flagged, runResult, runnin
               <pre>{parsed.schema}</pre>
             </>
           ) : null}
-          {parsed.code ? (
+          {parsed.code && !isTechnical ? (
             <>
               <span className="summaryLabel">Starter code</span>
               <pre>{parsed.code}</pre>
@@ -1394,22 +1419,24 @@ function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingAppr
       </div>
       {!verified ? (
         <div className="sectionBody stackLg">
-          <div className="examEntryCodeForm">
-            <label className="field">
-              <span>Access code</span>
-              <input
-                className="input"
-                value={entryCode}
-                onChange={(event) => onEntryCodeChange(event.target.value)}
-                placeholder="Enter code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-              />
-            </label>
-            <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
-              {verifying ? "Verifying..." : "Verify code"}
-            </button>
-          </div>
+          {!waiting ? (
+            <div className="examEntryCodeForm">
+              <label className="field">
+                <span>Access code</span>
+                <input
+                  className="input"
+                  value={entryCode}
+                  onChange={(event) => onEntryCodeChange(event.target.value)}
+                  placeholder="Enter code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                />
+              </label>
+              <button className="btn btnPrimary" type="button" onClick={onVerify} disabled={verifying || !entryCode.trim()}>
+                {verifying ? "Verifying..." : "Verify code"}
+              </button>
+            </div>
+          ) : null}
           <div className="manualAdmissionActions">
             <div>
               <strong>Need manual admission?</strong>
@@ -1448,12 +1475,38 @@ function ApprovalWaitingPanel({ accessStatus }) {
 }
 
 function StudentIdentityCard({ identity }) {
+  const [photoObjectUrl, setPhotoObjectUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+
+    (async () => {
+      try {
+        if (!identity?.photoUrl) {
+          setPhotoObjectUrl("");
+          return;
+        }
+
+        objectUrl = await loadProtectedPhotoUrl(identity.photoUrl);
+        if (active) setPhotoObjectUrl(objectUrl);
+      } catch {
+        if (active) setPhotoObjectUrl("");
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [identity?.photoUrl]);
+
   if (!identity) return null;
 
   return (
     <div className="studentAdmissionIdentity">
       <div className="studentAdmissionPhoto" aria-hidden="true">
-        {identity.photoUrl ? <img src={identity.photoUrl} alt="" /> : <span>{identity.initials || "ST"}</span>}
+        {photoObjectUrl ? <img src={photoObjectUrl} alt="" /> : <span>{identity.initials || "ST"}</span>}
       </div>
       <div>
         <span className="summaryLabel">Student identity</span>
@@ -1466,15 +1519,40 @@ function StudentIdentityCard({ identity }) {
 }
 
 function SecureExamIdentityBanner({ identity, fallbackUser, cameraStatus }) {
+  const [photoObjectUrl, setPhotoObjectUrl] = useState("");
   const fullName = identity?.fullName || fallbackUser?.fullName || "Student";
   const email = identity?.email || fallbackUser?.email || "";
   const studentNumber = identity?.studentNumber || identity?.studentId || "Pending ID";
   const initials = identity?.initials || buildInitials(fullName, email);
 
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+
+    (async () => {
+      try {
+        if (!identity?.photoUrl) {
+          setPhotoObjectUrl("");
+          return;
+        }
+
+        objectUrl = await loadProtectedPhotoUrl(identity.photoUrl);
+        if (active) setPhotoObjectUrl(objectUrl);
+      } catch {
+        if (active) setPhotoObjectUrl("");
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [identity?.photoUrl]);
+
   return (
     <div className="secureExamIdentityBanner" aria-label="Verified student identity">
       <div className="secureExamIdentityPhoto" aria-hidden="true">
-        {identity?.photoUrl ? <img src={identity.photoUrl} alt="" /> : <span>{initials}</span>}
+        {photoObjectUrl ? <img src={photoObjectUrl} alt="" /> : <span>{initials}</span>}
       </div>
       <div className="secureExamIdentityText">
         <span>Verified student</span>
@@ -1553,7 +1631,9 @@ function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
     ? "Submitted automatically when the timer ended."
     : result.reason === "integrity-policy"
       ? "Submitted automatically after the integrity policy threshold was reached."
-      : "Your answers were submitted successfully.";
+      : result.reason === "submitted-lock"
+        ? "This attempt was already submitted. Re-entry requires explicit staff authorization."
+        : "Your answers were submitted successfully.";
 
   return (
     <section className="surfaceCard">
@@ -1589,72 +1669,12 @@ function SubmissionResult({ result, answeredCount, questionsCount, onDone }) {
             </div>
           ) : null}
           Your submission is saved. Scores and feedback become visible only after staff review and result publication.
+          {result.reason === "submitted-lock" ? " The editable exam workspace is locked for this student account." : ""}
         </div>
         <div className="heroActions examDoneActions">
           <button className="btn btnPrimary" type="button" onClick={onDone}>Return to exams</button>
           <Link className="btn" to="/results">View results queue</Link>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function StudentJourneyValidationPanel({
-  questionsCount,
-  answeredCount,
-  sessionTiming,
-  savedAt,
-  saveState,
-  lockdownBlocked,
-  integrityPolicy,
-  fullscreenActive,
-  networkOnline,
-}) {
-  const items = [
-    {
-      label: "Attempt access",
-      detail: lockdownBlocked ? "Blocked by lockdown readiness" : "Student can access this attempt",
-      passed: !lockdownBlocked,
-    },
-    {
-      label: "Questions",
-      detail: questionsCount > 0 ? `${questionsCount} loaded` : "No questions loaded",
-      passed: questionsCount > 0,
-    },
-    {
-      label: "Timer",
-      detail: sessionTiming?.expiresAt ? `Ends ${formatSavedAt(sessionTiming.expiresAt)}` : "No session timer",
-      passed: Boolean(sessionTiming?.expiresAt),
-    },
-    {
-      label: "Draft safety",
-      detail: savedAt ? `${formatSaveState(saveState)} at ${formatSavedAt(savedAt)}` : "Waiting for first answer",
-      passed: Boolean(savedAt) || answeredCount === 0,
-    },
-    {
-      label: "Integrity",
-      detail: `${fullscreenActive ? "Fullscreen active" : "Fullscreen available"}; ${networkOnline ? "online" : "offline"}`,
-      passed: Boolean(integrityPolicy) || fullscreenActive || networkOnline,
-    },
-  ];
-
-  return (
-    <section className="studentJourneyPanel">
-      <div className="sectionHeader">
-        <div>
-          <h3>Student journey validation</h3>
-          <span className="sectionMeta">Use this panel during final testing to confirm the exam session is ready end to end.</span>
-        </div>
-        <span className="statusPill statusLive">{items.filter((item) => item.passed).length}/{items.length}</span>
-      </div>
-      <div className="studentJourneyGrid">
-        {items.map((item) => (
-          <article key={item.label} className={item.passed ? "journeyCheckPassed" : "journeyCheckWarn"}>
-            <span>{item.passed ? "Ready" : "Check"}</span>
-            <strong>{item.label}</strong>
-            <small>{item.detail}</small>
-          </article>
-        ))}
       </div>
     </section>
   );
@@ -1864,8 +1884,3 @@ function formatPolicyAction(action) {
   return action;
 }
 
-function formatLockdownClient(value) {
-  if (value === "SafeExamBrowser") return "Safe Exam Browser";
-  if (value === "KioskClient") return "Kiosk client";
-  return "Standard browser";
-}

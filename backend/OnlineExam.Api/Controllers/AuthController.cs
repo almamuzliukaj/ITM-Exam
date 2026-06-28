@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OnlineExam.Api.Data;
 using OnlineExam.Api.DTOs;
+using OnlineExam.Api.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -16,11 +17,13 @@ namespace OnlineExam.Api.Controllers
     {
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
+        private readonly IAuditLogService _auditLogService;
 
-        public AuthController(AppDbContext db, IConfiguration config)
+        public AuthController(AppDbContext db, IConfiguration config, IAuditLogService auditLogService)
         {
             _db = db;
             _config = config;
+            _auditLogService = auditLogService;
         }
 
         [HttpPost("login")]
@@ -113,6 +116,42 @@ namespace OnlineExam.Api.Controllers
             });
         }
 
+        [Authorize]
+        [HttpPut("me/password")]
+        public async Task<IActionResult> ChangeOwnPassword([FromBody] ChangeOwnPasswordDto dto)
+        {
+            var userIdRaw = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdRaw, out var parsedUserId))
+                return Unauthorized(new { message = "Invalid user session." });
+
+            var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == parsedUserId);
+            if (user == null || !user.IsActive)
+                return Unauthorized(new { message = "Invalid user session." });
+
+            if (!PasswordMatches(user.PasswordHash, dto.CurrentPassword))
+                return BadRequest(new { message = "Current password is incorrect." });
+
+            if (!IsValidPassword(dto.NewPassword))
+                return BadRequest(new { message = "Password must be at least 8 characters and include upper, lower, and number." });
+
+            if (!string.Equals(dto.NewPassword, dto.ConfirmPassword, StringComparison.Ordinal))
+                return BadRequest(new { message = "New password and confirmation do not match." });
+
+            if (PasswordMatches(user.PasswordHash, dto.NewPassword))
+                return BadRequest(new { message = "New password must be different from the current password." });
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            await _db.SaveChangesAsync();
+
+            await _auditLogService.LogAsync("User.PasswordChanged", "User", user.Id, new
+            {
+                user.Email,
+                user.Role
+            }, "AccountSecurity");
+
+            return Ok(new { message = "Password changed successfully." });
+        }
+
         [Authorize(Roles = "Admin")]
         [HttpGet("admin/ping")]
         public IActionResult Ping()
@@ -142,6 +181,14 @@ namespace OnlineExam.Api.Controllers
             {
                 return false;
             }
+        }
+
+        private static bool IsValidPassword(string? password)
+        {
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+                return false;
+
+            return password.Any(char.IsUpper) && password.Any(char.IsLower) && password.Any(char.IsDigit);
         }
 
         private static string BuildStudentNumber(OnlineExam.Api.Models.User student)

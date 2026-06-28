@@ -622,7 +622,7 @@ function getDemoReadinessItems(roleKey) {
     ],
     professor: [
       { label: "Assigned offerings", detail: "Professor sees only assigned course offerings.", ready: true },
-      { label: "Exam readiness", detail: "Draft, question attachment, publish readiness, and lockdown setup are available.", ready: true },
+      { label: "Exam readiness", detail: "Draft, question attachment, publish readiness, and access-code setup are available.", ready: true },
       { label: "Result publication", detail: "Gradebook can save scores and publish student-visible results.", ready: true },
     ],
     assistant: [

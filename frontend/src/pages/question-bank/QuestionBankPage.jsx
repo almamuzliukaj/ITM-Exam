@@ -308,12 +308,6 @@ export default function QuestionBankPage() {
               </span>
             </div>
             <div className="resourceActionGroup">
-              <Link
-                className="btn"
-                to={`/question-bank/generated-review${selectedOfferingId ? `?offeringId=${selectedOfferingId}` : ""}`}
-              >
-                Review generated
-              </Link>
               <button className="btn btnPrimary" type="button" onClick={() => openAuthoringPanel()} disabled={!selectedOfferingId}>
                 Add question
               </button>

@@ -26,6 +26,7 @@ export default function ExamGradebookPage() {
   const [success, setSuccess] = useState("");
   const [reviewFilter, setReviewFilter] = useState("all");
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const canReview = canManageExams(user?.role);
 
   const loadGradebook = useCallback(async () => {
@@ -93,10 +94,14 @@ export default function ExamGradebookPage() {
         const next = { ...current };
         for (const item of successful) {
           const suggestedManualScore = Number(item.review?.suggestedManualScore || 0);
+          const existingDraft = current[item.attemptId] || {};
+          const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(item.attempt);
           next[item.attemptId] = {
+            ...existingDraft,
             manualScore: String(suggestedManualScore),
             finalScore: String(Number(item.attempt.autoScore || 0) + suggestedManualScore),
-            notes: item.review?.reviewReminder || current[item.attemptId]?.notes || "",
+            notes: item.review?.reviewReminder || existingDraft.notes || "",
+            questionScores: existingQuestionScores,
           };
         }
         return next;
@@ -118,6 +123,10 @@ export default function ExamGradebookPage() {
   const readyToPublishCount = useMemo(
     () => attempts.filter((attempt) => attempt.isGraded && !attempt.isPublished).length,
     [attempts],
+  );
+  const reviewCompletionPercent = useMemo(
+    () => (attempts.length === 0 ? 0 : Math.round((gradedCount / attempts.length) * 100)),
+    [attempts.length, gradedCount],
   );
   const visibleAttempts = useMemo(
     () => attempts.filter((attempt) => matchesReviewFilter(attempt, reviewFilter)),
@@ -149,12 +158,16 @@ export default function ExamGradebookPage() {
       setAiReviews((current) => ({ ...current, [attempt.attemptId]: review }));
       setDrafts((current) => {
         const suggestedManualScore = Number(review?.suggestedManualScore || 0);
+        const existingDraft = current[attempt.attemptId] || {};
+        const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(attempt);
         return {
           ...current,
           [attempt.attemptId]: {
+            ...existingDraft,
             manualScore: String(suggestedManualScore),
             finalScore: String(Number(attempt.autoScore || 0) + suggestedManualScore),
-            notes: review?.reviewReminder || current[attempt.attemptId]?.notes || "",
+            notes: review?.reviewReminder || existingDraft.notes || "",
+            questionScores: existingQuestionScores,
           },
         };
       });
@@ -172,16 +185,28 @@ export default function ExamGradebookPage() {
       setSavingId(attempt.attemptId);
       setError("");
       setSuccess("");
+      const questionScores = buildQuestionScorePayload(draft, attempt);
+      const finalScore = questionScores.length > 0
+        ? questionScores.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0)
+        : parseNumberOrNull(draft.finalScore);
       const updated = await gradeExamAttempt(attempt.attemptId, {
         manualScore: parseNumberOrNull(draft.manualScore),
-        finalScore: parseNumberOrNull(draft.finalScore),
+        finalScore,
         notes: draft.notes || null,
+        questionScores,
       });
 
       setAttempts((current) =>
         current.map((item) =>
           item.attemptId === attempt.attemptId
-            ? { ...item, ...updated, studentName: item.studentName, studentEmail: item.studentEmail }
+            ? {
+                ...item,
+                ...updated,
+                studentName: item.studentName,
+                studentEmail: item.studentEmail,
+                answers: Array.isArray(updated.answers) && updated.answers.length > 0 ? updated.answers : item.answers,
+                questionScores: Array.isArray(updated.questionScores) && updated.questionScores.length > 0 ? updated.questionScores : item.questionScores,
+              }
             : item,
         ),
       );
@@ -191,6 +216,12 @@ export default function ExamGradebookPage() {
           manualScore: String(updated.manualScore ?? 0),
           finalScore: String(updated.finalScore ?? updated.autoScore ?? 0),
           notes: updated.gradingNotes || "",
+          questionScores: normalizeQuestionScoreDrafts({
+            ...attempt,
+            ...updated,
+            answers: Array.isArray(updated.answers) && updated.answers.length > 0 ? updated.answers : attempt.answers,
+            questionScores: Array.isArray(updated.questionScores) && updated.questionScores.length > 0 ? updated.questionScores : attempt.questionScores,
+          }),
         },
       }));
       setSuccess("Grade saved. The result remains hidden from students until published.");
@@ -202,14 +233,21 @@ export default function ExamGradebookPage() {
   }
 
   async function onPublishResults() {
+    if (pendingCount > 0) {
+      setError("Finish reviewing every submitted attempt before publishing results.");
+      setPublishConfirmOpen(false);
+      return;
+    }
+
     try {
       setPublishing(true);
       setError("");
       setSuccess("");
       const result = await publishExamResults(examId, { publishAll: true, attemptIds: [] });
       setAttempts((current) =>
-        current.map((attempt) => ({ ...attempt, isGraded: true, isPublished: true })),
+        current.map((attempt) => attempt.isGraded ? { ...attempt, isPublished: true, publishedAt: new Date().toISOString() } : attempt),
       );
+      setPublishConfirmOpen(false);
       setSuccess(result?.message || "Published graded results.");
     } catch (err) {
       setError(readApiMessage(err) || "Failed to publish results.");
@@ -268,6 +306,35 @@ export default function ExamGradebookPage() {
           </section>
         ) : null}
 
+ feature/agnesa-grading-save-publish-ui
+        {!error ? <section className="summaryStrip">
+          <article className="summaryCard">
+            <span className="summaryLabel">Attempts</span>
+            <strong>{attempts.length}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Graded</span>
+            <strong>{gradedCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Needs review</span>
+            <strong>{pendingCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Integrity flags</span>
+            <strong>{integrityCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Ready to publish</span>
+            <strong>{readyToPublishCount}</strong>
+          </article>
+          <article className="summaryCard">
+            <span className="summaryLabel">Review completion</span>
+            <strong>{reviewCompletionPercent}%</strong>
+          </article>
+        </section> : null}
+
+
         {!error ? (
           <section className="summaryStrip">
             <article className="summaryCard">
@@ -292,19 +359,30 @@ export default function ExamGradebookPage() {
             </article>
           </section>
         ) : null}
+ main
         {!error ? (
           <section className="surfaceCard">
             <div className="sectionHeader">
               <div>
                 <h3>Human review workflow</h3>
-                <span className="sectionMeta">Review submitted attempts, inspect integrity events, and publish only approved grades.</span>
+                <span className="sectionMeta">
+                  {pendingCount > 0
+                    ? `${pendingCount} attempt${pendingCount === 1 ? "" : "s"} still need human review before results can be published.`
+                    : "All submitted attempts are reviewed. Results can now be published for students."}
+                </span>
               </div>
               <div className="resourceActionGroup">
                 <span className="statusPill statusDraft">{publishedCount} published</span>
                 <button className="btn" type="button" onClick={onExportCsv} disabled={loading || visibleAttempts.length === 0}>
                   Export CSV
                 </button>
-                <button className="btn btnPrimary" type="button" onClick={onPublishResults} disabled={publishing || readyToPublishCount === 0 || !canReview}>
+                <button
+                  className="btn btnPrimary"
+                  type="button"
+                  onClick={() => setPublishConfirmOpen(true)}
+                  disabled={publishing || readyToPublishCount === 0 || pendingCount > 0 || !canReview}
+                  title={pendingCount > 0 ? "Review all submitted attempts before publishing." : undefined}
+                >
                   {publishing ? "Publishing..." : "Publish graded results"}
                 </button>
               </div>
@@ -358,6 +436,17 @@ export default function ExamGradebookPage() {
                       }
                       onAiReview={() => onAiReview(selectedAttempt)}
                       onSaveGrade={() => onSaveGrade(selectedAttempt)}
+                    />
+                  ) : null}
+                  {publishConfirmOpen ? (
+                    <PublishResultsModal
+                      exam={exam}
+                      attempts={attempts}
+                      readyToPublishCount={readyToPublishCount}
+                      publishedCount={publishedCount}
+                      publishing={publishing}
+                      onClose={() => setPublishConfirmOpen(false)}
+                      onConfirm={onPublishResults}
                     />
                   ) : null}
                 </>
@@ -453,6 +542,7 @@ function normalizeGradebookRows(value) {
         finalGrade: Number(attempt.finalGrade || 0),
         integrityViolationCount: Number(attempt.integrityViolationCount || 0),
         answers: Array.isArray(attempt.answers) ? attempt.answers : [],
+        questionScores: Array.isArray(attempt.questionScores) ? attempt.questionScores : [],
         integrityEvents: Array.isArray(attempt.integrityEvents) ? attempt.integrityEvents : [],
       };
     })
@@ -461,10 +551,24 @@ function normalizeGradebookRows(value) {
 
 function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disabled, onClose, onDraftChange, onAiReview, onSaveGrade }) {
   const violationCount = Number(attempt.integrityViolationCount || 0);
-  const currentFinalScore = Number(draft.finalScore ?? attempt.finalScore ?? 0);
+  const questionScoreDrafts = draft.questionScores || normalizeQuestionScoreDrafts(attempt);
+  const currentFinalScore = questionScoreDrafts.length > 0
+    ? questionScoreDrafts.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0)
+    : Number(draft.finalScore ?? attempt.finalScore ?? 0);
   const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
   const currentPercentage = attempt.examMaxPoints ? (currentFinalScore / Number(attempt.examMaxPoints || 0)) * 100 : 0;
   const currentGrade = calculateGrade(currentPercentage);
+
+  function onQuestionScoreChange(questionId, changes) {
+    const nextScores = updateQuestionScoreDraft(questionScoreDrafts, questionId, changes);
+    const nextFinalScore = nextScores.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0);
+    onDraftChange({
+      ...draft,
+      questionScores: nextScores,
+      finalScore: String(roundScore(nextFinalScore)),
+      manualScore: String(roundScore(nextFinalScore - Number(attempt.autoScore || 0))),
+    });
+  }
 
   return (
     <div className="modalBackdrop" role="dialog" aria-modal="true">
@@ -494,7 +598,12 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
           <ScoreTile label="Adjustment" value={scoreDelta} signed />
         </div>
 
-        <AttemptAnswersPanel attempt={attempt} />
+        <AttemptAnswersPanel
+          attempt={attempt}
+          questionScores={questionScoreDrafts}
+          disabled={disabled || saving}
+          onQuestionScoreChange={onQuestionScoreChange}
+        />
 
         <IntegrityReviewPanel attempt={attempt} />
 
@@ -506,9 +615,9 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
               type="number"
               min="0"
               step="0.25"
-              value={draft.manualScore ?? ""}
-              onChange={(e) => onDraftChange({ ...draft, manualScore: e.target.value })}
-              disabled={disabled || saving}
+              value={roundScore(currentFinalScore - Number(attempt.autoScore || 0))}
+              readOnly
+              disabled
             />
           </div>
           <div className="field">
@@ -518,9 +627,9 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
               type="number"
               min="0"
               step="0.25"
-              value={draft.finalScore ?? ""}
-              onChange={(e) => onDraftChange({ ...draft, finalScore: e.target.value })}
-              disabled={disabled || saving}
+              value={roundScore(currentFinalScore)}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -596,15 +705,16 @@ function AttemptTimeline({ attempt }) {
   );
 }
 
-function AttemptAnswersPanel({ attempt }) {
+function AttemptAnswersPanel({ attempt, questionScores, disabled, onQuestionScoreChange }) {
   const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
+  const scoreByQuestion = new Map((questionScores || []).map((item) => [item.questionId, item]));
 
   return (
     <div className="attemptAnswersPanel">
       <div className="sectionHeader">
         <div>
-          <h3>Student answers</h3>
-          <span className="small">Review each submitted answer exactly as the student sent it.</span>
+          <h3>Question-by-question review</h3>
+          <span className="small">Adjust awarded points and leave notes for each answer before saving the human grade.</span>
         </div>
       </div>
       {answers.length === 0 ? (
@@ -612,14 +722,35 @@ function AttemptAnswersPanel({ attempt }) {
       ) : (
         <div className="attemptAnswerList">
           {answers.map((answer, index) => (
-            <article key={answer.questionId} className="attemptAnswerCard">
+            <QuestionReviewCard
+              key={answer.questionId}
+              answer={answer}
+              index={index}
+              score={scoreByQuestion.get(answer.questionId)}
+              disabled={disabled}
+              onChange={onQuestionScoreChange}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionReviewCard({ answer, index, score, disabled, onChange }) {
+  const maxPoints = Number(score?.maxPoints ?? answer.points ?? 0);
+  const autoPoints = Number(score?.autoPointsAwarded ?? answer.autoPointsAwarded ?? (answer.isCorrect ? maxPoints : 0));
+  const awarded = score?.pointsAwarded ?? score?.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints;
+
+  return (
+    <article className="attemptAnswerCard">
               <div className="attemptAnswerHeader">
                 <div>
                   <span className="summaryLabel">Question {index + 1} / {answer.questionType}</span>
                   <strong>{answer.questionText}</strong>
                 </div>
-                <span className={`statusPill ${answer.isCorrect ? "statusLive" : "statusDraft"}`}>
-                  {answer.isCorrect ? "Correct" : `${answer.points || 0} pts`}
+                <span className={`statusPill ${Number(awarded) >= maxPoints ? "statusLive" : "statusDraft"}`}>
+                  {formatScore(awarded)} / {formatScore(maxPoints)} pts
                 </span>
               </div>
               {Array.isArray(answer.options) && answer.options.length > 0 ? (
@@ -648,11 +779,36 @@ function AttemptAnswersPanel({ attempt }) {
                   {isTechnicalAnswer(answer) ? <pre>{answer.correctAnswer}</pre> : <p>{answer.correctAnswer}</p>}
                 </div>
               ) : null}
-            </article>
-          ))}
+      <div className="questionScoreEditor">
+        <div className="field">
+          <label className="label">Auto points</label>
+          <input className="input" value={`${formatScore(autoPoints)} / ${formatScore(maxPoints)}`} readOnly disabled />
         </div>
-      )}
-    </div>
+        <div className="field">
+          <label className="label">Awarded points</label>
+          <input
+            className="input"
+            type="number"
+            min="0"
+            max={maxPoints}
+            step="0.25"
+            value={awarded}
+            onChange={(event) => onChange(answer.questionId, { pointsAwarded: event.target.value })}
+            disabled={disabled}
+          />
+        </div>
+        <div className="field questionScoreNotes">
+          <label className="label">Question feedback</label>
+          <input
+            className="input"
+            value={score?.notes ?? score?.gradingNotes ?? ""}
+            onChange={(event) => onChange(answer.questionId, { notes: event.target.value })}
+            disabled={disabled}
+            placeholder="Optional feedback for this answer"
+          />
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -715,15 +871,124 @@ function AiReviewPanel({ review }) {
   );
 }
 
+function PublishResultsModal({ exam, attempts, readyToPublishCount, publishedCount, publishing, onClose, onConfirm }) {
+  const totalAttempts = attempts.length;
+  const reviewedCount = attempts.filter((attempt) => attempt.isGraded).length;
+  const pendingCount = Math.max(0, totalAttempts - reviewedCount);
+  const integrityFlags = attempts.reduce((sum, attempt) => sum + Number(attempt.integrityViolationCount || 0), 0);
+
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true">
+      <article className="modalCard publishResultsModal">
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">Result publication confirmation</span>
+            <h3>Publish reviewed results?</h3>
+          </div>
+          <button className="btn" type="button" onClick={onClose} disabled={publishing}>Close</button>
+        </div>
+        <p>
+          Students will be able to see their published scores after this action. Publish only after human review is complete.
+        </p>
+        <dl className="publishResultSummary">
+          <div>
+            <dt>Assessment</dt>
+            <dd>{exam?.title || "Selected assessment"}</dd>
+          </div>
+          <div>
+            <dt>Total submitted attempts</dt>
+            <dd>{totalAttempts}</dd>
+          </div>
+          <div>
+            <dt>Reviewed</dt>
+            <dd>{reviewedCount}</dd>
+          </div>
+          <div>
+            <dt>Ready to publish</dt>
+            <dd>{readyToPublishCount}</dd>
+          </div>
+          <div>
+            <dt>Already published</dt>
+            <dd>{publishedCount}</dd>
+          </div>
+          <div>
+            <dt>Integrity flags</dt>
+            <dd>{integrityFlags}</dd>
+          </div>
+        </dl>
+        {pendingCount > 0 ? (
+          <div className="alert">
+            <strong>Publication blocked</strong>
+            <span>{pendingCount} submitted attempt{pendingCount === 1 ? "" : "s"} still need review.</span>
+          </div>
+        ) : null}
+        <div className="modalFooter">
+          <button className="btn" type="button" onClick={onClose} disabled={publishing}>Cancel</button>
+          <button className="btn btnPrimary" type="button" onClick={onConfirm} disabled={publishing || pendingCount > 0 || readyToPublishCount === 0}>
+            {publishing ? "Publishing..." : "Publish results"}
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 function buildDrafts(attempts) {
   return attempts.reduce((acc, attempt) => {
     acc[attempt.attemptId] = {
       manualScore: String(attempt.manualScore ?? 0),
       finalScore: String(attempt.finalScore ?? attempt.autoScore ?? 0),
       notes: attempt.gradingNotes || "",
+      questionScores: normalizeQuestionScoreDrafts(attempt),
     };
     return acc;
   }, {});
+}
+
+function normalizeQuestionScoreDrafts(attempt) {
+  const scores = Array.isArray(attempt.questionScores) ? attempt.questionScores : [];
+  const scoreByQuestion = new Map(scores.map((score) => [score.questionId, score]));
+  const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
+
+  return answers.map((answer) => {
+    const score = scoreByQuestion.get(answer.questionId) || {};
+    const maxPoints = Number(score.maxPoints ?? answer.points ?? 0);
+    const autoPoints = Number(score.autoPointsAwarded ?? answer.autoPointsAwarded ?? (answer.isCorrect ? maxPoints : 0));
+    const finalPoints = Number(score.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints);
+
+    return {
+      questionId: answer.questionId,
+      maxPoints,
+      autoPointsAwarded: roundScore(autoPoints),
+      pointsAwarded: String(roundScore(finalPoints)),
+      notes: score.gradingNotes || answer.gradingNotes || "",
+    };
+  });
+}
+
+function updateQuestionScoreDraft(scores, questionId, changes) {
+  return scores.map((score) => {
+    if (score.questionId !== questionId) return score;
+
+    const nextPoints = Object.prototype.hasOwnProperty.call(changes, "pointsAwarded")
+      ? clampScore(changes.pointsAwarded, score.maxPoints)
+      : score.pointsAwarded;
+
+    return {
+      ...score,
+      pointsAwarded: String(nextPoints),
+      notes: Object.prototype.hasOwnProperty.call(changes, "notes") ? changes.notes : score.notes,
+    };
+  });
+}
+
+function buildQuestionScorePayload(draft, attempt) {
+  const scores = draft.questionScores || normalizeQuestionScoreDrafts(attempt);
+  return scores.map((score) => ({
+    questionId: score.questionId,
+    pointsAwarded: clampScore(score.pointsAwarded, score.maxPoints),
+    notes: score.notes || null,
+  }));
 }
 
 function buildGradebookCsv(attempts, drafts) {
@@ -807,6 +1072,17 @@ function parseNumberOrNull(value) {
   if (value === "" || value == null) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampScore(value, maxPoints) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return roundScore(Math.min(Math.max(parsed, 0), Number(maxPoints || 0)));
+}
+
+function roundScore(value) {
+  const parsed = Number(value || 0);
+  return Math.round(parsed * 100) / 100;
 }
 
 function formatScore(value) {

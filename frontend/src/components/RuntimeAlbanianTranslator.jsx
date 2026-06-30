@@ -975,15 +975,6 @@ export default function RuntimeAlbanianTranslator() {
     }
 
 
-    applyTranslations();
-    const observer = new MutationObserver(applyTranslations);
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
-    window.addEventListener("languagechange", applyTranslations);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("languagechange", applyTranslations);
-
     let frameId = 0;
     function scheduleTranslations() {
       if (frameId) window.cancelAnimationFrame(frameId);
@@ -995,7 +986,7 @@ export default function RuntimeAlbanianTranslator() {
 
     scheduleTranslations();
     const observer = new MutationObserver(scheduleTranslations);
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
     window.addEventListener("languagechange", scheduleTranslations);
     window.addEventListener("app-language-changed", scheduleTranslations);
 
@@ -1004,7 +995,6 @@ export default function RuntimeAlbanianTranslator() {
       observer.disconnect();
       window.removeEventListener("languagechange", scheduleTranslations);
       window.removeEventListener("app-language-changed", scheduleTranslations);
-
     };
   }, [i18n.language]);
 

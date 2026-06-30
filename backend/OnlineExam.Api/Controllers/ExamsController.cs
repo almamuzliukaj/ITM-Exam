@@ -495,34 +495,9 @@ public class ExamsController : ControllerBase
         activeAttempt.PublishedAt = null;
         activeAttempt.PublishedByUserId = null;
 
-        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
-            _context.ExamAttempts.Add(attempt);
-            EnsureAttemptQuestionVersion(attempt, exam.Questions);
-            createdNewAttempt = true;
-        }
-        else
-        {
-            attempt.Status = ExamAttemptSubmittedStatus;
-            attempt.StartedAt = attempt.StartedAt == default ? now : attempt.StartedAt;
-            attempt.LastSavedAt = now;
-            attempt.SubmittedAt = now;
-            attempt.AnswersJson = JsonSerializer.Serialize(submittedAnswers);
-            attempt.QuestionScoresJson = SerializeQuestionScores(questionScores);
-            attempt.AutoScore = autoScore;
-            attempt.ManualScore = 0;
-            attempt.FinalScore = autoScore;
-            attempt.RequiresManualGrading = requiresManualGrading;
-            attempt.IsGraded = !requiresManualGrading;
-            attempt.IsPublished = false;
-            attempt.GradedAt = null;
-            attempt.GradedByUserId = null;
-            attempt.GradingNotes = null;
-            attempt.PublishedAt = null;
-            attempt.PublishedByUserId = null;
-            EnsureAttemptQuestionVersion(attempt, exam.Questions);
-        }
+        EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
 
-        var bindingError = await EnsureExamSessionBindingAsync(exam, attempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
 
         if (bindingError != null)
             return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
@@ -548,22 +523,13 @@ public class ExamsController : ControllerBase
 
         return Ok(new ExamAttemptResultDto
         {
-
             ExamAttemptId = activeAttempt.Id,
             Status = activeAttempt.Status,
             StartedAt = activeAttempt.StartedAt,
             LastSavedAt = activeAttempt.LastSavedAt,
             SubmittedAt = activeAttempt.SubmittedAt,
+            AttemptVersionSignature = activeAttempt.AttemptVersionSignature,
             Score = activeAttempt.FinalScore,
-
-            ExamAttemptId = attempt.Id,
-            Status = attempt.Status,
-            StartedAt = attempt.StartedAt,
-            LastSavedAt = attempt.LastSavedAt,
-            SubmittedAt = attempt.SubmittedAt,
-            AttemptVersionSignature = attempt.AttemptVersionSignature,
-            Score = attempt.FinalScore,
-
             Questions = details
         });
     }
@@ -1571,102 +1537,9 @@ public class ExamsController : ControllerBase
 
     [HttpPost("{examId:guid}/students/{studentId:guid}/remove-access")]
     [Authorize(Roles = "Professor,Assistant")]
- feature/alma-student-results-randomization
     public Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
     {
         return RevokeStudentExamAccess(examId, studentId, dto);
-    }
-
-    [HttpPost("{examId:guid}/request-device-change")]
-    [Authorize(Roles = "Student")]
-    public async Task<ActionResult<ExamAccessStatusDto>> RequestDeviceChange(Guid examId, [FromBody] DeviceChangeRequestDto? dto = null
-    public async Task<ActionResult<ExamAccessStatusDto>> RemoveStudentFromLiveExam(Guid examId, Guid studentId, [FromBody] AllowExamStudentAccessDto? dto = null)
- main
-    {
-        var userId = GetCurrentUserId();
-        if (userId == null)
-            return Unauthorized();
-
-        var exam = await _context.Exams.FindAsync(examId);
-        if (exam == null || exam.Description.StartsWith(QuestionBankMarker))
-            return NotFound(new { message = "Exam not found." });
-
-        if (!await CanManageExamAsync(exam))
-            return Forbid();
-
-        if (!await IsStudentEligibleForExamAsync(studentId, exam))
-            return BadRequest(new { message = "This student is not eligible for this exam." });
-
-        var now = DateTime.UtcNow;
- feature/alma-student-results-randomization
-        var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
-        access.AccessStatus = StudentAccessStatusDeviceChangeRequested;
-        access.ApprovedAt = null;
-        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested device change approval.";
-        access.LastActivityAt = now;
-
-        await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.DeviceChangeRequested", "Exam", exam.Id, new
-        {
-            examId = exam.Id,
-            studentId = userId.Value,
-            requestedAt = access.LastActivityAt,
-            access.ApprovalReason
-        }, "ExamDelivery");
-
-        return Ok(new ExamAccessStatusDto
-        {
-            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
-            
-        var reason = NormalizeOptionalValue(dto?.Reason) ?? "Removed by professor during live monitoring.";
-        var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
-        access.AccessStatus = StudentAccessStatusRemoved;
-        access.ApprovedByUserId = userId.Value;
-        access.ApprovedAt = null;
-        access.ApprovalReason = reason;
-        access.LastActivityAt = now;
-        await RevokeActiveExamSessionBindingsAsync(exam.Id, studentId, userId.Value, reason, now);
-
-        var attempt = await _context.ExamAttempts
-            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
-        if (attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
-        {
-            attempt.Status = ExamAttemptRemovedStatus;
-            attempt.LastSavedAt = now;
-        }
-
-        await _context.SaveChangesAsync();
-        await _auditLogService.LogAsync("ExamAccess.StudentRemoved", "Exam", exam.Id, new
-        {
-            examId = exam.Id,
-            studentId,
-            removedByUserId = userId.Value,
-            removedAt = now,
-            reason,
-            attemptId = attempt?.Id,
-            preservedAnswers = attempt?.AnswersJson?.Length > 0
-        }, "ExamDelivery");
-
-        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
-
-        return Ok(new ExamAccessStatusDto
-        {
-            RequiresCode = requiresCode, main
-            HasAccess = false,
-            AccessStatus = access.AccessStatus,
-            VerifiedAt = access.VerifiedAt,
-            ApprovedAt = access.ApprovedAt,
- feature/alma-student-results-randomization
-            RequestedAt = access.LastActivityAt,
-            ApprovalReason = access.ApprovalReason,
-            StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
-            ServerTimeUtc = now,
-
-            ServerTimeUtc = now,
-            RequestedAt = null,
-            ApprovalReason = access.ApprovalReason,
-            Message = BuildAccessStatusMessage(false, access.AccessStatus, requiresCode)
-        });
     }
 
     [HttpPost("{examId:guid}/request-device-change")]
@@ -1717,7 +1590,7 @@ public class ExamsController : ControllerBase
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
- main
+            ServerTimeUtc = now,
             Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }

@@ -58,8 +58,10 @@ export default function LanguageSwitcher({ compact = false }) {
                 role="option"
                 aria-selected={option.value === current.value}
                 className={`languageSwitcherOption${option.value === current.value ? " languageSwitcherOptionActive" : ""}`}
-                onClick={() => {
-                  i18n.changeLanguage(option.value);
+                onClick={async () => {
+                  localStorage.setItem("app-language", option.value);
+                  await i18n.changeLanguage(option.value);
+                  window.dispatchEvent(new CustomEvent("app-language-changed", { detail: { language: option.value } }));
                   setIsOpen(false);
                 }}
               >

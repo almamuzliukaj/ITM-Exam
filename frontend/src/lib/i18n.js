@@ -1681,6 +1681,7 @@ i18n
 
 i18n.on("languageChanged", (language) => {
   localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  window.dispatchEvent(new CustomEvent("app-language-changed", { detail: { language } }));
 });
 
 export default i18n;

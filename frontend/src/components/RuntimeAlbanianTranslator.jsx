@@ -679,6 +679,10 @@ const ADDITIONAL_TEXT_TRANSLATIONS = {
   "Pending results": "Rezultate ne pritje",
   "Average score": "Piket mesatare",
   "Integrity violations": "Shkelje te integritetit",
+
+  "0 rows included in this table.": "0 rreshta te perfshire ne kete tabele.",
+  "rows included in this table.": "rreshta te perfshire ne kete tabele."
+
   "0 rows included in this table.": "0 rreshta te perfshire ne kete tabele."
 };
 
@@ -871,6 +875,11 @@ export default function RuntimeAlbanianTranslator() {
       if (rowsIncludedMatch) {
         return `${rowsIncludedMatch[1]} rreshta te perfshire ne kete tabele.`;
       }
+
+      const rowsIncludedFragmentMatch = compact.match(/^rows included in this table\.$/i);
+      if (rowsIncludedFragmentMatch) {
+        return "rreshta te perfshire ne kete tabele.";
+      }
       const thisWeekMatch = compact.match(/^\+?(\d+)\s+this week$/i);
       if (thisWeekMatch) {
         return `+${thisWeekMatch[1]} kete jave`;
@@ -897,6 +906,9 @@ export default function RuntimeAlbanianTranslator() {
         .replace(/\bColloquium\b/gi, "Kollokfium")
         .replace(/\bColloquum\b/gi, "Kollokfium")
         .replace(/\bMidterm\b/gi, "Kollokfium")
+
+        .replace(/\brows included in this table\./gi, "rreshta te perfshire ne kete tabele.")
+
         .replace(/Export still includes all rows\./gi, "Eksporti ende perfshin te gjithe rreshtat.");
       if (withCommonTerms !== compact) return withCommonTerms;
       return TEXT_TRANSLATIONS[compact] || value;
@@ -965,6 +977,16 @@ export default function RuntimeAlbanianTranslator() {
       });
     }
 
+
+    applyTranslations();
+    const observer = new MutationObserver(applyTranslations);
+    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
+    window.addEventListener("languagechange", applyTranslations);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("languagechange", applyTranslations);
+
     let frameId = 0;
     function scheduleTranslations() {
       if (frameId) window.cancelAnimationFrame(frameId);
@@ -985,6 +1007,7 @@ export default function RuntimeAlbanianTranslator() {
       observer.disconnect();
       window.removeEventListener("languagechange", scheduleTranslations);
       window.removeEventListener("app-language-changed", scheduleTranslations);
+
     };
   }, [i18n.language]);
 

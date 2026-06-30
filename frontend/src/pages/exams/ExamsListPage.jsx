@@ -238,11 +238,7 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
-
-                  {academicYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
-
                   {uniqueSorted([...academicYears, ...filterOptions.academicYears]).map((year) => <option key={year} value={year}>{year}</option>)}
-
                 </select>
               </div>
               {isStudent ? (

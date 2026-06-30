@@ -359,7 +359,6 @@ export default function ExamGradebookPage() {
             </article>
           </section>
         ) : null}
- main
         {!error ? (
           <section className="surfaceCard">
             <div className="sectionHeader">

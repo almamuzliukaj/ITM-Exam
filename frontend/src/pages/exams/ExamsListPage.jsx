@@ -68,20 +68,6 @@ export default function ExamsListPage() {
   const canCreate = canCreateExams(user?.role);
   const isStudent = user?.role === "Student";
 
-  const academicYearOptions = useMemo(() => {
-    const years = new Set();
-    exams.forEach((exam) => {
-      const year = String(exam.academicYear || "").trim();
-      if (year) years.add(year);
-    });
-    return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [exams]);
-  const filteredExams = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-    return exams.filter((exam) => {
-      if (examStatusFilter === "published" && !exam.isPublished) return false;
-      if (examStatusFilter === "draft" && exam.isPublished) return false;
-
   const filterOptions = useMemo(() => ({
     academicYears: uniqueSorted(exams.map((exam) => exam.academicYear)),
     semesters: uniqueSorted(exams.map((exam) => exam.semesterLabel)),

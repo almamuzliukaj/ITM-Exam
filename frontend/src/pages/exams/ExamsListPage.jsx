@@ -240,7 +240,11 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
+
+                  {filterOptions.academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+
                   {uniqueSorted([...academicYears, ...filterOptions.academicYears]).map((year) => <option key={year} value={year}>{year}</option>)}
+
                 </select>
               </div>
               {isStudent ? (
@@ -350,15 +354,11 @@ export default function ExamsListPage() {
                         </button>
                       ) : null}
 
-                      <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                        {isStudent ? "Open" : t("examsList.open")}
-                      </Link>
-
                       {exam.hasSubmittedAttempt ? (
                         <Link className="btn" to="/results">View result status</Link>
                       ) : (
                         <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                          {isStudent ? "Start" : t("examsList.open")}
+                          {isStudent ? "Open" : t("examsList.open")}
                         </Link>
                       )}
 

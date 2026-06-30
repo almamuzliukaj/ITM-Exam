@@ -18,6 +18,10 @@ const statusFilters = [
   { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "ApprovalRequested", label: "Waiting approval" },
   { value: "DeviceChangeRequested", label: "Device change" },
+
+  { value: "CodeVerified", label: "Code verified" },
+
+
   { value: "ManuallyApproved", label: "Approved" },
   { value: "Started", label: "Active" },
   { value: "Submitted", label: "Submitted" },
@@ -76,7 +80,13 @@ export default function ExamMonitorPage() {
     return () => window.clearInterval(timer);
   }, [autoRefresh, loadMonitor]);
 
+
+  const students = useMemo(
+    () => (Array.isArray(monitor?.students) ? monitor.students : []),
+    [monitor],
+  );
   const students = useMemo(() => (Array.isArray(monitor?.students) ? monitor.students : []), [monitor]);
+
   const summary = monitor?.summary || {};
 
   const filteredStudents = useMemo(() => {
@@ -98,11 +108,19 @@ export default function ExamMonitorPage() {
     });
   }, [search, statusFilter, students]);
 
-  const waitingCount = students.filter((student) => ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus)).length;
-  const activeCount = Number(summary.active || students.filter((student) => student.attemptStatus === "InProgress").length || 0);
+  const totalEnrolled = Number(summary.totalEnrolled || students.length || 0);
+  const waitingCount = Number(summary.waitingForPhysicalVerification || students.filter((student) =>
+    ["WaitingForPhysicalVerification", "ApprovalRequested", "DeviceChangeRequested"].includes(student.accessStatus),
+  ).length || 0);
+  const activeCount = Number(summary.active || students.filter((student) =>
+    student.accessStatus === "Started" || student.attemptStatus === "InProgress",
+  ).length || 0);
   const submittedCount = Number(summary.submitted || students.filter((student) => student.attemptStatus === "Submitted").length || 0);
   const flaggedCount = Number(summary.withViolations || students.filter((student) => Number(student.violationCount || 0) > 0).length || 0);
+
+
   const totalEnrolled = Number(summary.totalEnrolled || students.length || 0);
+
 
   async function onConfirmAction() {
     if (!examId || !pendingAction?.student?.studentId) return;
@@ -180,11 +198,16 @@ export default function ExamMonitorPage() {
             </section>
 
             <section className="monitorMetricGrid">
+
+              <MonitorMetric label="Enrolled" value={totalEnrolled} />
+              <MonitorMetric label="Waiting check" value={waitingCount} tone={waitingCount > 0 ? "warn" : "clear"} />
+              <MonitorMetric label="Active" value={activeCount} tone="live" />
+
               <MonitorMetric label="Waiting approval" value={waitingCount || summary.waitingForPhysicalVerification || 0} tone={waitingCount > 0 ? "warn" : "clear"} />
               <MonitorMetric label="In progress" value={activeCount} tone="live" />
+
               <MonitorMetric label="Submitted" value={submittedCount} />
               <MonitorMetric label="Students flagged" value={flaggedCount} tone={flaggedCount > 0 ? "danger" : "clear"} />
-              <MonitorMetric label="Enrolled" value={totalEnrolled} />
             </section>
 
             <section className="surfaceCard monitorRosterCard">
@@ -251,17 +274,18 @@ export default function ExamMonitorPage() {
                               </div>
                             </td>
                             <td><AccessStatusBadge status={student.accessStatus} /></td>
+
+                            <td><AttemptStatusBadge status={student.attemptStatus} accessStatus={student.accessStatus} /></td>
+
                             <td><AttemptStatusBadge student={student} /></td>
+
                             <td>
-                              <span className={`monitorViolationCount ${Number(student.violationCount || 0) >= 3 ? "danger" : ""}`}>
-                                {student.violationCount || 0}/3
-                              </span>
-                              <small>{student.latestViolationType ? formatEventType(student.latestViolationType) : "No events"}</small>
+                              <MonitorViolationTimeline student={student} />
                             </td>
                             <td>
                               <div className="monitorActivityCell">
-                                <strong>{formatDateTime(student.lastActivityAt || student.startedAt || student.verifiedAt)}</strong>
-                                <span>{student.admissionReason || student.enrollmentStatus || "No security event"}</span>
+                                <strong>{formatDateTime(student.lastActivityAt || student.submittedAt || student.verifiedAt)}</strong>
+                                <span>{student.latestViolationType ? formatEventType(student.latestViolationType) : student.admissionReason || "No security event"}</span>
                               </div>
                             </td>
                             <td>
@@ -337,6 +361,9 @@ function MonitorMetric({ label, value, tone = "neutral" }) {
 }
 
 function AccessStatusBadge({ status }) {
+
+  if (status === "ManuallyApproved" || status === "Started" || status === "Submitted") {
+
   if (["ManuallyApproved", "Started", "Submitted"].includes(status)) {
     return <span className="statusPill statusLive">Approved</span>;
   }
@@ -365,6 +392,15 @@ function AttemptStatusBadge({ student }) {
     return <span className="statusPill statusLive">Submitted</span>;
   }
 
+
+  return <span className="statusPill statusDraft">Not joined</span>;
+}
+
+function AttemptStatusBadge({ status, accessStatus }) {
+  if (status === "Submitted") return <span className="statusPill statusLive">Submitted</span>;
+  if (status === "InProgress") return <span className="statusPill statusPublished">In progress</span>;
+  if (accessStatus === "Removed") return <span className="statusPill statusDanger">Closed</span>;
+
   if (student.attemptStatus === "InProgress") {
     return <span className="statusPill statusPublished">In progress</span>;
   }
@@ -373,30 +409,104 @@ function AttemptStatusBadge({ student }) {
     return <span className="statusPill statusDanger">Closed</span>;
   }
 
+
   return <span className="statusPill statusDraft">Not started</span>;
+}
+
+function MonitorViolationTimeline({ student }) {
+  const events = dedupeIntegrityEvents(Array.isArray(student.integrityEvents) ? student.integrityEvents : []);
+  const count = Number(student.violationCount || 0);
+
+  return (
+    <div className="monitorViolationTimeline">
+      <span className={`monitorViolationCount ${count >= 3 ? "danger" : ""}`}>
+        {count}/3
+      </span>
+      {events.length > 0 ? (
+        <ol>
+          {events.map((event, index) => (
+            <li key={`${event.createdAt || index}-${event.eventType || index}`}>
+              <strong>{event.violationCount || index + 1}. {formatEventType(event.eventType)}</strong>
+              <span>{formatDateTime(event.createdAt)}{event.message ? ` - ${formatEventType(event.message)}` : ""}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <small>{student.latestViolationType ? formatEventType(student.latestViolationType) : "No events"}</small>
+      )}
+    </div>
+  );
+}
+
+function dedupeIntegrityEvents(events) {
+  const seen = new Set();
+  return events.filter((event) => {
+    const key = `${event.violationCount || ""}:${event.eventType || ""}:${event.createdAt || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, onConfirm }) {
   const labels = {
+
+    approve: {
+      eyebrow: "Manual approval",
+      title: "Allow exam access",
+      body: "Allow this student to enter this exam without the active entry code?",
+      button: "Approve access",
+      tone: "btnPrimary",
+    },
+    reject: {
+      eyebrow: "Reject admission",
+      title: "Reject access request",
+      body: "Reject this student's manual admission request?",
+      button: "Reject access",
+      tone: "btnDanger",
+    },
+    revoke: {
+      eyebrow: "Revoke admission",
+      title: "Revoke exam access",
+      body: "Revoke this student's exam access and prevent further activity unless access is granted again?",
+      button: "Revoke access",
+      tone: "btnDanger",
+    },
+  };
+  const copy = labels[action.type] || labels.reject;
+
     approve: ["Physical approval", "Approve exam admission", "Approve access"],
     reject: ["Reject admission", "Reject physical admission", "Reject access"],
     revoke: ["Revoke admission", "Revoke exam admission", "Revoke access"],
   };
   const [eyebrow, title, actionLabel] = labels[action.type] || labels.reject;
+
   const studentName = action.student.fullName || action.student.email || "this student";
 
   return (
     <div className="modalBackdrop" role="presentation">
+
+      <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={copy.title}>
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">{copy.eyebrow}</span>
+            <h3>{copy.title}</h3>
+
       <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modalHeader">
           <div>
             <span className="summaryLabel">{eyebrow}</span>
             <h3>{title}</h3>
+
           </div>
           <button className="btn btnTiny" type="button" onClick={onCancel} aria-label="Close">Close</button>
         </div>
         <div className="modalBody stackLg">
+
+          <p className="small">{copy.body.replace("this student", studentName)}</p>
+
           <p className="small">This action changes exam admission for {studentName} and is recorded for audit review.</p>
+
           <div className="field">
             <label className="label">Reason</label>
             <textarea
@@ -409,8 +519,13 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
         </div>
         <div className="modalFooter">
           <button className="btn" type="button" onClick={onCancel} disabled={saving}>Cancel</button>
+
+          <button className={`btn ${copy.tone}`} type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? "Saving..." : copy.button}
+
           <button className={`btn ${action.type === "approve" ? "btnPrimary" : "btnDanger"}`} type="button" onClick={onConfirm} disabled={saving}>
             {saving ? "Saving..." : actionLabel}
+
           </button>
         </div>
       </div>
@@ -451,9 +566,12 @@ function formatEventType(value) {
   return String(value || "No events")
     .replaceAll("_", " ")
     .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
 
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || "No events";
+
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+}
 function readApiMessage(err) {
   return err?.response?.data?.message ||
     (typeof err?.response?.data === "string" ? err.response.data : null) ||

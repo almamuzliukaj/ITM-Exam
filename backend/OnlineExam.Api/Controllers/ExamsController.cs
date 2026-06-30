@@ -477,6 +477,10 @@ public class ExamsController : ControllerBase
         var now = DateTime.UtcNow;
 
 
+        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
         activeAttempt.Status = ExamAttemptSubmittedStatus;
         activeAttempt.StartedAt = activeAttempt.StartedAt == default ? now : activeAttempt.StartedAt;
         activeAttempt.LastSavedAt = now;
@@ -497,10 +501,14 @@ public class ExamsController : ControllerBase
 
         EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
 
+
+        EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
+
         var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
 
         if (bindingError != null)
             return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
 
         await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
         await MarkExamSessionBindingsSubmittedAsync(examId, userId.Value, now);
@@ -901,9 +909,37 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
 
         var occurredAt = dto.OccurredAt?.ToUniversalTime() ?? DateTime.UtcNow;
-        var attemptViolationCount = await _context.ExamIntegrityEvents
-            .Where(x => x.ExamAttemptId == attempt.Id)
-            .CountAsync(cancellationToken) + 1;
+        var duplicateWindowStart = DateTime.UtcNow.AddSeconds(-3);
+        var duplicateEvent = await _context.ExamIntegrityEvents
+            .Where(x =>
+                x.ExamAttemptId == attempt.Id &&
+                x.EventType == normalizedEventType &&
+                x.RecordedAt >= duplicateWindowStart)
+            .OrderByDescending(x => x.RecordedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (duplicateEvent != null)
+        {
+            var studentCount = await _context.ExamIntegrityEvents
+                .Where(x => x.StudentId == userId.Value)
+                .CountAsync(cancellationToken);
+
+            return Ok(new ExamIntegrityEventResultDto
+            {
+                EventId = duplicateEvent.Id,
+                ExamAttemptId = attempt.Id,
+                EventType = duplicateEvent.EventType,
+                OccurredAt = duplicateEvent.OccurredAt,
+                AttemptViolationCount = attempt.IntegrityViolationCount,
+                StudentViolationCount = studentCount,
+                Policy = BuildIntegrityPolicyDto(
+                    attempt.IntegrityViolationCount,
+                    studentCount,
+                    attempt.IntegrityLastViolationAt,
+                    attempt.IntegrityAutoActionTriggeredAt)
+            });
+        }
+
+        var attemptViolationCount = Math.Max(0, attempt.IntegrityViolationCount) + 1;
         var studentViolationCount = await _context.ExamIntegrityEvents
             .Where(x => x.StudentId == userId.Value)
             .CountAsync(cancellationToken) + 1;
@@ -1400,11 +1436,24 @@ public class ExamsController : ControllerBase
 
         var now = DateTime.UtcNow;
         var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        var wasRemoved = access.AccessStatus == StudentAccessStatusRemoved;
         access.AccessStatus = StudentAccessStatusManuallyApproved;
         access.ApprovedByUserId = userId.Value;
         access.ApprovedAt = now;
         access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Physical identity approved by staff.";
         access.LastActivityAt = now;
+
+        var attempt = await _context.ExamAttempts
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == studentId);
+        if (wasRemoved && attempt != null && attempt.Status != ExamAttemptSubmittedStatus)
+        {
+            attempt.Status = ExamAttemptInProgressStatus;
+            attempt.IntegrityViolationCount = 0;
+            attempt.IntegrityPolicyAction = IntegrityPolicyActionNone;
+            attempt.IntegrityLastViolationAt = null;
+            attempt.IntegrityAutoActionTriggeredAt = null;
+            attempt.LastSavedAt = now;
+        }
 
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("ExamAccess.PhysicalIdentityApproved", "Exam", exam.Id, new
@@ -1413,7 +1462,8 @@ public class ExamsController : ControllerBase
             studentId,
             approvedByUserId = userId.Value,
             access.ApprovedAt,
-            access.ApprovalReason
+            access.ApprovalReason,
+            integrityPolicyReset = wasRemoved && attempt != null && attempt.Status != ExamAttemptSubmittedStatus
         }, "ExamDelivery");
 
         var requiresCode = await RequiresEntryCodeAsync(exam.Id);
@@ -1590,7 +1640,10 @@ public class ExamsController : ControllerBase
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+
+
             ServerTimeUtc = now,
+
             Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }
@@ -1626,11 +1679,18 @@ public class ExamsController : ControllerBase
         var attempts = await _context.ExamAttempts
             .Where(x => x.ExamId == exam.Id && studentIds.Contains(x.StudentId))
             .ToDictionaryAsync(x => x.StudentId);
-        var latestEvents = await _context.ExamIntegrityEvents
+        var integrityEvents = await _context.ExamIntegrityEvents
             .Where(x => x.ExamId == exam.Id && studentIds.Contains(x.StudentId))
+            .OrderByDescending(x => x.OccurredAt)
+            .ToListAsync();
+        var integrityEventsByStudent = integrityEvents
             .GroupBy(x => x.StudentId)
-            .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
-            .ToDictionaryAsync(x => x.StudentId);
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(x => x.OccurredAt)
+                    .Select(MapIntegrityEventForReview)
+                    .ToList());
         var now = DateTime.UtcNow;
         await DeactivateExpiredAccessCodesAsync(exam.Id, now);
         await _context.SaveChangesAsync();
@@ -1640,7 +1700,8 @@ public class ExamsController : ControllerBase
         {
             accesses.TryGetValue(item.Student.Id, out var access);
             attempts.TryGetValue(item.Student.Id, out var attempt);
-            latestEvents.TryGetValue(item.Student.Id, out var latestEvent);
+            integrityEventsByStudent.TryGetValue(item.Student.Id, out var studentIntegrityEvents);
+            var latestEvent = studentIntegrityEvents?.FirstOrDefault();
 
             var lastActivityAt = GetLatestActivityAt(access, attempt);
             var durationUsed = attempt?.SubmittedAt is not null
@@ -1670,9 +1731,10 @@ public class ExamsController : ControllerBase
                 DeviceChangeRequestedAt = access?.AccessStatus == StudentAccessStatusDeviceChangeRequested ? access.LastActivityAt : null,
                 DurationUsedMinutes = durationUsed,
                 ViolationCount = attempt?.IntegrityViolationCount ?? 0,
-                LatestViolationAt = latestEvent?.OccurredAt,
+                LatestViolationAt = latestEvent?.CreatedAt,
                 LatestViolationType = latestEvent?.EventType ?? string.Empty,
-                IntegritySeverity = ResolveIntegritySeverity(attempt?.IntegrityViolationCount ?? 0)
+                IntegritySeverity = ResolveIntegritySeverity(attempt?.IntegrityViolationCount ?? 0),
+                IntegrityEvents = studentIntegrityEvents ?? []
             };
         }).ToList();
 

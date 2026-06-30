@@ -21,6 +21,8 @@ const examPeriods = [
   { value: "October Exam Period", label: "October Exam Period" },
 ];
 
+const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
+
 export default function ExamsListPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();

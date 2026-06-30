@@ -501,15 +501,6 @@ public class ExamsController : ControllerBase
 
         EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
 
-
-        EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
-
-        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
-
-        if (bindingError != null)
-            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
-
-
         await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
         await MarkExamSessionBindingsSubmittedAsync(examId, userId.Value, now);
         try

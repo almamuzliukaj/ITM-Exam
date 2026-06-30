@@ -102,4 +102,5 @@ public class ExamLiveMonitorStudentDto
     public DateTime? LatestViolationAt { get; set; }
     public string LatestViolationType { get; set; } = string.Empty;
     public string IntegritySeverity { get; set; } = "None";
+    public List<ExamIntegrityEventDto> IntegrityEvents { get; set; } = [];
 }

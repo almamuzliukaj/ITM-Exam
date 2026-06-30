@@ -93,15 +93,15 @@ export default function ExamGradebookPage() {
       setDrafts((current) => {
         const next = { ...current };
         for (const item of successful) {
-          const suggestedManualScore = Number(item.review?.suggestedManualScore || 0);
-          const existingDraft = current[item.attemptId] || {};
-          const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(item.attempt);
+          const questionScores = buildQuestionScoresDraft(item.attempt, item.review);
+          const finalScore = sumQuestionScoreDraft(questionScores);
+          const manualScore = finalScore - Number(item.attempt.autoScore || 0);
           next[item.attemptId] = {
-            ...existingDraft,
-            manualScore: String(suggestedManualScore),
-            finalScore: String(Number(item.attempt.autoScore || 0) + suggestedManualScore),
-            notes: item.review?.reviewReminder || existingDraft.notes || "",
-            questionScores: existingQuestionScores,
+            ...current[item.attemptId],
+            questionScores,
+            manualScore: String(roundScore(manualScore)),
+            finalScore: String(roundScore(finalScore)),
+            notes: item.review?.reviewReminder || current[item.attemptId]?.notes || "",
           };
         }
         return next;
@@ -157,17 +157,17 @@ export default function ExamGradebookPage() {
       const review = await evaluateTextAttempt(attempt.attemptId);
       setAiReviews((current) => ({ ...current, [attempt.attemptId]: review }));
       setDrafts((current) => {
-        const suggestedManualScore = Number(review?.suggestedManualScore || 0);
-        const existingDraft = current[attempt.attemptId] || {};
-        const existingQuestionScores = existingDraft.questionScores || normalizeQuestionScoreDrafts(attempt);
+        const questionScores = buildQuestionScoresDraft(attempt, review);
+        const finalScore = sumQuestionScoreDraft(questionScores);
+        const manualScore = finalScore - Number(attempt.autoScore || 0);
         return {
           ...current,
           [attempt.attemptId]: {
-            ...existingDraft,
-            manualScore: String(suggestedManualScore),
-            finalScore: String(Number(attempt.autoScore || 0) + suggestedManualScore),
-            notes: review?.reviewReminder || existingDraft.notes || "",
-            questionScores: existingQuestionScores,
+            ...current[attempt.attemptId],
+            questionScores,
+            manualScore: String(roundScore(manualScore)),
+            finalScore: String(roundScore(finalScore)),
+            notes: review?.reviewReminder || current[attempt.attemptId]?.notes || "",
           },
         };
       });
@@ -193,7 +193,15 @@ export default function ExamGradebookPage() {
         manualScore: parseNumberOrNull(draft.manualScore),
         finalScore,
         notes: draft.notes || null,
+
+        questionScores: Object.values(draft.questionScores || {}).map((score) => ({
+          questionId: score.questionId,
+          pointsAwarded: parseNumberOrNull(score.pointsAwarded) ?? 0,
+          notes: score.notes || null,
+        })),
+
         questionScores,
+
       });
 
       setAttempts((current) =>
@@ -215,6 +223,7 @@ export default function ExamGradebookPage() {
         [attempt.attemptId]: {
           manualScore: String(updated.manualScore ?? 0),
           finalScore: String(updated.finalScore ?? updated.autoScore ?? 0),
+          questionScores: buildQuestionScoresDraft(updated),
           notes: updated.gradingNotes || "",
           questionScores: normalizeQuestionScoreDrafts({
             ...attempt,
@@ -224,7 +233,7 @@ export default function ExamGradebookPage() {
           }),
         },
       }));
-      setSuccess("Grade saved. The result remains hidden from students until published.");
+      setSuccess("Review saved. This attempt is now ready to publish, but the result remains hidden from students until publication.");
     } catch (err) {
       setError(readApiMessage(err) || "Failed to save grade.");
     } finally {
@@ -251,6 +260,27 @@ export default function ExamGradebookPage() {
       setSuccess(result?.message || "Published graded results.");
     } catch (err) {
       setError(readApiMessage(err) || "Failed to publish results.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function onPublishAttempt(attempt) {
+    try {
+      setPublishing(true);
+      setError("");
+      setSuccess("");
+      const result = await publishExamResults(examId, { publishAll: false, attemptIds: [attempt.attemptId] });
+      setAttempts((current) =>
+        current.map((item) =>
+          item.attemptId === attempt.attemptId
+            ? { ...item, isGraded: true, isPublished: true, publishedAt: new Date().toISOString() }
+            : item,
+        ),
+      );
+      setSuccess(result?.message || `Published result for ${attempt.studentName || "student"}.`);
+    } catch (err) {
+      setError(readApiMessage(err) || "Failed to publish this student's result.");
     } finally {
       setPublishing(false);
     }
@@ -306,7 +336,6 @@ export default function ExamGradebookPage() {
           </section>
         ) : null}
 
- feature/agnesa-grading-save-publish-ui
         {!error ? <section className="summaryStrip">
           <article className="summaryCard">
             <span className="summaryLabel">Attempts</span>
@@ -420,7 +449,13 @@ export default function ExamGradebookPage() {
                 </div>
               ) : (
                 <>
-                  <GradebookAttemptTable attempts={visibleAttempts} drafts={drafts} onReview={(attempt) => setSelectedAttemptId(attempt.attemptId)} />
+                  <GradebookAttemptTable
+                    attempts={visibleAttempts}
+                    drafts={drafts}
+                    publishing={publishing}
+                    onReview={(attempt) => setSelectedAttemptId(attempt.attemptId)}
+                    onPublish={onPublishAttempt}
+                  />
                   {selectedAttempt ? (
                     <AttemptReviewModal
                       attempt={selectedAttempt}
@@ -458,28 +493,30 @@ export default function ExamGradebookPage() {
   );
 }
 
-function GradebookAttemptTable({ attempts, drafts, onReview }) {
+function GradebookAttemptTable({ attempts, drafts, publishing, onReview, onPublish }) {
   return (
     <div className="tableWrap gradebookAttemptTableWrap">
       <table className="dataTable gradebookAttemptTable">
         <thead>
           <tr>
             <th>Student</th>
-            <th>Attempt</th>
             <th>Submitted</th>
-            <th>Duration used</th>
-            <th>Auto score</th>
-            <th>Manual score</th>
-            <th>Final score</th>
-            <th>Publication</th>
+            <th>Exam points</th>
+            <th>Student points</th>
+            <th>Grade</th>
+            <th>Status</th>
             <th>Integrity</th>
-            <th>Review</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {attempts.map((attempt) => {
             const draft = drafts[attempt.attemptId] || {};
             const violations = Number(attempt.integrityViolationCount || 0);
+            const finalScore = draft.questionScores ? sumQuestionScoreDraft(draft.questionScores) : Number(draft.finalScore ?? attempt.finalScore ?? 0);
+            const maxPoints = Number(attempt.examMaxPoints || 0);
+            const percentage = maxPoints > 0 ? (finalScore / maxPoints) * 100 : 0;
+            const grade = calculateGrade(percentage);
             return (
               <tr key={attempt.attemptId}>
                 <td>
@@ -488,16 +525,10 @@ function GradebookAttemptTable({ attempts, drafts, onReview }) {
                     <span>{attempt.studentEmail || "No email recorded"}</span>
                   </div>
                 </td>
-                <td>
-                  <span className={`statusPill ${attempt.isGraded ? "statusReady" : "statusWarn"}`}>
-                    {attempt.isGraded ? "Reviewed" : "Needs review"}
-                  </span>
-                </td>
                 <td>{formatDateTime(attempt.submittedAt) || "Pending"}</td>
-                <td>{formatAttemptDuration(attempt.startedAt, attempt.submittedAt)}</td>
-                <td>{formatScore(attempt.autoScore)}</td>
-                <td>{formatScore(draft.manualScore ?? attempt.manualScore)}</td>
-                <td>{formatScore(draft.finalScore ?? attempt.finalScore)}</td>
+                <td>{formatScore(maxPoints)}</td>
+                <td><strong>{formatScore(finalScore)}</strong></td>
+                <td>{formatGrade(grade, grade >= 6)}</td>
                 <td>
                   <ResultBadge attempt={attempt} />
                 </td>
@@ -507,9 +538,16 @@ function GradebookAttemptTable({ attempts, drafts, onReview }) {
                   </span>
                 </td>
                 <td>
-                  <button className="btn" type="button" onClick={() => onReview(attempt)}>
-                    Review
-                  </button>
+                  <div className="gradebookRowActions">
+                    <button className="btn btnTiny" type="button" onClick={() => onReview(attempt)}>
+                      {attempt.isGraded ? "Review again" : "Review"}
+                    </button>
+                    {attempt.isGraded && !attempt.isPublished ? (
+                      <button className="btn btnTiny btnPrimary" type="button" onClick={() => onPublish(attempt)} disabled={publishing}>
+                        Publish
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             );
@@ -554,9 +592,11 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
   const currentFinalScore = questionScoreDrafts.length > 0
     ? questionScoreDrafts.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0)
     : Number(draft.finalScore ?? attempt.finalScore ?? 0);
+
   const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
   const currentPercentage = attempt.examMaxPoints ? (currentFinalScore / Number(attempt.examMaxPoints || 0)) * 100 : 0;
   const currentGrade = calculateGrade(currentPercentage);
+  const reviewedQuestions = questionScoreDrafts.filter((score) => String(score.pointsAwarded ?? "").trim() !== "").length;
 
   function onQuestionScoreChange(questionId, changes) {
     const nextScores = updateQuestionScoreDraft(questionScoreDrafts, questionId, changes);
@@ -581,6 +621,21 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
           <div className="gradebookBadgeRow">
             <ResultBadge attempt={attempt} />
             <ViolationBadge count={violationCount} policy={attempt.integrityPolicyAction} />
+          </div>
+        </div>
+
+        <div className="gradebookReviewStickyBar">
+          <div>
+            <strong>{reviewedQuestions}/{attempt.answers.length || 0} questions reviewed</strong>
+            <span>{attempt.isGraded ? "Saved review available. You can review again before publishing." : "Adjust per-question points, then save review."}</span>
+          </div>
+          <div className="resourceActionGroup">
+            <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
+              {reviewing ? "Reviewing..." : "Re-run AI review"}
+            </button>
+            <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
+              {saving ? "Saving..." : "Save review"}
+            </button>
             <button className="btn" type="button" onClick={onClose} disabled={saving || reviewing}>Close</button>
           </div>
         </div>
@@ -605,6 +660,8 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
         />
 
         <IntegrityReviewPanel attempt={attempt} />
+
+
 
         <div className="formGrid formGridTwo gradebookScoreGrid">
           <div className="field">
@@ -633,6 +690,7 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
           </div>
         </div>
 
+
         <div className="field gradebookNotesField">
           <label className="label">Human review notes</label>
           <textarea
@@ -642,17 +700,6 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
             disabled={disabled || saving}
             placeholder="Record why the final score was accepted or adjusted."
           />
-        </div>
-
-        {aiReview ? <AiReviewPanel review={aiReview} /> : null}
-
-        <div className="resourceActionGroup gradebookActions">
-          <button className="btn" type="button" onClick={onAiReview} disabled={disabled || reviewing}>
-            {reviewing ? "Reviewing..." : "Re-run AI review"}
-          </button>
-          <button className="btn btnPrimary" type="button" onClick={onSaveGrade} disabled={disabled || saving}>
-            {saving ? "Saving..." : "Save human grade"}
-          </button>
         </div>
       </article>
     </div>
@@ -704,9 +751,11 @@ function AttemptTimeline({ attempt }) {
   );
 }
 
+
 function AttemptAnswersPanel({ attempt, questionScores, disabled, onQuestionScoreChange }) {
   const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
   const scoreByQuestion = new Map((questionScores || []).map((item) => [item.questionId, item]));
+
 
   return (
     <div className="attemptAnswersPanel">
@@ -721,14 +770,15 @@ function AttemptAnswersPanel({ attempt, questionScores, disabled, onQuestionScor
       ) : (
         <div className="attemptAnswerList">
           {answers.map((answer, index) => (
-            <QuestionReviewCard
-              key={answer.questionId}
-              answer={answer}
-              index={index}
-              score={scoreByQuestion.get(answer.questionId)}
-              disabled={disabled}
-              onChange={onQuestionScoreChange}
-            />
+            <article key={answer.questionId} className="attemptAnswerCard attemptAnswerReviewRow">
+              <QuestionReviewCard
+                answer={answer}
+                index={index}
+                score={scoreByQuestion.get(answer.questionId)}
+                disabled={disabled}
+                onChange={onQuestionScoreChange}
+              />
+            </article>
           ))}
         </div>
       )}
@@ -743,6 +793,7 @@ function QuestionReviewCard({ answer, index, score, disabled, onChange }) {
 
   return (
     <article className="attemptAnswerCard">
+
               <div className="attemptAnswerHeader">
                 <div>
                   <span className="summaryLabel">Question {index + 1} / {answer.questionType}</span>
@@ -752,62 +803,96 @@ function QuestionReviewCard({ answer, index, score, disabled, onChange }) {
                   {formatScore(awarded)} / {formatScore(maxPoints)} pts
                 </span>
               </div>
-              {Array.isArray(answer.options) && answer.options.length > 0 ? (
-                <div className="attemptAnswerOptions">
-                  {answer.options.map((option) => (
-                    <span
-                      key={option}
-                      className={`${option === answer.response ? "selected" : ""}${option === answer.correctAnswer ? " correct" : ""}`}
-                    >
-                      {option}
-                    </span>
-                  ))}
+              <div className="attemptAnswerReviewGrid">
+                <div>
+                  {Array.isArray(answer.options) && answer.options.length > 0 ? (
+                    <div className="attemptAnswerOptions">
+                      {answer.options.map((option) => (
+                        <span
+                          key={option}
+                          className={`${option === answer.response ? "selected" : ""}${option === answer.correctAnswer ? " correct" : ""}`}
+                        >
+                          {option}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="attemptAnswerCompare">
+                    <div className={`attemptAnswerResponse${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
+                      <span>Student answer</span>
+                      {isTechnicalAnswer(answer) ? (
+                        <pre>{answer.response || "(empty answer)"}</pre>
+                      ) : (
+                        <p>{answer.response || "(empty answer)"}</p>
+                      )}
+                    </div>
+                    <div className={`attemptAnswerExpected${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
+                      <span>Expected answer / model</span>
+                      {isTechnicalAnswer(answer) ? <pre>{answer.correctAnswer || "(no model answer)"}</pre> : <p>{answer.correctAnswer || "(no model answer)"}</p>}
+                    </div>
+                  </div>
                 </div>
-              ) : null}
-              <div className={`attemptAnswerResponse${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
-                <span>Student response</span>
-                {isTechnicalAnswer(answer) ? (
-                  <pre>{answer.response || "(empty answer)"}</pre>
-                ) : (
-                  <p>{answer.response || "(empty answer)"}</p>
-                )}
+                <QuestionScoreReview
+                  answer={answer}
+                  score={score}
+                  aiSuggestion={null}
+                  disabled={disabled}
+                  onChange={(patch) => onChange(answer.questionId, patch)}
+                />
               </div>
-              {answer.correctAnswer ? (
-                <div className={`attemptAnswerExpected${isTechnicalAnswer(answer) ? " attemptAnswerTechnical" : ""}`}>
-                  <span>Expected answer</span>
-                  {isTechnicalAnswer(answer) ? <pre>{answer.correctAnswer}</pre> : <p>{answer.correctAnswer}</p>}
-                </div>
-              ) : null}
-      <div className="questionScoreEditor">
-        <div className="field">
-          <label className="label">Auto points</label>
-          <input className="input" value={`${formatScore(autoPoints)} / ${formatScore(maxPoints)}`} readOnly disabled />
+
+    </article>
+  );
+}
+
+function QuestionScoreReview({ answer, score, aiSuggestion, disabled, onChange }) {
+  const maxPoints = Number(score?.maxPoints ?? answer.points ?? 0);
+  const autoPoints = Number(score?.autoPointsAwarded ?? answer.autoPointsAwarded ?? 0);
+  const finalPoints = score?.pointsAwarded ?? score?.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints;
+  const changed = Math.abs(Number(finalPoints || 0) - autoPoints) > 0.009;
+
+  return (
+    <div className="questionScoreReview">
+      <div className="questionScoreReviewHeader">
+        <div>
+          <span className="summaryLabel">AI-assisted grading suggestion</span>
+          <strong>{formatScore(autoPoints)} / {formatScore(maxPoints)} pts</strong>
+          <small>
+            {aiSuggestion?.rationale ||
+              answer.gradingNotes ||
+              "Initial score is a system suggestion. Professor review is required for the final academic decision."}
+          </small>
         </div>
-        <div className="field">
-          <label className="label">Awarded points</label>
+        <span className={`statusPill ${changed ? "statusWarn" : "statusDraft"}`}>
+          {changed ? "Adjusted by professor" : "Default suggestion"}
+        </span>
+      </div>
+      <div className="questionScoreControls">
+        <label>
+          <span>Final points</span>
           <input
             className="input"
             type="number"
             min="0"
             max={maxPoints}
             step="0.25"
-            value={awarded}
-            onChange={(event) => onChange(answer.questionId, { pointsAwarded: event.target.value })}
+            value={finalPoints}
+            onChange={(event) => onChange({ pointsAwarded: event.target.value })}
             disabled={disabled}
           />
-        </div>
-        <div className="field questionScoreNotes">
-          <label className="label">Question feedback</label>
-          <input
-            className="input"
-            value={score?.notes ?? score?.gradingNotes ?? ""}
-            onChange={(event) => onChange(answer.questionId, { notes: event.target.value })}
+        </label>
+        <label>
+          <span>Feedback / reason</span>
+          <textarea
+            className="input textareaCompact"
+            value={score?.notes ?? ""}
+            onChange={(event) => onChange({ notes: event.target.value })}
             disabled={disabled}
-            placeholder="Optional feedback for this answer"
+            placeholder="Explain why this score is accepted or adjusted."
           />
-        </div>
+        </label>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -934,14 +1019,52 @@ function PublishResultsModal({ exam, attempts, readyToPublishCount, publishedCou
 
 function buildDrafts(attempts) {
   return attempts.reduce((acc, attempt) => {
+    const questionScores = buildQuestionScoresDraft(attempt);
+    const finalScore = sumQuestionScoreDraft(questionScores);
     acc[attempt.attemptId] = {
-      manualScore: String(attempt.manualScore ?? 0),
-      finalScore: String(attempt.finalScore ?? attempt.autoScore ?? 0),
+      questionScores,
+      manualScore: String(roundScore(finalScore - Number(attempt.autoScore || 0))),
+      finalScore: String(roundScore(finalScore)),
       notes: attempt.gradingNotes || "",
       questionScores: normalizeQuestionScoreDrafts(attempt),
     };
     return acc;
   }, {});
+}
+
+
+function buildQuestionScoresDraft(attempt, aiReview = null) {
+  const aiByQuestion = (aiReview?.questions || []).reduce((acc, question) => {
+    acc[question.questionId] = question;
+    return acc;
+  }, {});
+  const existingByQuestion = (attempt?.questionScores || []).reduce((acc, score) => {
+    acc[score.questionId] = score;
+    return acc;
+  }, {});
+
+  return (attempt?.answers || []).reduce((acc, answer) => {
+    const existing = existingByQuestion[answer.questionId] || {};
+    const aiSuggestion = aiByQuestion[answer.questionId];
+    const maxPoints = Number(existing.maxPoints ?? answer.points ?? aiSuggestion?.maxPoints ?? 0);
+    const autoPoints = Number(existing.autoPointsAwarded ?? answer.autoPointsAwarded ?? aiSuggestion?.suggestedPoints ?? 0);
+    const finalPoints = aiSuggestion
+      ? Number(aiSuggestion.suggestedPoints ?? autoPoints)
+      : Number(existing.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints);
+
+    acc[answer.questionId] = {
+      questionId: answer.questionId,
+      maxPoints,
+      autoPointsAwarded: roundScore(autoPoints),
+      pointsAwarded: String(roundScore(Math.max(0, Math.min(finalPoints, maxPoints)))),
+      notes: existing.gradingNotes || aiSuggestion?.rationale || answer.gradingNotes || "",
+    };
+    return acc;
+  }, {});
+}
+
+function sumQuestionScoreDraft(questionScores) {
+  return roundScore(Object.values(questionScores || {}).reduce((total, score) => total + Number(score.pointsAwarded || 0), 0));
 }
 
 function normalizeQuestionScoreDrafts(attempt) {
@@ -988,6 +1111,7 @@ function buildQuestionScorePayload(draft, attempt) {
     pointsAwarded: clampScore(score.pointsAwarded, score.maxPoints),
     notes: score.notes || null,
   }));
+
 }
 
 function buildGradebookCsv(attempts, drafts) {
@@ -1013,7 +1137,7 @@ function buildGradebookCsv(attempts, drafts) {
 
   const rows = attempts.map((attempt) => {
     const draft = drafts[attempt.attemptId] || {};
-    const finalScore = Number(draft.finalScore ?? attempt.finalScore ?? 0);
+    const finalScore = draft.questionScores ? sumQuestionScoreDraft(draft.questionScores) : Number(draft.finalScore ?? attempt.finalScore ?? 0);
     const examMaxPoints = Number(attempt.examMaxPoints || 0);
     const percentage = examMaxPoints > 0 ? (finalScore / examMaxPoints) * 100 : 0;
     const answerCount = Array.isArray(attempt.answers) ? attempt.answers.length : 0;
@@ -1081,6 +1205,7 @@ function clampScore(value, maxPoints) {
 
 function roundScore(value) {
   const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return 0;
   return Math.round(parsed * 100) / 100;
 }
 

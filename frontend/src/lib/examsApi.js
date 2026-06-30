@@ -133,6 +133,9 @@ export async function revokeExamStudentAccess(examId, studentId, reason = "Profe
 export async function requestExamDeviceChange(examId, reason = "Student requested device change approval.") {
   const response = await api.post(`/api/exams/${examId}/request-device-change`, { reason });
 
+
+
+
   return response.data;
 }
 

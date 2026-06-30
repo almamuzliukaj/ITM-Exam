@@ -26,6 +26,7 @@ export default function StudentExamSessionPage() {
   const [showFinalWarning, setShowFinalWarning] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [autoSubmitNotice, setAutoSubmitNotice] = useState(null);
+  const [autoSubmitFailed, setAutoSubmitFailed] = useState(false);
   const [attemptId, setAttemptId] = useState("");
   const [technicalRunResults, setTechnicalRunResults] = useState({});
   const [runningQuestionId, setRunningQuestionId] = useState("");
@@ -48,6 +49,7 @@ export default function StudentExamSessionPage() {
   const autoSubmitSummaryRef = useRef(null);
   const clientSessionIdRef = useRef(createClientSessionId());
   const lastViolationRef = useRef({ key: "", at: 0 });
+  const shortcutSuppressionUntilRef = useRef(0);
   const violationCount = integrityEvents.length;
   const serverViolationCount = Number(integrityPolicy?.attemptViolationCount || 0);
   const effectiveViolationCount = Math.max(violationCount, serverViolationCount);
@@ -84,6 +86,15 @@ export default function StudentExamSessionPage() {
         });
         if (!active) return;
         setAccessStatus(accessData);
+        if (accessData?.accessStatus === "Submitted") {
+          submittedRef.current = true;
+          setQuestions([]);
+          setSessionTiming(null);
+          setTimeRemaining(0);
+          setResult({ reason: "submitted-lock", examAttemptId: "" });
+          setLoading(false);
+          return;
+        }
 
         if (!isLiveSession) {
           setQuestions([]);
@@ -177,6 +188,7 @@ export default function StudentExamSessionPage() {
     setShowFinalWarning(false);
     setAutoActionCountdown(null);
     setAutoSubmitNotice(null);
+    setAutoSubmitFailed(false);
     autoSubmitSummaryRef.current = null;
     submittedRef.current = false;
     autoSubmitAttemptedRef.current = false;
@@ -277,8 +289,8 @@ export default function StudentExamSessionPage() {
     if (!examId || result || submittedRef.current) return;
 
     const nowMs = Date.now();
-    const key = `${eventType}:${message}`;
-    if (lastViolationRef.current.key === key && nowMs - lastViolationRef.current.at < 1500) {
+    const key = eventType;
+    if (lastViolationRef.current.key === key && nowMs - lastViolationRef.current.at < 2500) {
       return;
     }
     lastViolationRef.current = { key, at: nowMs };
@@ -361,6 +373,11 @@ export default function StudentExamSessionPage() {
 
     function onBlockedInteraction(event) {
       event.preventDefault();
+      const nowMs = Date.now();
+      if (["copy", "cut", "paste"].includes(event.type) && nowMs < shortcutSuppressionUntilRef.current) {
+        return;
+      }
+
       const eventType = event.type === "contextmenu"
           ? "RIGHT_CLICK_ATTEMPT"
           : event.type === "copy"
@@ -382,6 +399,7 @@ export default function StudentExamSessionPage() {
       if (!blockedCombo && !blockedDevtoolsCombo && !blockedBackCombo && !blockedSystemKey) return;
 
       event.preventDefault();
+      shortcutSuppressionUntilRef.current = Date.now() + 900;
       const eventType =
         key === "p" || key === "printscreen"
           ? "PRINT_ATTEMPT"
@@ -448,7 +466,7 @@ export default function StudentExamSessionPage() {
   }, [isLiveSession, loading, recordViolation, result]);
 
   const submit = useCallback(async (reason = "manual") => {
-    if (!examId || submittedRef.current) return;
+    if (!examId || submittedRef.current) return false;
 
     try {
       submittedRef.current = true;
@@ -477,20 +495,39 @@ export default function StudentExamSessionPage() {
       setShowFinalWarning(false);
       setAutoActionCountdown(null);
       setAutoSubmitNotice(null);
-      setResult({ ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null });
+      setAutoSubmitFailed(false);
+      const nextResult = { ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null };
+      setResult(nextResult);
+      if (reason === "integrity-policy") {
+        navigate("/exams", {
+          replace: true,
+          state: { submitted: true, autoSubmitted: true, examId },
+        });
+      }
+      return true;
     } catch (err) {
       submittedRef.current = false;
+      setAutoActionCountdown(null);
+      setAutoSubmitNotice(null);
+      setShowFinalWarning(false);
+      if (reason === "integrity-policy") {
+        setAutoSubmitFailed(true);
+      }
       setError(getApiMessage(err, "Failed to submit the exam."));
+      return false;
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, storageKey]);
+  }, [answers, examId, navigate, storageKey]);
 
-  const runIntegrityAutoSubmit = useCallback(() => {
+  const runIntegrityAutoSubmit = useCallback(async () => {
     if (autoSubmitAttemptedRef.current || submittedRef.current) return;
     autoSubmitAttemptedRef.current = true;
     persistDraft("saved");
-    submit("integrity-policy");
+    const submitted = await submit("integrity-policy");
+    if (!submitted) {
+      autoSubmitAttemptedRef.current = false;
+    }
   }, [persistDraft, submit]);
 
   useEffect(() => {
@@ -499,7 +536,7 @@ export default function StudentExamSessionPage() {
   }, [loading, result, shouldShowFinalWarning]);
 
   useEffect(() => {
-    if (!shouldAutoSubmit || result || submitting || loading) {
+    if (!shouldAutoSubmit || result || submitting || loading || autoSubmitFailed) {
       if (!shouldAutoSubmit) {
         setAutoActionCountdown(null);
         setAutoSubmitNotice(null);
@@ -521,7 +558,7 @@ export default function StudentExamSessionPage() {
     autoSubmitSummaryRef.current = notice;
     setAutoSubmitNotice(notice);
     setAutoActionCountdown((current) => (current == null ? 6 : current));
-  }, [autoActionThreshold, effectiveViolationCount, integrityEvents, loading, result, shouldAutoSubmit, submitting]);
+  }, [autoActionThreshold, autoSubmitFailed, effectiveViolationCount, integrityEvents, loading, result, shouldAutoSubmit, submitting]);
 
   useEffect(() => {
     if (autoActionCountdown == null || result || submitting) return;
@@ -769,7 +806,14 @@ export default function StudentExamSessionPage() {
               Exam submitted successfully. You are back in the normal application view.
             </div>
           ) : null}
-          {loading ? (
+          {result?.reason === "submitted-lock" ? (
+            <SubmissionResult
+              result={result}
+              answeredCount={0}
+              questionsCount={0}
+              onDone={() => navigate("/exams")}
+            />
+          ) : loading ? (
             <div className="pageStateCard">Loading exam information...</div>
           ) : (
             <>
@@ -805,7 +849,7 @@ export default function StudentExamSessionPage() {
                   {accessStatus?.requiresCode && !accessStatus?.hasAccess
                     ? "Start"
                     : accessStatus?.hasAccess
-                      ? "Continue to rules"
+                      ? "Start exam"
                       : "Start exam"}
                 </button>
               </section>

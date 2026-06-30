@@ -189,9 +189,15 @@
   gap: 14px;
   min-height: 0;
   padding: 4px 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.22) transparent;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebarNav::-webkit-scrollbar{
+  width: 0;
+  height: 0;
 }
 
 .navGroup{
@@ -4459,7 +4465,7 @@ input[type="radio"]{
 .attemptAnswersPanel{
   margin-top: 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
   background: #f8fafc;
   overflow: hidden;
 }
@@ -4471,15 +4477,34 @@ input[type="radio"]{
 
 .attemptAnswerList{
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .attemptAnswerCard{
-  padding: 16px;
+  padding: 12px;
   border: 1px solid #d8e0ea;
-  border-radius: 10px;
+  border-radius: 4px;
   background: #ffffff;
+}
+
+.attemptAnswerReviewRow{
+  display: grid;
+  gap: 10px;
+}
+
+.attemptAnswerReviewGrid{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 12px;
+  align-items: start;
+}
+
+.attemptAnswerCompare{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .attemptAnswerHeader{
@@ -4525,9 +4550,9 @@ input[type="radio"]{
 
 .attemptAnswerResponse,
 .attemptAnswerExpected{
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 4px;
   background: #f8fafc;
 }
 
@@ -4565,9 +4590,9 @@ input[type="radio"]{
 }
 
 .gradebookScoreTile{
-  padding: 13px 14px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 4px;
   background: #fbfcfe;
 }
 
@@ -4585,10 +4610,10 @@ input[type="radio"]{
 }
 
 .gradebookScoreTile strong{
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--heading);
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -4600,6 +4625,95 @@ input[type="radio"]{
 .gradebookActions{
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+.gradebookReviewStickyBar{
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px -18px 0;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(8px);
+}
+
+.gradebookReviewStickyBar strong,
+.gradebookReviewStickyBar span{
+  display: block;
+}
+
+.gradebookReviewStickyBar span{
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.questionScoreReview{
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #dbe6f2;
+  border-radius: 4px;
+  background: #fbfdff;
+}
+
+.questionScoreReviewHeader{
+  display: grid;
+  gap: 8px;
+}
+
+.questionScoreReviewHeader strong,
+.questionScoreReviewHeader small{
+  display: block;
+}
+
+.questionScoreReviewHeader small{
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.questionScoreControls{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.questionScoreControls label{
+  display: grid;
+  gap: 5px;
+}
+
+.questionScoreControls label span{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.gradebookRowActions{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 980px){
+  .attemptAnswerReviewGrid,
+  .attemptAnswerCompare{
+    grid-template-columns: 1fr;
+  }
+
+  .gradebookReviewStickyBar{
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .questionCard .resourceMetaRow strong{
@@ -4998,6 +5112,39 @@ input[type="radio"]{
 .monitorViolationCount.danger{
   background: #fff1f1;
   color: #b42318;
+}
+
+.monitorViolationTimeline{
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.monitorViolationTimeline ol{
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitorViolationTimeline li{
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border-left: 3px solid #d98d27;
+  background: #fffaf3;
+  font-size: 11px;
+}
+
+.monitorViolationTimeline li strong{
+  color: var(--heading);
+}
+
+.monitorViolationTimeline li span,
+.monitorViolationTimeline small{
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .monitorEventList{

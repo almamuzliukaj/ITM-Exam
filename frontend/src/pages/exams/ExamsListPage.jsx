@@ -68,20 +68,6 @@ export default function ExamsListPage() {
   const canCreate = canCreateExams(user?.role);
   const isStudent = user?.role === "Student";
 
-  const academicYearOptions = useMemo(() => {
-    const years = new Set();
-    exams.forEach((exam) => {
-      const year = String(exam.academicYear || "").trim();
-      if (year) years.add(year);
-    });
-    return Array.from(years).sort((a, b) => b.localeCompare(a));
-  }, [exams]);
-  const filteredExams = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-    return exams.filter((exam) => {
-      if (examStatusFilter === "published" && !exam.isPublished) return false;
-      if (examStatusFilter === "draft" && exam.isPublished) return false;
-
   const filterOptions = useMemo(() => ({
     academicYears: uniqueSorted(exams.map((exam) => exam.academicYear)),
     semesters: uniqueSorted(exams.map((exam) => exam.semesterLabel)),
@@ -252,11 +238,7 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
-
-                  {academicYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
-
-                  {uniqueSorted([...academicYears, ...filterOptions.academicYears]).map((year) => <option key={year} value={year}>{year}</option>)}
-
+                  {filterOptions.academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
               </div>
               {isStudent ? (
@@ -366,15 +348,11 @@ export default function ExamsListPage() {
                         </button>
                       ) : null}
 
-                      <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                        {isStudent ? "Open" : t("examsList.open")}
-                      </Link>
-
                       {exam.hasSubmittedAttempt ? (
                         <Link className="btn" to="/results">View result status</Link>
                       ) : (
                         <Link className={isStudent ? "btn btnPrimary" : "btn"} to={isStudent ? `/exams/${exam.id}/attempt` : `/exams/${exam.id}`}>
-                          {isStudent ? "Start" : t("examsList.open")}
+                          {isStudent ? "Open" : t("examsList.open")}
                         </Link>
                       )}
 

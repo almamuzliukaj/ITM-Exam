@@ -679,11 +679,8 @@ const ADDITIONAL_TEXT_TRANSLATIONS = {
   "Pending results": "Rezultate ne pritje",
   "Average score": "Piket mesatare",
   "Integrity violations": "Shkelje te integritetit",
-
   "0 rows included in this table.": "0 rreshta te perfshire ne kete tabele.",
-  "rows included in this table.": "rreshta te perfshire ne kete tabele."
-
-  "0 rows included in this table.": "0 rreshta te perfshire ne kete tabele."
+  "rows included in this table.": "rreshta te perfshire ne kete tabele.",
 };
 
 Object.assign(ADDITIONAL_TEXT_TRANSLATIONS, {

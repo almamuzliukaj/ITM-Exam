@@ -3300,10 +3300,20 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return false;
 
+        if (User.IsInRole("Admin"))
+            return true;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
         if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
             return false;
 
-        return await Task.FromResult(exam.CreatedByUserId == userId.Value);
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
     }
 
     private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)

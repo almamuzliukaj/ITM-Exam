@@ -965,14 +965,26 @@ export default function RuntimeAlbanianTranslator() {
       });
     }
 
-    applyTranslations();
-    const observer = new MutationObserver(applyTranslations);
-    observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
-    window.addEventListener("languagechange", applyTranslations);
+    let frameId = 0;
+    function scheduleTranslations() {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        applyTranslations();
+      });
+    }
+
+    scheduleTranslations();
+    const observer = new MutationObserver(scheduleTranslations);
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    window.addEventListener("languagechange", scheduleTranslations);
+    window.addEventListener("app-language-changed", scheduleTranslations);
 
     return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
       observer.disconnect();
-      window.removeEventListener("languagechange", applyTranslations);
+      window.removeEventListener("languagechange", scheduleTranslations);
+      window.removeEventListener("app-language-changed", scheduleTranslations);
     };
   }, [i18n.language]);
 

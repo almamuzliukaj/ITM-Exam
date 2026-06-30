@@ -4317,6 +4317,20 @@ input[type="radio"]{
   margin-top: 12px;
 }
 
+.questionScoreEditor{
+  display: grid;
+  grid-template-columns: 150px 150px minmax(220px, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.questionScoreNotes{
+  min-width: 0;
+}
+
 .gradebookToolbar{
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -5193,19 +5207,56 @@ input[type="radio"]{
 }
 
 .accessActionModal .modalHeader,
-.accessActionModal .modalFooter{
+.accessActionModal .modalFooter,
+.publishResultsModal .modalHeader,
+.publishResultsModal .modalFooter{
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.accessActionModal .modalHeader{
+.accessActionModal .modalHeader,
+.publishResultsModal .modalHeader{
   margin-bottom: 16px;
 }
 
-.accessActionModal .modalFooter{
+.accessActionModal .modalFooter,
+.publishResultsModal .modalFooter{
   margin-top: 18px;
+}
+
+.publishResultsModal{
+  width: min(680px, 100%);
+  border-radius: 4px;
+}
+
+.publishResultSummary{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.publishResultSummary div{
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-muted);
+}
+
+.publishResultSummary dt{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.publishResultSummary dd{
+  margin: 6px 0 0;
+  color: var(--heading);
+  font-weight: 800;
 }
 
 @media (max-width: 1180px){
@@ -5689,6 +5740,7 @@ input[type="radio"]{
   .heroStats,
   .gradebookScoreStrip,
   .attemptTimeline,
+  .questionScoreEditor,
   .reportSummaryGrid{
     grid-template-columns: 1fr;
   }

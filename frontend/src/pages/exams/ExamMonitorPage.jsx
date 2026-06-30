@@ -18,7 +18,10 @@ const statusFilters = [
   { value: "WaitingForPhysicalVerification", label: "Waiting physical check" },
   { value: "ApprovalRequested", label: "Waiting approval" },
   { value: "DeviceChangeRequested", label: "Device change" },
+
   { value: "CodeVerified", label: "Code verified" },
+
+
   { value: "ManuallyApproved", label: "Approved" },
   { value: "Started", label: "Active" },
   { value: "Submitted", label: "Submitted" },
@@ -72,20 +75,22 @@ export default function ExamMonitorPage() {
   }, [loadMonitor]);
 
   useEffect(() => {
-    if (!autoRefresh) return undefined;
+    if (!autoRefresh) return;
     const timer = window.setInterval(() => loadMonitor(true), REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [autoRefresh, loadMonitor]);
+
 
   const students = useMemo(
     () => (Array.isArray(monitor?.students) ? monitor.students : []),
     [monitor],
   );
+  const students = useMemo(() => (Array.isArray(monitor?.students) ? monitor.students : []), [monitor]);
+
   const summary = monitor?.summary || {};
 
   const filteredStudents = useMemo(() => {
     const term = search.trim().toLowerCase();
-
     return students.filter((student) => {
       const matchesSearch = !term || [
         student.fullName,
@@ -112,6 +117,10 @@ export default function ExamMonitorPage() {
   ).length || 0);
   const submittedCount = Number(summary.submitted || students.filter((student) => student.attemptStatus === "Submitted").length || 0);
   const flaggedCount = Number(summary.withViolations || students.filter((student) => Number(student.violationCount || 0) > 0).length || 0);
+
+
+  const totalEnrolled = Number(summary.totalEnrolled || students.length || 0);
+
 
   async function onConfirmAction() {
     if (!examId || !pendingAction?.student?.studentId) return;
@@ -189,9 +198,14 @@ export default function ExamMonitorPage() {
             </section>
 
             <section className="monitorMetricGrid">
+
               <MonitorMetric label="Enrolled" value={totalEnrolled} />
               <MonitorMetric label="Waiting check" value={waitingCount} tone={waitingCount > 0 ? "warn" : "clear"} />
               <MonitorMetric label="Active" value={activeCount} tone="live" />
+
+              <MonitorMetric label="Waiting approval" value={waitingCount || summary.waitingForPhysicalVerification || 0} tone={waitingCount > 0 ? "warn" : "clear"} />
+              <MonitorMetric label="In progress" value={activeCount} tone="live" />
+
               <MonitorMetric label="Submitted" value={submittedCount} />
               <MonitorMetric label="Students flagged" value={flaggedCount} tone={flaggedCount > 0 ? "danger" : "clear"} />
             </section>
@@ -232,7 +246,7 @@ export default function ExamMonitorPage() {
                   </div>
                 ) : (
                   <div className="monitorTableWrap">
-                    <table className="dataTable monitorTable">
+                    <table className="dataTable monitorTable liveExamRosterTable">
                       <thead>
                         <tr>
                           <th>Student</th>
@@ -260,7 +274,11 @@ export default function ExamMonitorPage() {
                               </div>
                             </td>
                             <td><AccessStatusBadge status={student.accessStatus} /></td>
+
                             <td><AttemptStatusBadge status={student.attemptStatus} accessStatus={student.accessStatus} /></td>
+
+                            <td><AttemptStatusBadge student={student} /></td>
+
                             <td>
                               <MonitorViolationTimeline student={student} />
                             </td>
@@ -343,7 +361,10 @@ function MonitorMetric({ label, value, tone = "neutral" }) {
 }
 
 function AccessStatusBadge({ status }) {
+
   if (status === "ManuallyApproved" || status === "Started" || status === "Submitted") {
+
+  if (["ManuallyApproved", "Started", "Submitted"].includes(status)) {
     return <span className="statusPill statusLive">Approved</span>;
   }
 
@@ -363,9 +384,14 @@ function AccessStatusBadge({ status }) {
     return <span className="statusPill statusDanger">Revoked</span>;
   }
 
-  if (status === "CodeVerified") {
-    return <span className="statusPill statusPublished">Code verified</span>;
+  return <span className="statusPill statusDraft">Not joined</span>;
+}
+
+function AttemptStatusBadge({ student }) {
+  if (student.attemptStatus === "Submitted") {
+    return <span className="statusPill statusLive">Submitted</span>;
   }
+
 
   return <span className="statusPill statusDraft">Not joined</span>;
 }
@@ -374,6 +400,16 @@ function AttemptStatusBadge({ status, accessStatus }) {
   if (status === "Submitted") return <span className="statusPill statusLive">Submitted</span>;
   if (status === "InProgress") return <span className="statusPill statusPublished">In progress</span>;
   if (accessStatus === "Removed") return <span className="statusPill statusDanger">Closed</span>;
+
+  if (student.attemptStatus === "InProgress") {
+    return <span className="statusPill statusPublished">In progress</span>;
+  }
+
+  if (student.accessStatus === "Removed") {
+    return <span className="statusPill statusDanger">Closed</span>;
+  }
+
+
   return <span className="statusPill statusDraft">Not started</span>;
 }
 
@@ -414,6 +450,7 @@ function dedupeIntegrityEvents(events) {
 
 function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, onConfirm }) {
   const labels = {
+
     approve: {
       eyebrow: "Manual approval",
       title: "Allow exam access",
@@ -437,20 +474,39 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
     },
   };
   const copy = labels[action.type] || labels.reject;
+
+    approve: ["Physical approval", "Approve exam admission", "Approve access"],
+    reject: ["Reject admission", "Reject physical admission", "Reject access"],
+    revoke: ["Revoke admission", "Revoke exam admission", "Revoke access"],
+  };
+  const [eyebrow, title, actionLabel] = labels[action.type] || labels.reject;
+
   const studentName = action.student.fullName || action.student.email || "this student";
 
   return (
     <div className="modalBackdrop" role="presentation">
+
       <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={copy.title}>
         <div className="modalHeader">
           <div>
             <span className="summaryLabel">{copy.eyebrow}</span>
             <h3>{copy.title}</h3>
+
+      <div className="modalCard accessActionModal" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">{eyebrow}</span>
+            <h3>{title}</h3>
+
           </div>
           <button className="btn btnTiny" type="button" onClick={onCancel} aria-label="Close">Close</button>
         </div>
         <div className="modalBody stackLg">
+
           <p className="small">{copy.body.replace("this student", studentName)}</p>
+
+          <p className="small">This action changes exam admission for {studentName} and is recorded for audit review.</p>
+
           <div className="field">
             <label className="label">Reason</label>
             <textarea
@@ -463,8 +519,13 @@ function AccessActionModal({ action, reason, saving, onReasonChange, onCancel, o
         </div>
         <div className="modalFooter">
           <button className="btn" type="button" onClick={onCancel} disabled={saving}>Cancel</button>
+
           <button className={`btn ${copy.tone}`} type="button" onClick={onConfirm} disabled={saving}>
             {saving ? "Saving..." : copy.button}
+
+          <button className={`btn ${action.type === "approve" ? "btnPrimary" : "btnDanger"}`} type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? "Saving..." : actionLabel}
+
           </button>
         </div>
       </div>
@@ -505,7 +566,11 @@ function formatEventType(value) {
   return String(value || "No events")
     .replaceAll("_", " ")
     .toLowerCase()
+
     .replace(/\b\w/g, (char) => char.toUpperCase()) || "No events";
+
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
 }
 function readApiMessage(err) {
   return err?.response?.data?.message ||

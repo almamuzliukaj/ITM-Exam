@@ -498,7 +498,17 @@ public class ExamsController : ControllerBase
         activeAttempt.GradingNotes = null;
         activeAttempt.PublishedAt = null;
         activeAttempt.PublishedByUserId = null;
+
         EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
+
+
+        EnsureAttemptQuestionVersion(activeAttempt, exam.Questions);
+
+        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+
+        if (bindingError != null)
+            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+
 
         await MarkStudentAccessSubmittedAsync(examId, userId.Value, now);
         await MarkExamSessionBindingsSubmittedAsync(examId, userId.Value, now);
@@ -1630,6 +1640,10 @@ public class ExamsController : ControllerBase
             RequestedAt = access.LastActivityAt,
             ApprovalReason = access.ApprovalReason,
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
+
+
+            ServerTimeUtc = now,
+
             Message = "Device change request sent. Wait for staff approval before continuing."
         });
     }
@@ -3348,10 +3362,20 @@ public class ExamsController : ControllerBase
         if (userId == null)
             return false;
 
+        if (User.IsInRole("Admin"))
+            return true;
+
+        if (exam.CreatedByUserId == userId.Value)
+            return true;
+
         if (!User.IsInRole("Professor") && !User.IsInRole("Assistant"))
             return false;
 
-        return await Task.FromResult(exam.CreatedByUserId == userId.Value);
+        if (!exam.CourseOfferingId.HasValue)
+            return false;
+
+        var assignmentRole = User.IsInRole("Professor") ? "Professor" : "Assistant";
+        return await UserHasOfferingAccessAsync(exam.CourseOfferingId.Value, userId.Value, assignmentRole);
     }
 
     private async Task<CourseOffering?> GetAuthorizedCourseOfferingAsync(Guid offeringId, Guid userId)

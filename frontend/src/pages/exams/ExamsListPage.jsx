@@ -21,6 +21,8 @@ const examPeriods = [
   { value: "October Exam Period", label: "October Exam Period" },
 ];
 
+const academicYears = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
+
 export default function ExamsListPage() {
   const { t } = useTranslation();
   const { user, loading: userLoading, error: userError } = useCurrentUser();
@@ -238,7 +240,11 @@ export default function ExamsListPage() {
                 <label className="label">Academic year</label>
                 <select className="input" value={filters.academicYear} onChange={(e) => setFilters((current) => ({ ...current, academicYear: e.target.value }))}>
                   <option value="">All academic years</option>
+
                   {filterOptions.academicYears.map((year) => <option key={year} value={year}>{year}</option>)}
+
+                  {uniqueSorted([...academicYears, ...filterOptions.academicYears]).map((year) => <option key={year} value={year}>{year}</option>)}
+
                 </select>
               </div>
               {isStudent ? (

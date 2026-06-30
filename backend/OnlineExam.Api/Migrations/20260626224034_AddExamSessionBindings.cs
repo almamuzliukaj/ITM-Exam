@@ -11,6 +11,26 @@ namespace OnlineExam.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql(
+                """
+                CREATE TABLE IF NOT EXISTS "ExamStudentAccesses" (
+                    "Id" uuid NOT NULL,
+                    "ExamId" uuid NOT NULL,
+                    "StudentId" uuid NOT NULL,
+                    "AccessStatus" text NOT NULL DEFAULT 'NotVerified',
+                    "VerifiedAt" timestamp with time zone NULL,
+                    "ApprovedByUserId" uuid NULL,
+                    "ApprovedAt" timestamp with time zone NULL,
+                    "ApprovalReason" text NOT NULL DEFAULT '',
+                    "LastActivityAt" timestamp with time zone NULL,
+                    CONSTRAINT "PK_ExamStudentAccesses" PRIMARY KEY ("Id"),
+                    CONSTRAINT "FK_ExamStudentAccesses_Exams_ExamId" FOREIGN KEY ("ExamId") REFERENCES "Exams" ("Id") ON DELETE CASCADE
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_ExamStudentAccesses_ExamId_StudentId"
+                ON "ExamStudentAccesses" ("ExamId", "StudentId");
+                """);
+
             migrationBuilder.CreateTable(
                 name: "ExamSessionBindings",
                 columns: table => new

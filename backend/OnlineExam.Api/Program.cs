@@ -17,6 +17,12 @@ using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var railwayPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(railwayPort))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{railwayPort}");
+}
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -26,9 +32,13 @@ var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 
 if (string.IsNullOrEmpty(jwtKey))
-    throw new Exception("JWT Key is missing in appsettings.json");
+    throw new Exception("JWT Key is missing from application configuration. Set Jwt:Key or Jwt__Key.");
 if (string.IsNullOrEmpty(jwtIssuer))
-    throw new Exception("JWT Issuer is missing in appsettings.json");
+    throw new Exception("JWT Issuer is missing from application configuration. Set Jwt:Issuer or Jwt__Issuer.");
+
+var allowedOrigins = (builder.Configuration["AllowedOrigins"] ?? "http://localhost:5173,http://localhost:5174")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var seedDemoData = builder.Configuration.GetValue<bool>("SeedDemoData");
 
 // Add services to the container.
 builder.Services.AddControllers(options =>
@@ -110,7 +120,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
-        b => b.WithOrigins("http://localhost:5173", "http://localhost:5174")
+        b => b.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
@@ -194,10 +204,14 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || seedDemoData)
 {
     EnsureDemoUsers(app);
     EnsureStableDemoData(app);
+}
+
+if (app.Environment.IsDevelopment())
+{
     app.UseSwagger();
     app.UseSwaggerUI(); // <-- Kjo është për Swagger!
 }
@@ -268,6 +282,14 @@ app.UseStatusCodePages(async context =>
 
     await response.WriteAsync(JsonSerializer.Serialize(errorResponse));
 });
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    service = "OnlineExam.Api",
+    timestamp = DateTime.UtcNow
+})).AllowAnonymous();
+
 app.MapControllers();
 app.Run();
 

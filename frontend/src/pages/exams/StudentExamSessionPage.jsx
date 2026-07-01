@@ -135,7 +135,7 @@ export default function StudentExamSessionPage() {
             .slice(0, 12));
         }
 
-        const timing = buildSessionTiming(examData, restored);
+        const timing = buildSessionTiming(examData, restored, attemptData);
         setSessionTiming(timing);
         setTimeRemaining(calculateRemainingSeconds(timing));
 
@@ -498,12 +498,6 @@ export default function StudentExamSessionPage() {
       setAutoSubmitFailed(false);
       const nextResult = { ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null };
       setResult(nextResult);
-      if (reason === "integrity-policy") {
-        navigate("/exams", {
-          replace: true,
-          state: { submitted: true, autoSubmitted: true, examId },
-        });
-      }
       return true;
     } catch (err) {
       submittedRef.current = false;
@@ -557,8 +551,9 @@ export default function StudentExamSessionPage() {
     };
     autoSubmitSummaryRef.current = notice;
     setAutoSubmitNotice(notice);
-    setAutoActionCountdown((current) => (current == null ? 6 : current));
-  }, [autoActionThreshold, autoSubmitFailed, effectiveViolationCount, integrityEvents, loading, result, shouldAutoSubmit, submitting]);
+    setAutoActionCountdown(0);
+    runIntegrityAutoSubmit();
+  }, [autoActionThreshold, autoSubmitFailed, effectiveViolationCount, integrityEvents, loading, result, runIntegrityAutoSubmit, shouldAutoSubmit, submitting]);
 
   useEffect(() => {
     if (autoActionCountdown == null || result || submitting) return;
@@ -982,12 +977,11 @@ export default function StudentExamSessionPage() {
           />
         ) : null}
 
-        {autoSubmitNotice && autoActionCountdown != null && !result ? (
+        {autoSubmitNotice && autoActionCountdown != null && !result && submitting ? (
           <AutoSubmitNoticeModal
             notice={autoSubmitNotice}
             countdown={autoActionCountdown}
             submitting={submitting}
-            onSubmitNow={runIntegrityAutoSubmit}
           />
         ) : null}
 
@@ -1058,7 +1052,7 @@ export default function StudentExamSessionPage() {
                             setActiveQuestionIndex((current) => Math.min(questions.length - 1, current + 1));
                           }
                         }}
-                        disabled={submitting}
+                        disabled={submitting || interactionLocked}
                       >
                         {isLastQuestion ? (submitting ? "Submitting..." : "Finish and submit") : "Next"}
                       </button>
@@ -1095,7 +1089,7 @@ export default function StudentExamSessionPage() {
                     className="btn btnDanger btnBlock examNavigatorSubmit"
                     type="button"
                     onClick={() => setShowSubmitReview(true)}
-                    disabled={submitting || questions.length === 0}
+                    disabled={submitting || questions.length === 0 || interactionLocked}
                   >
                     Submit exam
                   </button>
@@ -1411,7 +1405,7 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
   );
 }
 
-function AutoSubmitNoticeModal({ notice, countdown, submitting, onSubmitNow }) {
+function AutoSubmitNoticeModal({ notice, countdown, submitting }) {
   return (
     <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="auto-submit-title">
       <section className="modalCard integrityModal autoSubmitModal">
@@ -1421,18 +1415,13 @@ function AutoSubmitNoticeModal({ notice, countdown, submitting, onSubmitNow }) {
           The session reached {notice.violationCount}/{notice.threshold} integrity warnings. Your current answers are saved and the attempt will be submitted for staff review.
         </p>
         <div className="autoSubmitCountdown" aria-live="assertive">
-          <span>Auto-submit in</span>
-          <strong>{Math.max(0, countdown)}s</strong>
+          <span>Auto-submit</span>
+          <strong>{submitting ? "Submitting..." : `${Math.max(0, countdown)}s`}</strong>
         </div>
         <div className="autoSubmitDetails">
           <span>Latest event</span>
           <strong>{formatIntegrityType(notice.latestType)}</strong>
           <small>{notice.latestMessage}</small>
-        </div>
-        <div className="heroActions">
-          <button className="btn btnPrimary" type="button" onClick={onSubmitNow} disabled={submitting}>
-            {submitting ? "Submitting..." : "Submit now"}
-          </button>
         </div>
       </section>
     </div>
@@ -1733,8 +1722,16 @@ function readDraft(storageKey) {
   }
 }
 
-function buildSessionTiming(exam, restored) {
+function buildSessionTiming(exam, restored, attempt) {
   const now = Date.now();
+  const attemptExpiry = Date.parse(attempt?.expiresAt || "");
+  if (Number.isFinite(attemptExpiry) && attemptExpiry > now) {
+    return {
+      startedAt: attempt?.startedAt || new Date(now).toISOString(),
+      expiresAt: attempt.expiresAt,
+    };
+  }
+
   const restoredExpiry = Date.parse(restored?.expiresAt || "");
   if (Number.isFinite(restoredExpiry) && restoredExpiry > now) {
     return {

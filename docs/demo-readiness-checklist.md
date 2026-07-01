@@ -1,63 +1,67 @@
-# University Demo Readiness Checklist
+# Presentation Readiness Checklist
 
-This checklist is used before presenting the Online Exam system in a university setting.
+This checklist is used before presenting the ITM Exam system in a university setting. It focuses on real implemented workflows, not removed demo-only panels.
 
-## Demo Goal
+## Goal
 
-The demo should show that Online Exam supports a complete assessment workflow:
+The presentation should prove that ITM Exam supports a complete assessment workflow:
 
-- Academic setup is controlled and aligned with SMU-synced data.
-- Staff can prepare, publish, and grade exams.
-- Students only see eligible published exams.
-- Attempts include timer, autosave, integrity warnings, and safe submission.
-- Results remain hidden until staff publication.
+- Admin controls academic setup and eligibility.
+- Professor prepares, publishes, monitors, grades, and publishes results.
+- Assistant supports assigned offerings without admin-only access.
+- Student sees only eligible exams and published results.
+- Attempts include access control, timer, autosave, integrity signals, technical Run preview, and safe submission.
 
-## Required Demo Data
+## Required Test Data
 
-Before presenting, confirm the local or shared demo database has:
+Before presenting, confirm the database has:
 
 - One active admin account.
 - One professor assigned to at least one course offering.
-- One assistant assigned to at least one offering when assistant flow is shown.
-- One active student with current-term course eligibility.
-- One published exam with at least one MCQ and one text or technical question.
-- One submitted attempt that can be graded and published.
+- One assistant assigned to an offering if assistant flow is shown.
+- One active student with course eligibility.
+- One published exam with MCQ, text, and at least one SQL or C# question where possible.
+- One submitted attempt available for gradebook review.
+- One published result visible to the student.
 
 ## Role Walkthrough
 
 ### Admin
 
-1. Open dashboard.
-2. Confirm the University demo readiness panel is visible.
-3. Open SMU sync and confirm source-of-truth ownership is understandable.
-4. Open enrollments and confirm student eligibility can be reviewed.
+1. Open dashboard / operational overview.
+2. Open user management.
+3. Open academic structure and verify terms/courses/offerings.
+4. Open enrollments and verify student eligibility.
+5. Open SMU page and explain source-of-truth behavior.
+6. Open reports if included in the presentation.
 
 ### Professor
 
-1. Open dashboard.
-2. Confirm assigned offerings are scoped to the professor.
-3. Open exams and review an exam draft or published exam.
-4. Open gradebook and confirm grading/result publication workflow.
+1. Open dashboard and verify assigned offerings.
+2. Open exams and review a draft or published exam.
+3. Open question bank and show MCQ/Text/SQL/C# support.
+4. Open exam details and show access-code/live monitoring area.
+5. Open gradebook and show review/publish workflow.
 
 ### Assistant
 
-1. Open dashboard.
-2. Confirm assistant sees support offerings and not admin-only controls.
-3. Confirm question/exam support remains scoped to assigned offerings.
+1. Open dashboard and verify scoped support access.
+2. Open assigned exams or question bank.
+3. Confirm admin-only controls are not visible.
 
 ### Student
 
-1. Open dashboard.
-2. Confirm eligible courses and visible exams.
-3. Start an exam attempt.
-4. Confirm the student journey validation panel, autosave, timer, and submit review.
-5. Open results and confirm pending versus published states are clear.
+1. Open dashboard and available exams.
+2. Start an eligible exam.
+3. Complete access-code or approval flow.
+4. Confirm rules appear before the timer starts.
+5. Answer questions, use Run for SQL/C# if available, and submit.
+6. Open My Results and confirm only published results appear.
 
 ## Pass Criteria
 
-- Every role lands on a clear dashboard.
-- No demo-critical screen is blank without an explanation.
-- Main workflows have loading, empty, error, and success states.
-- The student path from eligibility to results can be explained without hidden steps.
-- Screenshots and build evidence are recorded in `docs/release-qa-evidence.md` before final delivery.
-- Shared UI patterns match `docs/university-ui-consistency-review.md`, especially dropdowns, tables, empty states, and mobile behavior.
+- No role lands on a blank or misleading page.
+- Main workflows have understandable loading, empty, error, and success states.
+- Student result values match professor-published gradebook values.
+- Integrity/access events are visible to staff.
+- Build evidence and screenshots are recorded in `release-qa-evidence.md`.

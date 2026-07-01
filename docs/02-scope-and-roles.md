@@ -1,70 +1,56 @@
 # 2. Scope and Roles
 
-## 2.1 System Scope
+## 2.1 In Scope
 
-The system includes:
+- Authentication, current-user loading, password change, and protected routes.
+- Admin management of users, terms, courses, offerings, staff assignments, enrollments, carry-over records, SMU readiness, and reports.
+- Professor/assistant management of assigned offerings, question bank content, exams, monitoring, grading, and result workflows.
+- Student exam eligibility, access-code/approval entry, attempt autosave, technical answer previews, final submit, and published results.
+- Audit logging for critical administrative, access, exam, grading, publishing, and integrity actions.
+- English/Albanian language switching and institutional UI polish.
 
-- Authentication and role-based authorization.
-- Admin management of users, academic terms, courses, course offerings, staff assignments, and student enrollments.
-- Professor and assistant workspaces for assigned course offerings.
-- Course-based question bank management.
-- Manual and random exam authoring.
-- Exam publish workflow.
-- Student exam visibility based on enrollment eligibility.
-- Baseline support for grading, results, carry-over, and security workflows.
+## 2.2 Out of Scope or Known Boundary
 
-## 2.2 Out of Scope for the Current MVP
+- Production execution of arbitrary student C# or SQL inside the main API.
+- Legal-grade proctoring or full secure-browser enforcement.
+- Fully automated final grading without professor/human review.
+- Production SMU deployment without the final external SMU contract and schedule.
 
-- Advanced webcam proctoring.
-- Production-grade AI grading decisions without human review.
-- Full deployment automation and institution-wide scaling.
-- Final legal compliance workflows beyond baseline security documentation.
-
-## 2.3 Roles
+## 2.3 Role Responsibilities
 
 ### Admin
 
-The admin manages platform operations and academic setup:
-
-- Creates and manages users.
-- Creates terms, courses, offerings, and enrollments.
-- Assigns professors and assistants to offerings.
-- Manages account status and operational corrections.
-- Does not author academic exam content.
+- Manages platform users and account status.
+- Manages academic terms, courses, course offerings, staff assignments, enrollments, and carry-over records.
+- Reviews SMU integration status and synchronization outputs.
+- Uses reports and audit logs for operational oversight.
+- Does not own academic grading decisions.
 
 ### Professor
 
-The professor manages academic exam content for assigned offerings:
-
-- Views assigned course offerings.
-- Manages question bank content.
-- Creates draft exams.
-- Adds or generates exam questions.
-- Publishes exams when ready.
-- Reviews grading and result workflows.
+- Works inside assigned course offerings.
+- Creates exams and manages exam publication.
+- Creates or uses question-bank content.
+- Generates access codes and manages student admission during exams.
+- Reviews submitted attempts, adjusts points, saves final grading, exports CSV, and publishes results.
 
 ### Assistant
 
-The assistant supports assigned offerings:
-
-- Views only assigned offerings.
-- Supports question authoring where allowed.
-- Supports draft exam preparation where allowed.
-- Assists with grading and review workflows according to assigned permissions.
+- Works only inside assigned/support offerings.
+- Supports question authoring, exam preparation, monitoring, and review workflows where permitted.
+- Cannot bypass professor ownership boundaries for final academic decisions.
 
 ### Student
 
-The student accesses only eligible academic content:
-
-- Views current eligible exams.
-- Opens published exams only when eligibility rules allow it.
-- Submits answers through the exam workflow.
-- Views results only after publication.
+- Views only eligible published exams.
+- Starts exams only through approved access-code or staff approval workflow.
+- Completes attempts with autosave and integrity monitoring.
+- Views only results that have been published by staff.
 
 ## 2.4 Core Business Rules
 
-- Admin access is operational, not academic-content ownership.
-- Staff access is limited to assigned course offerings.
-- Exam access for students depends on `StudentCourseEnrollment` eligibility.
-- Draft exams are not visible to students.
-- Published exams should have a linked offering and at least one question.
+- Draft exams are hidden from students.
+- Students must be eligible through enrollment or carry-over rules.
+- Staff access is scoped by offering assignment.
+- Published student results must match the gradebook-approved score, percentage, and grade.
+- Historical attempts, grades, and audit records should be preserved.

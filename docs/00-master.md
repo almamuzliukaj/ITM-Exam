@@ -1,6 +1,6 @@
-# Online Exam Documentation
+# ITM Exam Documentation Index
 
-This folder contains the working documentation for the ITM Online Exam Management system.
+This folder contains the technical and delivery documentation for the ITM Exam online examination system. The documentation is aligned with the current repository state: ASP.NET Core API, React/Vite frontend, PostgreSQL persistence, role-based workspaces, exam delivery, grading, monitoring, SMU readiness, and English/Albanian UI support.
 
 ## Core Documents
 
@@ -17,21 +17,34 @@ This folder contains the working documentation for the ITM Online Exam Managemen
 11. [Security and Academic Integrity](11-security-proctoring.md)
 12. [Roadmap and MVP](12-roadmap-and-mvp.md)
 13. [Project Status and Gap Analysis](13-project-status-gap-analysis.md)
-14. [Delivery Plan and Notion Sprint Board](14-delivery-plan.md)
-15. [Manual Test Guide](test-guide.md)
-16. [SMU Integration Plan](smu-integration-plan.md)
-17. [University Demo Readiness Checklist](demo-readiness-checklist.md)
-18. [Professional Change Workflow](professional-change-workflow.md)
-19. [Release QA Evidence](release-qa-evidence.md)
-20. [Demo Operations Runbook](demo-operations-runbook.md)
-21. [University UI Consistency Review](university-ui-consistency-review.md)
-22. [Student Exam Focus Layout](student-exam-focus-layout.md)
+14. [Delivery Plan and Sprint Board](14-delivery-plan.md)
 
-## Supporting Documents
+## QA and Operations
 
-- [Notion Workspace Guide](16-notion-workspace-guide.md)
-- [Login Acceptance Checklist](acceptance-login.md)
+- [Manual Test Guide](test-guide.md)
+- [Release QA Evidence](release-qa-evidence.md)
+- [Demo Operations Runbook](demo-operations-runbook.md)
+- [Professional Change Workflow](professional-change-workflow.md)
+- [University UI Consistency Review](university-ui-consistency-review.md)
+
+## Feature Notes
+
+- [SMU Integration Plan](smu-integration-plan.md)
+- [Student Exam Focus Layout](student-exam-focus-layout.md)
 - [Professor Assigned Offerings Workspace](professor-assigned-offerings-workspace.md)
-- [Agnesa Work Log](work-log.md)
+- [Login Acceptance Checklist](acceptance-login.md)
+- [Generated Question Review E2E](alma-generated-question-review-e2e.md)
+- [Published Result E2E](alma-published-result-e2e.md)
+
+## Work Logs and Contribution Evidence
+
+- [General Work Log](work-log.md)
 - [Albiona Work Log](work-log-albiona.md)
 - [Alma Work Log](work-log-alma.md)
+- [Contribution Analysis](contribution-analysis.md)
+- `contribution-commit-inventory.csv`
+- `contribution-file-stats.csv`
+
+## Maintenance Rule
+
+When a feature changes, update the related document in the same pull request. Documentation should describe implemented behavior, known boundaries, and manual verification steps. Avoid stale demo-only text, unsupported claims, and references to removed UI panels.

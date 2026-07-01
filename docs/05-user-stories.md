@@ -2,41 +2,41 @@
 
 ## 5.1 Admin
 
-- As an admin, I want to create and manage user accounts so that only authorized people can access the platform.
-- As an admin, I want to activate and deactivate accounts so that access can be controlled without deleting history.
-- As an admin, I want to create academic terms and courses so that the system reflects the faculty structure.
-- As an admin, I want to create course offerings so that courses can be delivered in a specific term, year, semester, and section.
-- As an admin, I want to assign professors and assistants to offerings so that academic responsibility is clear.
-- As an admin, I want to manage student enrollments so that exam eligibility is based on academic records.
-- As an admin, I want to manage carry-over eligibility so that students can access approved previous-semester exams.
+- As an admin, I want to manage user accounts so that only authorized users can access the platform.
+- As an admin, I want to activate and deactivate accounts without deleting history.
+- As an admin, I want to manage terms, courses, offerings, staff assignments, and enrollments so that the academic structure is accurate.
+- As an admin, I want to manage carry-over records so that students with approved previous-semester obligations can be handled correctly.
+- As an admin, I want to review SMU sync status so that external academic data ownership is clear.
+- As an admin, I want reports and audit logs so that institutional activity can be reviewed.
 
 ## 5.2 Professor
 
-- As a professor, I want to see only my assigned offerings so that I can focus on my own teaching responsibilities.
-- As a professor, I want to manage a question bank for assigned offerings so that questions can be reused.
-- As a professor, I want to create draft exams so that exam content can be prepared before publication.
-- As a professor, I want to manually add questions to an exam so that I can control exam content.
-- As a professor, I want to generate random exam questions from the question bank so that exam assembly is faster.
-- As a professor, I want to replace draft exam questions so that the final exam can be adjusted before publishing.
-- As a professor, I want to publish exams only when they are ready so that students see complete assessments.
-- As a professor, I want to review attempts and grading information so that final results can be controlled.
+- As a professor, I want to see only my assigned offerings so that I focus on my teaching responsibilities.
+- As a professor, I want to create exams from offerings with automatic academic metadata.
+- As a professor, I want to manage MCQ, text, SQL, and C# questions in a reusable question bank.
+- As a professor, I want to publish only ready exams so that students see complete assessments.
+- As a professor, I want to generate access codes and approve/revoke access during the exam.
+- As a professor, I want a live monitor so that I can track student attempts and integrity events.
+- As a professor, I want to review attempts question by question, override AI suggestions, and publish final results.
 
 ## 5.3 Assistant
 
-- As an assistant, I want to see only assigned offerings so that I do not access unrelated academic content.
-- As an assistant, I want to support question creation where allowed so that I can help prepare course materials.
-- As an assistant, I want to support draft exam authoring where allowed so that professors can coordinate exam preparation.
-- As an assistant, I want to participate in review workflows according to my assignment permissions.
+- As an assistant, I want to see only assigned/support offerings.
+- As an assistant, I want to support question authoring and exam preparation in assigned contexts.
+- As an assistant, I want to help monitor attempts where the offering assignment permits it.
+- As an assistant, I want grading support views without bypassing professor ownership rules.
 
 ## 5.4 Student
 
-- As a student, I want to see only exams for which I am eligible so that my dashboard is accurate.
-- As a student, I want to open a published exam when access rules allow it.
-- As a student, I want to answer questions and submit an attempt.
-- As a student, I want my results to remain hidden until they are published by staff.
+- As a student, I want to see only exams for which I am eligible.
+- As a student, I want to enter an exam only after access-code verification or staff approval.
+- As a student, I want to read rules before the timer starts.
+- As a student, I want my answers to autosave while I work.
+- As a student, I want to run SQL/C# drafts without submitting the exam.
+- As a student, I want to submit my exam and later see only published results.
 
 ## 5.5 Team and Delivery
 
-- As a team, we want each sprint task to have an owner, acceptance criteria, and definition of done.
-- As a team, we want repository documentation to match the Notion sprint board.
-- As a team, we want demo-critical workflows to be stable before final delivery.
+- As a team, we want documentation to match the implemented project.
+- As a team, we want every sprint branch to be reviewable and professionally described.
+- As a team, we want manual test evidence for demo-critical workflows.

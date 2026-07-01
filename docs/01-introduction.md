@@ -1,38 +1,36 @@
 # 1. Introduction
 
-## 1.1 Project Purpose
+## 1.1 Purpose
 
-Online Exam Management is a web platform for managing university exam workflows in a controlled digital environment. The system supports role-based access for administrators, professors, assistants, and students.
+ITM Exam is a university online examination platform for managing academic setup, exam authoring, controlled exam entry, student attempts, grading, integrity monitoring, and published results. The system supports four operational roles: Admin, Professor, Assistant, and Student.
 
-The project focuses on replacing fragmented manual processes with a structured workflow for academic setup, question authoring, exam creation, student eligibility, submissions, grading, and result visibility.
+The project replaces fragmented manual exam workflows with a structured web application where access, ownership, publication, grading, and result visibility are controlled by role and academic context.
 
 ## 1.2 Problem Statement
 
-The current exam process has several operational challenges:
+Faculty exam operations require consistent handling of:
 
-- Academic setup, course offerings, and staff assignments are difficult to track consistently.
-- Question preparation is often repeated instead of being stored in a reusable question bank.
-- Exam creation and publishing need clearer ownership and status rules.
-- Student access should depend on enrollment and eligibility, not only on user role.
-- Grading and result publication need controlled visibility and auditability.
+- Academic terms, courses, offerings, staff assignments, enrollments, and carry-over cases.
+- Reusable question banks for MCQ, text, C#, and SQL questions.
+- Exam creation that inherits academic metadata from course offerings.
+- Student access based on eligibility plus classroom entry approval.
+- Integrity events during attempts.
+- Human-controlled grading and published result visibility.
+- Documentation and QA evidence that match the implemented system.
 
 ## 1.3 Project Objectives
 
-- Provide a secure role-based platform for exam operations.
-- Support academic structure management for terms, courses, offerings, staff assignments, and enrollments.
-- Enable professors and assistants to manage question banks and create exams.
-- Allow manual and random exam authoring workflows.
-- Ensure students can access only eligible published exams.
-- Provide a foundation for grading, results, carry-over logic, and security hardening.
+- Provide secure JWT-based authentication and role-based authorization.
+- Keep admin operations separate from academic exam ownership.
+- Limit professor and assistant workspaces to assigned offerings.
+- Ensure students see only eligible published exams and published results.
+- Support technical SQL/C# assessment authoring and student answer workspaces.
+- Provide gradebook review with AI-assisted suggestions and professor/manual override.
+- Capture audit logs for important administrative and academic actions.
+- Support English/Albanian UI usage for institutional presentation.
 
-## 1.4 MVP Boundaries
+## 1.4 Current MVP Boundary
 
-The MVP focuses on:
+The implemented MVP includes academic management, question bank, exam delivery, access-code entry, live monitor, student attempt flow, grading, result publication, reporting, and baseline integrity tracking.
 
-- Authentication and role-based navigation.
-- Admin user, academic, offering, and enrollment management.
-- Question bank and question authoring.
-- Exam draft creation, question attachment, random generation, and publish workflow.
-- Student exam visibility based on eligibility.
-
-Advanced proctoring, full AI grading, and final result publication workflows are planned for later sprint work.
+The current technical run feature provides safe previews for SQL/C# answers. Full execution of arbitrary student code or SQL must be implemented in a separate sandbox/container runner before production use.

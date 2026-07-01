@@ -1,31 +1,38 @@
-# Alma - Generated Question Review E2E
+# Generated Question Review E2E
 
-## Scope
+## Status
 
-Sprint I covers the review and approval workspace for generated questions before they enter the reusable Question Bank.
+This document describes an optional extension workflow for AI/material-generated questions. The current baseline question-bank workflow is manual authoring for MCQ, Text, C#, and SQL questions. Generated-question review should be treated as an extension unless the related UI/API is enabled in the active branch.
 
-## Flow
+## Intended Flow
 
-1. Professor or assistant opens `Question Bank`.
-2. User clicks `Review generated`.
-3. User selects the course offering.
-4. Generated draft questions appear with source excerpt, status, type, topic, difficulty, points, answer data, and reviewer explanation.
-5. User edits the generated content.
-6. User can approve, reject, or regenerate one question.
-7. Only approved questions can be added to the Question Bank.
-8. Pending and rejected questions remain blocked from import.
+1. Professor or assistant opens Question Bank.
+2. User selects an assigned course offering.
+3. Generated draft questions are reviewed before they enter the reusable bank.
+4. User edits prompt, type, points, topic, answer data, and explanation.
+5. User approves, rejects, or regenerates a draft.
+6. Only approved questions are inserted into the question bank.
 
-## Validation
+## Validation Rules
 
 - MCQ questions require at least two alternatives.
 - MCQ correct answer must match one available alternative.
-- Text, C#, and SQL questions require a model answer or expected output.
-- Every approved question requires text, points, difficulty, and reviewer explanation.
+- Text questions require a model answer or grading note.
+- C# and SQL questions require prompt, starter code/schema where applicable, expected output or grading notes.
+- Generated content must never be published directly to students without staff review.
 
-## Integration Notes
+## Current Baseline Alternative
 
-The current Question Bank API stores prompt, type, points, topic, difficulty, options, and correct answer. The review workspace supports editing reviewer explanation, but it does not inject explanation into the student-visible question text. A dedicated backend field can persist explanations later when the AI orchestration backend is expanded.
+Use the implemented Question Bank pages to create reviewed questions manually:
 
-## Expected Result
+- `/question-bank`
+- `/question-bank/new`
+- `/question-bank/questions/:questionId/edit`
 
-Approved generated questions are added to the selected offering's Question Bank and become available for future exam creation. Pending and rejected questions are not imported.
+## Acceptance Criteria for Future Activation
+
+- Generated drafts are clearly separated from approved question-bank items.
+- Rejected drafts cannot be imported.
+- Approved drafts preserve staff edits.
+- Audit logs capture approval/rejection actions.
+- Manual test evidence is added before the feature is considered active.

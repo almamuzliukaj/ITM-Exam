@@ -505,7 +505,7 @@ function GradebookAttemptTable({ attempts, drafts, publishing, onReview, onPubli
             const draft = drafts[attempt.attemptId] || {};
             const violations = Number(attempt.integrityViolationCount || 0);
             const finalScore = draft.questionScores ? sumQuestionScoreDraft(draft.questionScores) : Number(draft.finalScore ?? attempt.finalScore ?? 0);
-            const maxPoints = Number(attempt.examMaxPoints || 0);
+            const maxPoints = resolveAttemptMaxPoints(attempt, draft.questionScores);
             const percentage = maxPoints > 0 ? (finalScore / maxPoints) * 100 : 0;
             const grade = calculateGrade(percentage);
             return (
@@ -586,7 +586,8 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
     : Number(draft.finalScore ?? attempt.finalScore ?? 0);
 
   const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
-  const currentPercentage = attempt.examMaxPoints ? (currentFinalScore / Number(attempt.examMaxPoints || 0)) * 100 : 0;
+  const currentMaxPoints = resolveAttemptMaxPoints(attempt, safeQuestionScoreDrafts);
+  const currentPercentage = currentMaxPoints > 0 ? (currentFinalScore / currentMaxPoints) * 100 : 0;
   const currentGrade = calculateGrade(currentPercentage);
   const reviewedQuestions = safeQuestionScoreDrafts.filter((score) => String(score.pointsAwarded ?? "").trim() !== "").length;
 
@@ -638,7 +639,7 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
           <ScoreTile label="Auto score" value={attempt.autoScore} />
           <ScoreTile label="AI/manual score" value={draft.manualScore ?? attempt.manualScore} />
           <ScoreTile label="Final score" value={currentFinalScore} strong />
-          <ScoreTile label="Exam max points" value={attempt.examMaxPoints} />
+          <ScoreTile label="Exam max points" value={currentMaxPoints} />
           <ScoreTile label="Score percentage" value={`${currentPercentage.toFixed(2)}%`} />
           <ScoreTile label="Final grade" value={formatGrade(currentGrade, currentGrade >= 6)} />
           <ScoreTile label="Adjustment" value={scoreDelta} signed />
@@ -1156,7 +1157,7 @@ function buildGradebookCsv(attempts, drafts) {
   const rows = attempts.map((attempt) => {
     const draft = drafts[attempt.attemptId] || {};
     const finalScore = draft.questionScores ? sumQuestionScoreDraft(draft.questionScores) : Number(draft.finalScore ?? attempt.finalScore ?? 0);
-    const examMaxPoints = Number(attempt.examMaxPoints || 0);
+    const examMaxPoints = resolveAttemptMaxPoints(attempt, draft.questionScores);
     const percentage = examMaxPoints > 0 ? (finalScore / examMaxPoints) * 100 : 0;
     const answerCount = Array.isArray(attempt.answers) ? attempt.answers.length : 0;
 
@@ -1182,6 +1183,24 @@ function buildGradebookCsv(attempts, drafts) {
   });
 
   return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function resolveAttemptMaxPoints(attempt, questionScores = null) {
+  const scores = toQuestionScoreList(questionScores).length > 0
+    ? toQuestionScoreList(questionScores)
+    : Array.isArray(attempt.questionScores) && attempt.questionScores.length > 0
+    ? attempt.questionScores
+    : normalizeQuestionScoreDrafts(attempt);
+
+  const questionTotal = scores.reduce((sum, score) => sum + Number(score.maxPoints ?? 0), 0);
+  if (questionTotal > 0) return roundScore(questionTotal);
+
+  const answerTotal = Array.isArray(attempt.answers)
+    ? attempt.answers.reduce((sum, answer) => sum + Number(answer.points ?? 0), 0)
+    : 0;
+  if (answerTotal > 0) return roundScore(answerTotal);
+
+  return Number(attempt.examMaxPoints || 0);
 }
 
 function csvCell(value) {

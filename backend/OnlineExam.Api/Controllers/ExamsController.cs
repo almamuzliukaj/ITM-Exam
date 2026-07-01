@@ -451,7 +451,7 @@ public class ExamsController : ControllerBase
         if (exam == null)
             return NotFound(new { message = "Exam not found." });
 
-        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false);
+        var sessionAccessError = await GetStudentExamSessionAccessErrorAsync(userId.Value, exam, blockResubmission: false, enforceRemoval: false);
         if (sessionAccessError != null)
         {
             if (sessionAccessError == StudentExamNotEligibleMessage)
@@ -472,6 +472,10 @@ public class ExamsController : ControllerBase
             return BadRequest(new { message = "Start the approved exam session before submitting.", code = "EXAM_SESSION_NOT_APPROVED" });
 
         var activeAttempt = attempt;
+        var access = await _context.ExamStudentAccesses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ExamId == exam.Id && x.StudentId == userId.Value);
+        var accessClosedByStaff = access?.AccessStatus is StudentAccessStatusRemoved or StudentAccessStatusRejected;
 
         if (activeAttempt.Status == ExamAttemptSubmittedStatus)
             return BadRequest(new { message = "This attempt has already been submitted and cannot be submitted again.", code = "EXAM_ATTEMPT_ALREADY_SUBMITTED" });
@@ -486,9 +490,12 @@ public class ExamsController : ControllerBase
         var now = DateTime.UtcNow;
 
 
-        var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
-        if (bindingError != null)
-            return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+        if (!accessClosedByStaff)
+        {
+            var bindingError = await EnsureExamSessionBindingAsync(exam, activeAttempt, userId.Value, dto.ClientSessionId, allowCreate: true);
+            if (bindingError != null)
+                return BadRequest(new { message = bindingError.Message, code = bindingError.Code });
+        }
 
         activeAttempt.Status = ExamAttemptSubmittedStatus;
         activeAttempt.StartedAt = activeAttempt.StartedAt == default ? now : activeAttempt.StartedAt;
@@ -846,7 +853,11 @@ public class ExamsController : ControllerBase
         await MarkStudentAccessStartedAsync(examId, userId.Value, now);
         await _context.SaveChangesAsync();
 
-        var runResult = BuildTechnicalRunResult(question, response);
+        var runNumber = await _context.AuditLogs.CountAsync(log =>
+            log.Action == "ExamAttempt.TechnicalAnswerRun" &&
+            log.EntityId == attempt.Id) + 1;
+        var runStartedAt = DateTime.UtcNow;
+        var runResult = BuildTechnicalRunResult(question, response, runNumber, runStartedAt);
         await _auditLogService.LogAsync("ExamAttempt.TechnicalAnswerRun", "ExamAttempt", attempt.Id, new
         {
             attempt.ExamId,
@@ -855,6 +866,10 @@ public class ExamsController : ControllerBase
             question.Type,
             runResult.Status,
             runResult.ExecutedAt,
+            runResult.ExecutionTimeMs,
+            runResult.RunNumber,
+            outputPreview = TruncateRunAuditValue(runResult.Output),
+            errorPreview = TruncateRunAuditValue(runResult.Errors),
             dto.ClientSessionId
         }, "ExamDelivery");
 
@@ -4895,18 +4910,22 @@ public class ExamsController : ControllerBase
         return Math.Round(value, 2, MidpointRounding.AwayFromZero);
     }
 
-    private static TechnicalRunResultDto BuildTechnicalRunResult(Question question, string response)
+    private static TechnicalRunResultDto BuildTechnicalRunResult(Question question, string response, int runNumber, DateTime runStartedAt)
     {
         var questionType = question.Type;
         var executedAt = DateTime.UtcNow;
+        var language = string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase) ? "SQL" : "CSharp";
 
         if (string.IsNullOrWhiteSpace(response))
         {
             return new TechnicalRunResultDto
             {
                 Status = "Error",
+                Language = language,
                 Errors = "Write a solution before running this technical answer.",
                 Notes = "Run validates the current draft only. Final grading still happens after submission.",
+                ExecutionTimeMs = CalculateRunDurationMs(runStartedAt, executedAt),
+                RunNumber = runNumber,
                 ExecutedAt = executedAt,
                 TestResults =
                 [
@@ -4922,39 +4941,49 @@ public class ExamsController : ControllerBase
         }
 
         if (string.Equals(questionType, "SQL", StringComparison.OrdinalIgnoreCase))
-            return BuildSqlRunPreview(response, executedAt);
+            return BuildSqlRunPreview(question, response, runNumber, runStartedAt, executedAt);
 
         if (string.Equals(questionType, "CSharp", StringComparison.OrdinalIgnoreCase))
-            return BuildCSharpRunPreview(response, executedAt);
+            return BuildCSharpRunPreview(question, response, runNumber, runStartedAt, executedAt);
 
         return new TechnicalRunResultDto
         {
             Status = "NotSupported",
+            Language = language,
             Errors = "This question type does not support technical execution.",
+            ExecutionTimeMs = CalculateRunDurationMs(runStartedAt, executedAt),
+            RunNumber = runNumber,
             ExecutedAt = executedAt
         };
     }
 
-    private static TechnicalRunResultDto BuildSqlRunPreview(string response, DateTime executedAt)
+    private static TechnicalRunResultDto BuildSqlRunPreview(Question question, string response, int runNumber, DateTime runStartedAt, DateTime executedAt)
     {
         var normalized = response.Trim();
         var lowered = normalized.ToLowerInvariant();
         var hasSelect = Regex.IsMatch(lowered, @"\bselect\b");
         var hasFrom = Regex.IsMatch(lowered, @"\bfrom\b");
-        var hasDestructiveStatement = Regex.IsMatch(lowered, @"\b(drop|truncate|alter|delete|update|insert)\b");
+        var hasDestructiveStatement = Regex.IsMatch(lowered, @"\b(drop|truncate|alter|delete|update|insert|merge|grant|revoke|exec|execute|create)\b");
         var hasSemicolon = normalized.EndsWith(";", StringComparison.Ordinal);
-        var passedPreview = hasSelect && hasFrom && !hasDestructiveStatement;
+        var expectedAnswer = ResolveExpectedAnswer(question) ?? string.Empty;
+        var expectedSimilarity = CalculateTechnicalSimilarity(expectedAnswer, response, question.Type, ResolveQuestionPrompt(question));
+        var passedPublicChecks = hasSelect && hasFrom && !hasDestructiveStatement;
+        var status = hasDestructiveStatement ? "Error" : passedPublicChecks ? "Passed" : "Error";
+        var output = passedPublicChecks
+            ? BuildSqlSafePreviewOutput(question, expectedSimilarity)
+            : string.Empty;
 
         return new TechnicalRunResultDto
         {
-            Status = passedPreview ? "NotSupported" : "Error",
-            Output = passedPreview
-                ? "SQL structure preview passed. Real result rows require an isolated SQL runner with a controlled dataset."
-                : string.Empty,
-            Errors = passedPreview
+            Status = status,
+            Language = "SQL",
+            Output = output,
+            Errors = passedPublicChecks
                 ? string.Empty
                 : "The SQL draft needs review before it can be executed.",
-            Notes = "The main API does not execute arbitrary SQL. A sandboxed SQL runner can later use this same response contract for real datasets.",
+            Notes = "Safe preview only: the main API does not execute arbitrary SQL against the application database. Real row output must come from an isolated per-attempt SQL sandbox with timeout and read-only credentials.",
+            ExecutionTimeMs = CalculateRunDurationMs(runStartedAt, executedAt),
+            RunNumber = runNumber,
             ExecutedAt = executedAt,
             TestResults =
             [
@@ -4976,7 +5005,7 @@ public class ExamsController : ControllerBase
                 {
                     Name = "Read-only safety",
                     Passed = !hasDestructiveStatement,
-                    Message = hasDestructiveStatement ? "Destructive SQL statements are not allowed in exam preview." : "No destructive statement detected.",
+                    Message = hasDestructiveStatement ? "Dangerous SQL statements are blocked for exam safety." : "No dangerous statement detected.",
                     Visibility = "Public"
                 },
                 new TechnicalRunTestResultDto
@@ -4985,29 +5014,44 @@ public class ExamsController : ControllerBase
                     Passed = hasSemicolon,
                     Message = hasSemicolon ? "Statement ends with semicolon." : "A semicolon is recommended for clarity.",
                     Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Expected intent",
+                    Passed = expectedSimilarity >= 0.7,
+                    Message = expectedSimilarity >= 0.7 ? "Query intent is close to the expected solution." : "Public structure checks passed; hidden grading tests verify exact query intent after submit.",
+                    Visibility = "Public"
                 }
             ]
         };
     }
 
-    private static TechnicalRunResultDto BuildCSharpRunPreview(string response, DateTime executedAt)
+    private static TechnicalRunResultDto BuildCSharpRunPreview(Question question, string response, int runNumber, DateTime runStartedAt, DateTime executedAt)
     {
         var hasClassOrMethod = Regex.IsMatch(response, @"\b(class|static|void|int|string|bool|double|public|private)\b", RegexOptions.IgnoreCase);
         var balancedBraces = response.Count(c => c == '{') == response.Count(c => c == '}');
         var hasConsoleOutput = Regex.IsMatch(response, @"Console\.(WriteLine|Write)\s*\(", RegexOptions.IgnoreCase);
         var hasPlaceholder = response.Contains("Write your solution here", StringComparison.OrdinalIgnoreCase);
-        var passedPreview = hasClassOrMethod && balancedBraces && !hasPlaceholder;
+        var hasDangerousApi = Regex.IsMatch(response, @"\b(Process|File|Directory|Environment|HttpClient|Socket|WebClient|Reflection|DllImport)\b", RegexOptions.IgnoreCase);
+        var hasLikelySemicolonError = Regex.IsMatch(response, @"(?m)^\s*(var\s+\w+\s*=|int\s+\w+\s*=|double\s+\w+\s*=|string\s+\w+\s*=|Console\.(WriteLine|Write)\s*\(.+\))[^;\{\}\r\n]*$");
+        var expectedAnswer = ResolveExpectedAnswer(question) ?? string.Empty;
+        var intentCoverage = EvaluateTechnicalIntentCoverage(question.Type, NormalizeTechnicalText(response), NormalizeTechnicalText(expectedAnswer), NormalizeTechnicalText(ResolveQuestionPrompt(question) ?? string.Empty));
+        var passedPreview = hasClassOrMethod && balancedBraces && !hasPlaceholder && !hasDangerousApi && !hasLikelySemicolonError;
+        var status = hasDangerousApi || hasLikelySemicolonError || !balancedBraces ? "Error" : passedPreview ? "Passed" : "NeedsReview";
 
         return new TechnicalRunResultDto
         {
-            Status = passedPreview ? "NotSupported" : "Error",
+            Status = status,
+            Language = "CSharp",
             Output = passedPreview
-                ? "C# structure preview passed. Real compilation and test execution require a sandboxed code runner."
+                ? BuildCSharpSafePreviewOutput(question, intentCoverage)
                 : string.Empty,
-            Errors = passedPreview
-                ? string.Empty
-                : "The C# draft needs review before it can be compiled.",
-            Notes = "The main API does not compile or execute arbitrary C# code. A containerized runner should be attached before real execution is enabled.",
+            Errors = status == "Error"
+                ? BuildCSharpSafePreviewError(balancedBraces, hasPlaceholder, hasDangerousApi, hasLikelySemicolonError)
+                : string.Empty,
+            Notes = "Safe preview only: the main API does not compile or execute arbitrary C# code. Real output requires a containerized runner with CPU, memory, filesystem, network, and timeout restrictions.",
+            ExecutionTimeMs = CalculateRunDurationMs(runStartedAt, executedAt),
+            RunNumber = runNumber,
             ExecutedAt = executedAt,
             TestResults =
             [
@@ -5027,6 +5071,20 @@ public class ExamsController : ControllerBase
                 },
                 new TechnicalRunTestResultDto
                 {
+                    Name = "Compilation blockers",
+                    Passed = !hasLikelySemicolonError,
+                    Message = hasLikelySemicolonError ? "Possible CS1002: ; expected." : "No obvious missing semicolon pattern found.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
+                    Name = "Sandbox safety",
+                    Passed = !hasDangerousApi,
+                    Message = hasDangerousApi ? "File, process, environment, network, or interop APIs are not allowed in exam code." : "No blocked API usage detected.",
+                    Visibility = "Public"
+                },
+                new TechnicalRunTestResultDto
+                {
                     Name = "Starter placeholder",
                     Passed = !hasPlaceholder,
                     Message = hasPlaceholder ? "Replace the starter placeholder with your solution." : "Starter placeholder was replaced.",
@@ -5034,13 +5092,64 @@ public class ExamsController : ControllerBase
                 },
                 new TechnicalRunTestResultDto
                 {
-                    Name = "Output check",
+                    Name = "Public output check",
                     Passed = hasConsoleOutput,
-                    Message = hasConsoleOutput ? "Console output is present." : "Console output is optional unless the prompt asks for it.",
+                    Message = hasConsoleOutput ? "Console output is present." : "Add Console.WriteLine/Write when the prompt asks for output.",
                     Visibility = "Public"
                 }
             ]
         };
+    }
+
+    private static string BuildSqlSafePreviewOutput(Question question, double expectedSimilarity)
+    {
+        var schema = ExtractTechnicalSection(question.Text, "Schema:");
+        var score = Math.Round(expectedSimilarity * 100);
+        var tableHint = ExtractFirstSqlTableName(schema);
+        return $"Public SQL checks passed.\nIntent similarity: {score}%.\nDataset: isolated exam preview required{(string.IsNullOrWhiteSpace(tableHint) ? "." : $" for table {tableHint}.")}\nHidden tests and exact result rows run only in the sandbox after submit.";
+    }
+
+    private static string BuildCSharpSafePreviewOutput(Question question, double intentCoverage)
+    {
+        var score = Math.Round(intentCoverage * 100);
+        return $"Public C# checks passed.\nIntent coverage: {score}%.\nOutput preview requires a containerized compiler runner.\nHidden tests are checked after submit.";
+    }
+
+    private static string BuildCSharpSafePreviewError(bool balancedBraces, bool hasPlaceholder, bool hasDangerousApi, bool hasLikelySemicolonError)
+    {
+        var errors = new List<string>();
+        if (!balancedBraces) errors.Add("Compilation error: check missing or extra braces.");
+        if (hasLikelySemicolonError) errors.Add("Compilation error: possible CS1002: ; expected.");
+        if (hasPlaceholder) errors.Add("Starter placeholder is still present.");
+        if (hasDangerousApi) errors.Add("Runtime blocked: unsafe APIs are not allowed in exam code.");
+        return errors.Count == 0 ? "The C# draft needs review before it can be compiled." : string.Join("\n", errors);
+    }
+
+    private static int CalculateRunDurationMs(DateTime startedAt, DateTime executedAt)
+    {
+        return Math.Max(1, (int)Math.Round((executedAt - startedAt).TotalMilliseconds));
+    }
+
+    private static string TruncateRunAuditValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value.Length <= 500 ? value : value[..500];
+    }
+
+    private static string ExtractTechnicalSection(string text, string label)
+    {
+        var sections = text
+            .Split("\n---\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var section = sections.FirstOrDefault(x => x.StartsWith(label, StringComparison.OrdinalIgnoreCase));
+        return section == null ? string.Empty : section[label.Length..].Trim();
+    }
+
+    private static string ExtractFirstSqlTableName(string schema)
+    {
+        var match = Regex.Match(schema, @"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(");
+        return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
     private static bool IsTechnicalQuestion(Question question)

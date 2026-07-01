@@ -2957,15 +2957,20 @@ public class ExamsController : ControllerBase
             .Where(x => creatorIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id);
 
-        var examPointLookup = await _context.Exams
-            .Select(exam => new { exam.Id, exam.MaximumPoints })
-            .ToDictionaryAsync(x => x.Id, x => (double)Math.Max(x.MaximumPoints, 0));
+        var examIds = rawResults.Select(x => x.ExamId).Distinct().ToList();
+        var questionPointLookup = await _context.Questions
+            .AsNoTracking()
+            .Where(question => examIds.Contains(question.ExamId))
+            .GroupBy(question => question.ExamId)
+            .Select(group => new { ExamId = group.Key, TotalPoints = group.Sum(question => (double)question.Points) })
+            .ToDictionaryAsync(x => x.ExamId, x => x.TotalPoints);
 
         var results = rawResults
             .Select(item =>
             {
                 creators.TryGetValue(item.Exam.CreatedByUserId, out var creator);
-                var examMaxPoints = examPointLookup.GetValueOrDefault(item.ExamId, 0);
+                var questionTotal = questionPointLookup.GetValueOrDefault(item.ExamId, 0);
+                var examMaxPoints = ResolveExamMaximumPoints(item.Exam, questionTotal);
                 var scorePercentage = CalculateScorePercentage(item.FinalScore, examMaxPoints);
                 return new StudentExamResultDto
                 {
@@ -3026,7 +3031,11 @@ public class ExamsController : ControllerBase
             return NotFound(new { message = "Result not found." });
 
         var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == rawResult.Exam.CreatedByUserId);
-        var resultExamPoints = Math.Max(rawResult.Exam.MaximumPoints, 0);
+        var resultQuestionTotal = await _context.Questions
+            .AsNoTracking()
+            .Where(question => question.ExamId == rawResult.ExamId)
+            .SumAsync(question => (double)question.Points);
+        var resultExamPoints = ResolveExamMaximumPoints(rawResult.Exam, resultQuestionTotal);
         var resultScorePercentage = rawResult.IsPublished ? CalculateScorePercentage(rawResult.FinalScore, resultExamPoints) : (double?)null;
         var result = new StudentExamResultDetailDto
         {

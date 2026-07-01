@@ -31,8 +31,8 @@ export default function ExamCreatePage() {
     description: "",
     durationMinutes: 60,
     maximumPoints: 100,
-    startsAt: getDefaultStartsAt(),
-    endsAt: getDefaultEndsAt(60),
+    startsAt: "",
+    endsAt: "",
     courseOfferingId: "",
     assessmentType: "Exam",
     examPeriod: "January Exam Period",
@@ -173,16 +173,6 @@ export default function ExamCreatePage() {
     setForm((current) => ({
       ...current,
       durationMinutes,
-      endsAt: calculateEndsAt(current.startsAt, durationMinutes),
-    }));
-  }
-
-  function handleStartsAtChange(value) {
-    setForm((current) => ({
-      ...current,
-      startsAt: value,
-      endsAt: calculateEndsAt(value, Number(current.durationMinutes) || 60),
-      examPeriod: inferExamPeriodFromDate(value),
     }));
   }
 
@@ -197,8 +187,6 @@ export default function ExamCreatePage() {
         description: form.description,
         durationMinutes: Number(form.durationMinutes) || 60,
         maximumPoints: Number(form.maximumPoints) || 100,
-        startsAt: toIsoOrNull(form.startsAt),
-        endsAt: toIsoOrNull(form.endsAt),
         courseOfferingId: form.courseOfferingId || null,
         assessmentType: form.assessmentType,
         examPeriod: form.examPeriod,
@@ -207,6 +195,11 @@ export default function ExamCreatePage() {
         cohortLabel: form.cohortLabel,
         isPublished: false,
       };
+
+      if (isEditMode) {
+        payload.startsAt = toIsoOrNull(form.startsAt);
+        payload.endsAt = toIsoOrNull(form.endsAt);
+      }
 
       if (isEditMode) {
         const updated = await updateExam(examId, payload);
@@ -353,26 +346,6 @@ export default function ExamCreatePage() {
                     />
                   </div>
 
-                  <div className="field">
-                    <label className="label">{t("examCreate.startsAt")}</label>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={form.startsAt}
-                      onChange={(e) => handleStartsAtChange(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label className="label">{t("examCreate.endsAt")}</label>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={form.endsAt}
-                      onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
-                    />
-                  </div>
-
                   <div className="field fieldSpanFull">
                     <div className="label">{t("examCreate.descriptionLabel")}</div>
                     <textarea
@@ -415,17 +388,13 @@ function formatOfferingOption(offering) {
 }
 
 function buildOfferingDefaults(offering, current) {
-  const startsAt = current.startsAt || getDefaultStartsAt();
-  const durationMinutes = Number(current.durationMinutes) || 60;
   return {
     title: buildAssessmentTitle(offering),
-    academicYear: offering.term?.academicYearLabel || inferAcademicYearFromDate(startsAt),
+    academicYear: offering.term?.academicYearLabel || current.academicYear || "",
     semesterLabel: formatSemesterLabel(offering),
     cohortLabel: formatCohortLabel(offering),
-    startsAt,
-    endsAt: current.endsAt || calculateEndsAt(startsAt, durationMinutes),
     assessmentType: current.assessmentType || "Exam",
-    examPeriod: inferExamPeriodFromDate(startsAt),
+    examPeriod: current.examPeriod || "January Exam Period",
   };
 }
 
@@ -488,40 +457,6 @@ function toDateTimeLocalValue(value) {
   if (Number.isNaN(date.getTime())) return "";
   const pad = (part) => String(part).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function getDefaultStartsAt() {
-  return toDateTimeLocalValue(new Date());
-}
-
-function getDefaultEndsAt(durationMinutes = 60) {
-  return calculateEndsAt(getDefaultStartsAt(), durationMinutes);
-}
-
-function calculateEndsAt(startsAt, durationMinutes = 60) {
-  const date = new Date(startsAt || new Date());
-  if (Number.isNaN(date.getTime())) return "";
-  date.setMinutes(date.getMinutes() + Number(durationMinutes || 60));
-  return toDateTimeLocalValue(date);
-}
-
-function inferExamPeriodFromDate(value) {
-  const date = new Date(value || new Date());
-  if (Number.isNaN(date.getTime())) return "January Exam Period";
-  const month = date.getMonth() + 1;
-  if (month <= 2) return "January Exam Period";
-  if (month <= 4) return "April Exam Period";
-  if (month <= 7) return "June Exam Period";
-  if (month <= 9) return "September Exam Period";
-  return "October Exam Period";
-}
-
-function inferAcademicYearFromDate(value) {
-  const date = new Date(value || new Date());
-  if (Number.isNaN(date.getTime())) return academicYears[0];
-  const year = date.getFullYear();
-  const startsInAutumn = date.getMonth() + 1 >= 10;
-  return startsInAutumn ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
 function toIsoOrNull(value) {

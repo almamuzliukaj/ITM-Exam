@@ -28,9 +28,11 @@ const initialFilters = {
   termId: "",
   yearOfStudy: 1,
   semesterNo: 1,
-  createStatus: "Pending",
+  createStatus: "Active",
   notes: "",
 };
+
+const ACADEMIC_DEFAULTS_KEY = "onlineExam.academicDefaults.v1";
 
 const STATUS_TONE = {
   Active: "statusLive",
@@ -56,7 +58,7 @@ export default function AdminEnrollmentsPage() {
   const [courses, setCourses] = useState([]);
   const [offerings, setOfferings] = useState([]);
   const [semesterEnrollments, setSemesterEnrollments] = useState([]);
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState(() => ({ ...initialFilters, ...readEnrollmentDefaults() }));
   const [carryOverForm, setCarryOverForm] = useState({
     courseId: "",
     originTermId: "",
@@ -111,6 +113,11 @@ export default function AdminEnrollmentsPage() {
   const currentTerm = useMemo(
     () => terms.find((term) => term.id === filters.termId) || null,
     [terms, filters.termId],
+  );
+
+  const termCohortDefaults = useMemo(
+    () => resolveTermCohortDefaults(offerings, filters.termId),
+    [offerings, filters.termId],
   );
 
   const matchingSemesterEnrollments = useMemo(
@@ -207,9 +214,49 @@ export default function AdminEnrollmentsPage() {
   useEffect(() => {
     if (!filters.termId && visibleTerms.length > 0) {
       const preferredTerm = visibleTerms.find((term) => term.isCurrent) || visibleTerms[0];
-      setFilters((current) => ({ ...current, termId: preferredTerm.id }));
+      setFilters((current) => ({
+        ...current,
+        termId: preferredTerm.id,
+        createStatus: current.createStatus || "Active",
+      }));
     }
   }, [visibleTerms, filters.termId]);
+
+  useEffect(() => {
+    if (!currentTerm) return;
+
+    setFilters((current) => {
+      const nextYear = termCohortDefaults?.yearOfStudy ?? current.yearOfStudy;
+      const nextSemester = termCohortDefaults?.semesterNo ?? current.semesterNo;
+      const nextNotes = buildDefaultEnrollmentNotes(currentTerm, nextYear, nextSemester);
+      const shouldUseDefaultNotes = !current.notes || isAutoEnrollmentNote(current.notes);
+      const shouldUseDefaultCohort =
+        termCohortDefaults &&
+        !hasOfferingForCohort(offerings, current.termId, current.yearOfStudy, current.semesterNo);
+
+      const next = {
+        ...current,
+        createStatus: current.createStatus || "Active",
+        notes: shouldUseDefaultNotes ? nextNotes : current.notes,
+      };
+
+      if (shouldUseDefaultCohort) {
+        next.yearOfStudy = nextYear;
+        next.semesterNo = nextSemester;
+      }
+
+      if (
+        next.yearOfStudy === current.yearOfStudy &&
+        next.semesterNo === current.semesterNo &&
+        next.createStatus === current.createStatus &&
+        next.notes === current.notes
+      ) {
+        return current;
+      }
+
+      return next;
+    });
+  }, [currentTerm, termCohortDefaults, offerings]);
 
   useEffect(() => {
     if (!carryOverForm.originTermId && terms.length > 0) {
@@ -1207,6 +1254,60 @@ function getSemesterOptions(yearOfStudy) {
   if (year === 2) return [3, 4];
   if (year === 3) return [5, 6];
   return [1];
+}
+
+function resolveTermCohortDefaults(offerings, termId) {
+  if (!termId) return null;
+
+  const counts = new Map();
+  (offerings || [])
+    .filter((offering) => offering.termId === termId)
+    .forEach((offering) => {
+      const yearOfStudy = Number(offering.yearOfStudy || 1);
+      const semesterNo = Number(offering.semesterNo || getSemesterOptions(yearOfStudy)[0] || 1);
+      const key = `${yearOfStudy}:${semesterNo}`;
+      const current = counts.get(key) || { yearOfStudy, semesterNo, count: 0 };
+      counts.set(key, { ...current, count: current.count + 1 });
+    });
+
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count)[0] || null;
+}
+
+function hasOfferingForCohort(offerings, termId, yearOfStudy, semesterNo) {
+  if (!termId) return false;
+
+  return (offerings || []).some(
+    (offering) =>
+      offering.termId === termId &&
+      Number(offering.yearOfStudy) === Number(yearOfStudy) &&
+      Number(offering.semesterNo) === Number(semesterNo),
+  );
+}
+
+function buildDefaultEnrollmentNotes(term, yearOfStudy, semesterNo) {
+  const termLabel = term?.code || term?.name || "selected term";
+  return `Auto-created for ${termLabel} - Year ${yearOfStudy}, semester ${semesterNo}.`;
+}
+
+function isAutoEnrollmentNote(value) {
+  return String(value || "").startsWith("Auto-created for ");
+}
+
+function readEnrollmentDefaults() {
+  try {
+    const raw = window.localStorage.getItem(ACADEMIC_DEFAULTS_KEY);
+    const defaults = raw ? JSON.parse(raw) : {};
+    const offering = defaults.offering || {};
+
+    return {
+      termId: offering.termId || "",
+      yearOfStudy: Number(offering.yearOfStudy || 1),
+      semesterNo: Number(offering.semesterNo || 1),
+      createStatus: "Active",
+    };
+  } catch {
+    return {};
+  }
 }
 
 function readError(error, fallback) {

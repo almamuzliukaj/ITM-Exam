@@ -54,6 +54,8 @@ const initialOfferingForm = {
   assistantId: "",
 };
 
+const ACADEMIC_DEFAULTS_KEY = "onlineExam.academicDefaults.v1";
+
 export default function AdminAcademicStructurePage() {
   const { user, loading: userLoading, error: userError } = useCurrentUser();
   const smuStatus = useSmuIntegrationStatus();
@@ -67,8 +69,8 @@ export default function AdminAcademicStructurePage() {
   const [pageSuccess, setPageSuccess] = useState("");
   const [loadingData, setLoadingData] = useState(true);
   const [termForm, setTermForm] = useState(initialTermForm);
-  const [courseForm, setCourseForm] = useState(initialCourseForm);
-  const [offeringForm, setOfferingForm] = useState(initialOfferingForm);
+  const [courseForm, setCourseForm] = useState(() => ({ ...initialCourseForm, ...readAcademicDefaults().course }));
+  const [offeringForm, setOfferingForm] = useState(() => ({ ...initialOfferingForm, ...readAcademicDefaults().offering }));
   const [submittingKey, setSubmittingKey] = useState("");
   const [activeDirectory, setActiveDirectory] = useState("offerings");
   const [openCreatePanel, setOpenCreatePanel] = useState("");
@@ -121,6 +123,44 @@ export default function AdminAcademicStructurePage() {
     loadAcademicData();
   }, [loadAcademicData]);
 
+  useEffect(() => {
+    setTermForm((current) => {
+      if (current.academicYearLabel) return current;
+      const defaults = readAcademicDefaults().term || {};
+      return {
+        ...current,
+        academicYearLabel: defaults.academicYearLabel || current.academicYearLabel,
+        season: defaults.season || current.season,
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (offeringForm.termId || activeTerms.length === 0) return;
+    const preferredTerm = activeTerms.find((term) => term.isCurrent) || activeTerms[0];
+    setOfferingForm((current) => ({ ...current, termId: preferredTerm.id }));
+  }, [activeTerms, offeringForm.termId]);
+
+  useEffect(() => {
+    if (!offeringForm.courseId) return;
+    const selectedCourse = courses.find((course) => course.id === offeringForm.courseId);
+    if (!selectedCourse) return;
+
+    setOfferingForm((current) => {
+      const nextYear = Number(selectedCourse.yearOfStudy || current.yearOfStudy || 1);
+      const nextSemester = Number(selectedCourse.defaultSemesterNo || current.semesterNo || 1);
+      if (Number(current.yearOfStudy) === nextYear && Number(current.semesterNo) === nextSemester) {
+        return current;
+      }
+
+      return {
+        ...current,
+        yearOfStudy: nextYear,
+        semesterNo: nextSemester,
+      };
+    });
+  }, [courses, offeringForm.courseId]);
+
   async function handleTermSubmit(e) {
     e.preventDefault();
     if (smuManaged) {
@@ -136,6 +176,12 @@ export default function AdminAcademicStructurePage() {
         endDate: toIsoDate(termForm.endDate),
         enrollmentOpenAt: toIsoDate(termForm.enrollmentOpenAt),
         enrollmentCloseAt: toIsoDate(termForm.enrollmentCloseAt),
+      });
+      saveAcademicDefaults({
+        term: {
+          academicYearLabel: termForm.academicYearLabel,
+          season: termForm.season,
+        },
       });
       setTermForm(initialTermForm);
       setPageSuccess("Term created successfully.");
@@ -162,7 +208,14 @@ export default function AdminAcademicStructurePage() {
         yearOfStudy: Number(courseForm.yearOfStudy),
         defaultSemesterNo: Number(courseForm.defaultSemesterNo),
       });
-      setCourseForm(initialCourseForm);
+      const nextCourseDefaults = {
+        credits: Number(courseForm.credits),
+        yearOfStudy: Number(courseForm.yearOfStudy),
+        defaultSemesterNo: Number(courseForm.defaultSemesterNo),
+        isElective: courseForm.isElective,
+      };
+      saveAcademicDefaults({ course: nextCourseDefaults });
+      setCourseForm({ ...initialCourseForm, ...nextCourseDefaults });
       setPageSuccess("Course created successfully.");
       await loadAcademicData();
     } catch (error) {
@@ -188,7 +241,18 @@ export default function AdminAcademicStructurePage() {
         capacity: Number(offeringForm.capacity),
         assistantId: offeringForm.assistantId || null,
       });
-      setOfferingForm(initialOfferingForm);
+      const nextOfferingDefaults = {
+        termId: offeringForm.termId,
+        yearOfStudy: Number(offeringForm.yearOfStudy),
+        semesterNo: Number(offeringForm.semesterNo),
+        sectionCode: offeringForm.sectionCode || "A",
+        deliveryType: offeringForm.deliveryType || "Regular",
+        capacity: Number(offeringForm.capacity || 80),
+        primaryProfessorId: offeringForm.primaryProfessorId,
+        assistantId: offeringForm.assistantId,
+      };
+      saveAcademicDefaults({ offering: nextOfferingDefaults });
+      setOfferingForm({ ...initialOfferingForm, ...nextOfferingDefaults, courseId: "" });
       setPageSuccess("Course offering created successfully.");
       await loadAcademicData();
     } catch (error) {
@@ -823,4 +887,31 @@ function readinessStatusClass(level) {
 
 function readError(error, fallback) {
   return error?.response?.data?.message || fallback;
+}
+
+function readAcademicDefaults() {
+  try {
+    const raw = window.localStorage.getItem(ACADEMIC_DEFAULTS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveAcademicDefaults(patch) {
+  try {
+    const current = readAcademicDefaults();
+    window.localStorage.setItem(
+      ACADEMIC_DEFAULTS_KEY,
+      JSON.stringify({
+        ...current,
+        ...patch,
+        course: { ...(current.course || {}), ...(patch.course || {}) },
+        offering: { ...(current.offering || {}), ...(patch.offering || {}) },
+        term: { ...(current.term || {}), ...(patch.term || {}) },
+      }),
+    );
+  } catch {
+    // Defaults are only a local convenience; academic create actions should continue if storage is unavailable.
+  }
 }

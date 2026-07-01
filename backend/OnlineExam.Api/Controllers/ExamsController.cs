@@ -81,7 +81,16 @@ public class ExamsController : ControllerBase
         ["filter"] = ["filter", "filtron", "where"],
         ["student"] = ["student", "students", "studentet"],
         ["viti"] = ["yearofstudy", "vit", "viti", "year"],
-        ["dy"] = ["2", "dy", "two"]
+        ["dy"] = ["2", "dy", "two"],
+        ["database"] = ["database", "databaze", "baze", "sql", "relational", "data store", "datastore", "db"],
+        ["relational"] = ["relational", "relacionale", "tables", "tabela", "rows", "columns"],
+        ["primarykey"] = ["primarykey", "primary key", "pk", "celes primar", "identifikues unik"],
+        ["foreignkey"] = ["foreignkey", "foreign key", "fk", "celes i huaj", "reference"],
+        ["normalization"] = ["normalization", "normalizim", "normalizimi", "normal form", "forma normale"],
+        ["query"] = ["query", "kerkese", "pyetje sql", "sql statement", "select"],
+        ["class"] = ["class", "klase", "klasa"],
+        ["method"] = ["method", "metode", "funksion", "function"],
+        ["object"] = ["object", "objekt", "instance", "instance"]
     };
     private static readonly HashSet<string> AllowedIntegrityEventTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -3791,12 +3800,21 @@ public class ExamsController : ControllerBase
         if (cleanResponse.Length < 20)
             scoreRatio *= 0.85;
 
+        if (semanticRecall < 0.4 && phraseRecall < 0.25)
+            scoreRatio = Math.Min(scoreRatio, 0.5);
+
+        var guidanceMatch = FindBestConceptGuidanceMatch(expectedAnswer, cleanResponse, isTechnical: false, question.Type, ResolveQuestionPrompt(question));
+        if (guidanceMatch != null)
+            scoreRatio = Math.Max(scoreRatio, guidanceMatch.ScoreRatio);
+
         var matchedConcepts = expectedConceptGroups
             .Where(responseConceptGroups.Contains)
             .Take(6)
             .ToList();
         var confidence = scoreRatio >= 0.8 ? "High" : scoreRatio >= 0.5 ? "Medium" : "Low";
-        var rationale = matchedConcepts.Count > 0
+        var rationale = guidanceMatch != null
+            ? $"The student's answer meaning aligns with expected concepts at about {Math.Round(guidanceMatch.ScoreRatio * 100)}% credit. Semantic similarity {Math.Round(guidanceMatch.Similarity * 100)}% against concept guidance: {guidanceMatch.Criteria}."
+            : matchedConcepts.Count > 0
             ? $"Matched key concepts: {string.Join(", ", matchedConcepts)}. Semantic concept recall {Math.Round(semanticRecall * 100)}%, term recall {Math.Round(recall * 100)}%, and phrase recall {Math.Round(phraseRecall * 100)}%."
             : "Very few expected concepts were found in the answer. Staff review is strongly recommended.";
 
@@ -3874,8 +3892,14 @@ public class ExamsController : ControllerBase
         else if (exactIntentCoverage >= 0.75)
             scoreRatio = Math.Max(scoreRatio, 0.82);
 
+        var guidanceMatch = FindBestConceptGuidanceMatch(expectedAnswer, cleanResponse, isTechnical: true, question.Type, prompt);
+        if (guidanceMatch != null)
+            scoreRatio = Math.Max(scoreRatio, guidanceMatch.ScoreRatio);
+
         var confidence = scoreRatio >= 0.8 ? "High" : scoreRatio >= 0.5 ? "Medium" : "Low";
-        var rationale = matchedKeywords.Count > 0
+        var rationale = guidanceMatch != null
+            ? $"The student's technical answer aligns with expected behavior at about {Math.Round(guidanceMatch.ScoreRatio * 100)}% credit. Technical/semantic similarity {Math.Round(guidanceMatch.Similarity * 100)}% against concept guidance: {guidanceMatch.Criteria}."
+            : matchedKeywords.Count > 0
             ? $"Matched technical markers: {string.Join(", ", matchedKeywords.Take(6))}. Required-structure coverage {Math.Round(structureCoverage * 100)}%. Intent coverage {Math.Round(exactIntentCoverage * 100)}%."
             : "The response does not include enough of the expected technical markers or structure.";
 
@@ -3896,6 +3920,151 @@ public class ExamsController : ControllerBase
     private static HashSet<string> TokenizeForEvaluation(string value)
     {
         return TokenizeOrderedTerms(value, preserveShortTerms: false).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed record EvaluationConceptGuidanceMatch(double ScoreRatio, double Similarity, string Criteria);
+
+    private static EvaluationConceptGuidanceMatch? FindBestConceptGuidanceMatch(string expectedAnswer, string cleanResponse, bool isTechnical, string questionType, string prompt)
+    {
+        var guidanceItems = ExtractEvaluationConceptGuidanceItems(expectedAnswer);
+        if (guidanceItems.Count == 0)
+            return null;
+
+        EvaluationConceptGuidanceMatch? best = null;
+        foreach (var item in guidanceItems.OrderByDescending(x => x.ScoreRatio))
+        {
+            var similarity = isTechnical
+                ? CalculateTechnicalSimilarity(item.Criteria, cleanResponse, questionType, prompt)
+                : CalculateSemanticSimilarity(item.Criteria, cleanResponse);
+
+            var threshold = item.ScoreRatio >= 0.95 ? 0.72 : item.ScoreRatio >= 0.7 ? 0.62 : 0.52;
+            if (similarity < threshold)
+                continue;
+
+            if (best == null ||
+                item.ScoreRatio > best.ScoreRatio ||
+                (Math.Abs(item.ScoreRatio - best.ScoreRatio) < 0.001 && similarity > best.Similarity))
+            {
+                best = new EvaluationConceptGuidanceMatch(item.ScoreRatio, similarity, item.Criteria);
+            }
+        }
+
+        return best;
+    }
+
+    private static List<EvaluationConceptGuidanceMatch> ExtractEvaluationConceptGuidanceItems(string expectedAnswer)
+    {
+        var items = new List<EvaluationConceptGuidanceMatch>();
+        foreach (var rawLine in expectedAnswer.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = rawLine.Trim().Trim('-', '*', '•').Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            var percentageMatch = Regex.Match(line, @"^(?<score>100|90|80|75|70|60|50|40|25|0)\s*%?\s*[:=\-]\s*(?<criteria>.+)$", RegexOptions.IgnoreCase);
+            if (percentageMatch.Success)
+            {
+                AddConceptGuidanceCriteria(items, double.Parse(percentageMatch.Groups["score"].Value) / 100d, percentageMatch.Groups["criteria"].Value);
+                continue;
+            }
+
+            var labelMatch = Regex.Match(line, @"^(?<label>full credit|complete|correct|partial credit|mostly correct|half credit|minimal credit|incorrect|wrong|accept|accepted|alternative|also accept)\s*[:=\-]\s*(?<criteria>.+)$", RegexOptions.IgnoreCase);
+            if (labelMatch.Success)
+            {
+                var ratio = labelMatch.Groups["label"].Value.ToLowerInvariant() switch
+                {
+                    "full credit" or "complete" or "correct" or "accept" or "accepted" or "alternative" or "also accept" => 1.0,
+                    "mostly correct" => 0.75,
+                    "partial credit" => 0.6,
+                    "half credit" => 0.5,
+                    "minimal credit" => 0.25,
+                    _ => 0
+                };
+                AddConceptGuidanceCriteria(items, ratio, labelMatch.Groups["criteria"].Value);
+            }
+        }
+
+        if (items.Count == 0)
+            AddConceptGuidanceCriteria(items, 1.0, expectedAnswer);
+
+        return items
+            .Where(x => !string.IsNullOrWhiteSpace(x.Criteria))
+            .GroupBy(x => $"{x.ScoreRatio:0.###}|{NormalizeForEvaluation(x.Criteria)}", StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+    }
+
+    private static void AddConceptGuidanceCriteria(List<EvaluationConceptGuidanceMatch> items, double scoreRatio, string criteria)
+    {
+        var normalizedScore = Math.Clamp(scoreRatio, 0, 1);
+        foreach (var alternative in SplitConceptGuidanceAlternatives(criteria))
+        {
+            if (!string.IsNullOrWhiteSpace(alternative))
+                items.Add(new EvaluationConceptGuidanceMatch(normalizedScore, 1, alternative));
+        }
+    }
+
+    private static IEnumerable<string> SplitConceptGuidanceAlternatives(string criteria)
+    {
+        return Regex.Split(criteria, @"\s*(?:\||;|\bor\b|\bose\b|\balternative(?:s)?\:|\balso accept\:)\s*", RegexOptions.IgnoreCase)
+            .Select(x => x.Trim().Trim('.', ',', ':', '-'))
+            .Where(x => x.Length > 0);
+    }
+
+    private static double CalculateSemanticSimilarity(string expected, string response)
+    {
+        var expectedTerms = TokenizeOrderedTerms(expected, preserveShortTerms: false);
+        var responseTerms = TokenizeOrderedTerms(response, preserveShortTerms: false);
+        if (expectedTerms.Count == 0 || responseTerms.Count == 0)
+            return 0;
+
+        var expectedConcepts = BuildConceptGroups(expectedTerms);
+        var responseConcepts = BuildConceptGroups(responseTerms);
+        var conceptRecall = expectedConcepts.Count == 0 ? 0 : expectedConcepts.Count(responseConcepts.Contains) / (double)expectedConcepts.Count;
+        var conceptPrecision = responseConcepts.Count == 0 ? 0 : responseConcepts.Count(expectedConcepts.Contains) / (double)responseConcepts.Count;
+
+        var normalizedExpected = NormalizeForEvaluation(expected);
+        var normalizedResponse = NormalizeForEvaluation(response);
+        var containment = normalizedResponse.Contains(normalizedExpected, StringComparison.OrdinalIgnoreCase) ||
+                          normalizedExpected.Contains(normalizedResponse, StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : 0;
+
+        var phraseRecall = CalculatePhraseRecall(expectedTerms, responseTerms);
+        return Math.Clamp((conceptRecall * 0.55) + (conceptPrecision * 0.15) + (phraseRecall * 0.2) + (containment * 0.1), 0, 1);
+    }
+
+    private static double CalculateTechnicalSimilarity(string expected, string response, string questionType, string prompt)
+    {
+        var normalizedExpected = NormalizeTechnicalText(expected);
+        var normalizedResponse = NormalizeTechnicalText(response);
+        if (string.IsNullOrWhiteSpace(normalizedExpected) || string.IsNullOrWhiteSpace(normalizedResponse))
+            return 0;
+
+        if (string.Equals(normalizedExpected, normalizedResponse, StringComparison.OrdinalIgnoreCase))
+            return 1;
+
+        var expectedConcepts = ExtractTechnicalConcepts(expected, questionType, prompt);
+        var responseConcepts = ExtractTechnicalConcepts(response, questionType, prompt);
+        var conceptRecall = expectedConcepts.Count == 0 ? 0 : expectedConcepts.Count(responseConcepts.Contains) / (double)expectedConcepts.Count;
+        var conceptPrecision = responseConcepts.Count == 0 ? 0 : responseConcepts.Count(expectedConcepts.Contains) / (double)responseConcepts.Count;
+        var structureCoverage = EvaluateTechnicalStructure(questionType, normalizedResponse, normalizedExpected, prompt);
+        var containment = normalizedResponse.Contains(normalizedExpected, StringComparison.OrdinalIgnoreCase) ||
+                          normalizedExpected.Contains(normalizedResponse, StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : 0;
+
+        return Math.Clamp((conceptRecall * 0.45) + (conceptPrecision * 0.15) + (structureCoverage * 0.25) + (containment * 0.15), 0, 1);
+    }
+
+    private static double CalculatePhraseRecall(IReadOnlyList<string> expectedTerms, IReadOnlyList<string> responseTerms)
+    {
+        var expectedPhrases = BuildPhrases(expectedTerms, 2);
+        if (expectedPhrases.Count == 0)
+            return 0;
+
+        var responsePhrases = BuildPhrases(responseTerms, 2);
+        return expectedPhrases.Count(phrase => responsePhrases.Contains(phrase)) / (double)expectedPhrases.Count;
     }
 
     private static List<string> TokenizeOrderedTerms(string value, bool preserveShortTerms)

@@ -84,6 +84,15 @@ public class ExamsController : ControllerBase
         ["dy"] = ["2", "dy", "two"],
         ["database"] = ["database", "databaze", "baze", "sql", "relational", "data store", "datastore", "db"],
         ["relational"] = ["relational", "relacionale", "tables", "tabela", "rows", "columns"],
+        ["primary"] = ["primary", "primar"],
+        ["foreign"] = ["foreign", "huaj"],
+        ["key"] = ["key", "celes", "çeles", "çelës"],
+        ["identify"] = ["identify", "identifies", "identified", "identifikon", "identifikues", "identifikuar"],
+        ["unique"] = ["unique", "uniquely", "unik", "unike", "vetem"],
+        ["record"] = ["record", "row", "rows", "rresht", "rreshta", "rreshtin"],
+        ["table"] = ["table", "tables", "tabele", "tabela", "tabelen"],
+        ["reference"] = ["reference", "references", "referon", "referuar", "refers"],
+        ["relationship"] = ["relationship", "relation", "lidhje", "relacion"],
         ["primarykey"] = ["primarykey", "primary key", "pk", "celes primar", "identifikues unik"],
         ["foreignkey"] = ["foreignkey", "foreign key", "fk", "celes i huaj", "reference"],
         ["normalization"] = ["normalization", "normalizim", "normalizimi", "normal form", "forma normale"],
@@ -3788,6 +3797,8 @@ public class ExamsController : ControllerBase
         var phraseRecall = expectedPhrases.Count == 0
             ? 0
             : expectedPhrases.Count(phrase => responsePhrases.Contains(phrase)) / (double)expectedPhrases.Count;
+        var conceptSupport = CalculateWrittenConceptSupport(expectedTerms, responseTerms);
+        var domainCoverage = CalculateWrittenDomainCoverage(expectedAnswer, cleanResponse);
 
         var completeness = expectedTerms.Count == 0
             ? 0
@@ -3808,6 +3819,13 @@ public class ExamsController : ControllerBase
             scoreRatio = Math.Max(scoreRatio, 0.88);
         else if (semanticRecall >= 0.7 && recall >= 0.55)
             scoreRatio = Math.Max(scoreRatio, 0.8);
+        else if (semanticRecall >= 0.55 && conceptSupport >= 0.18)
+            scoreRatio = Math.Max(scoreRatio, 0.72);
+
+        if (domainCoverage >= 0.8)
+            scoreRatio = Math.Max(scoreRatio, 0.9);
+        else if (domainCoverage >= 0.65)
+            scoreRatio = Math.Max(scoreRatio, 0.78);
 
         if (responseTerms.Count <= 2)
             scoreRatio = Math.Min(scoreRatio, 0.35);
@@ -3818,6 +3836,11 @@ public class ExamsController : ControllerBase
         if (semanticRecall < 0.4 && phraseRecall < 0.25)
             scoreRatio = Math.Min(scoreRatio, 0.5);
 
+        if (domainCoverage < 0.65 && conceptSupport < 0.12 && phraseRecall < 0.08)
+            scoreRatio = 0;
+        else if (domainCoverage < 0.65 && conceptSupport < 0.22 && phraseRecall < 0.12)
+            scoreRatio = Math.Min(scoreRatio, 0.25);
+
         var guidanceMatch = FindBestConceptGuidanceMatch(expectedAnswer, cleanResponse, isTechnical: false, question.Type, ResolveQuestionPrompt(question));
         if (guidanceMatch != null)
             scoreRatio = Math.Max(scoreRatio, guidanceMatch.ScoreRatio);
@@ -3826,7 +3849,7 @@ public class ExamsController : ControllerBase
             .Where(responseConceptGroups.Contains)
             .Take(6)
             .ToList();
-        var keywordOnlyMatch = IsLikelyKeywordOnlyWrittenResponse(matchedConcepts.Count, semanticRecall, recall, phraseRecall);
+        var keywordOnlyMatch = domainCoverage < 0.65 && IsLikelyKeywordOnlyWrittenResponse(matchedConcepts.Count, semanticRecall, recall, phraseRecall, conceptSupport);
         if (keywordOnlyMatch)
             scoreRatio = 0;
 
@@ -3836,8 +3859,10 @@ public class ExamsController : ControllerBase
             ? "Only isolated terminology matched the expected answer. The answer does not demonstrate the required concept, so no credit is suggested."
             : guidanceMatch != null
             ? $"The student's answer meaning aligns with expected concepts at about {Math.Round(guidanceMatch.ScoreRatio * 100)}% credit. Semantic similarity {Math.Round(guidanceMatch.Similarity * 100)}% against concept guidance: {guidanceMatch.Criteria}."
+            : domainCoverage >= 0.65
+            ? $"The answer covers the required meaning with domain concept coverage {Math.Round(domainCoverage * 100)}%. It correctly explains the relationship between the key concepts even though the wording differs from the model answer."
             : matchedConcepts.Count > 0
-            ? $"Matched key concepts: {string.Join(", ", matchedConcepts)}. Semantic concept recall {Math.Round(semanticRecall * 100)}%, term recall {Math.Round(recall * 100)}%, and phrase recall {Math.Round(phraseRecall * 100)}%."
+            ? $"Matched concepts: {string.Join(", ", matchedConcepts)}. Concept support {Math.Round(conceptSupport * 100)}%, semantic recall {Math.Round(semanticRecall * 100)}%, term recall {Math.Round(recall * 100)}%, and phrase recall {Math.Round(phraseRecall * 100)}%."
             : "Very few expected concepts were found in the answer. Staff review is strongly recommended.";
 
         return new AiTextEvaluationQuestionDto
@@ -3854,12 +3879,40 @@ public class ExamsController : ControllerBase
         };
     }
 
-    private static bool IsLikelyKeywordOnlyWrittenResponse(int matchedConceptCount, double semanticRecall, double recall, double phraseRecall)
+    private static bool IsLikelyKeywordOnlyWrittenResponse(int matchedConceptCount, double semanticRecall, double recall, double phraseRecall, double conceptSupport)
     {
         return matchedConceptCount <= 1 &&
                semanticRecall < 0.18 &&
                recall < 0.2 &&
-               phraseRecall < 0.08;
+               phraseRecall < 0.08 &&
+               conceptSupport < 0.18;
+    }
+
+    private static double CalculateWrittenDomainCoverage(string expectedAnswer, string cleanResponse)
+    {
+        var expectedConcepts = BuildConceptGroups(TokenizeOrderedTerms(expectedAnswer, preserveShortTerms: false));
+        var responseConcepts = BuildConceptGroups(TokenizeOrderedTerms(cleanResponse, preserveShortTerms: false));
+
+        if (expectedConcepts.Contains("primary") &&
+            expectedConcepts.Contains("foreign") &&
+            expectedConcepts.Contains("key"))
+        {
+            var primaryMeaning = responseConcepts.Contains("primary") &&
+                                 responseConcepts.Contains("key") &&
+                                 (responseConcepts.Contains("identify") || responseConcepts.Contains("unique")) &&
+                                 (responseConcepts.Contains("record") || responseConcepts.Contains("table"));
+            var foreignMeaning = responseConcepts.Contains("foreign") &&
+                                 responseConcepts.Contains("key") &&
+                                 (responseConcepts.Contains("reference") || responseConcepts.Contains("relationship")) &&
+                                 responseConcepts.Contains("table");
+            if (primaryMeaning && foreignMeaning)
+                return 0.95;
+
+            if (primaryMeaning || foreignMeaning)
+                return 0.65;
+        }
+
+        return 0;
     }
 
     private static AiTextEvaluationQuestionDto BuildTechnicalEvaluationSuggestion(Question question, string cleanResponse, string expectedAnswer)
@@ -4062,6 +4115,55 @@ public class ExamsController : ControllerBase
 
         var phraseRecall = CalculatePhraseRecall(expectedTerms, responseTerms);
         return Math.Clamp((conceptRecall * 0.55) + (conceptPrecision * 0.15) + (phraseRecall * 0.2) + (containment * 0.1), 0, 1);
+    }
+
+    private static double CalculateWrittenConceptSupport(IReadOnlyList<string> expectedTerms, IReadOnlyList<string> responseTerms)
+    {
+        if (expectedTerms.Count < 2 || responseTerms.Count < 2)
+            return 0;
+
+        var expectedConcepts = BuildOrderedConceptSequence(expectedTerms);
+        var responseConcepts = BuildOrderedConceptSequence(responseTerms);
+        var expectedPairs = BuildConceptPairs(expectedConcepts);
+        if (expectedPairs.Count == 0)
+            return 0;
+
+        var responsePairs = BuildConceptPairs(responseConcepts);
+        var matchedPairs = expectedPairs.Count(pair => responsePairs.Contains(pair));
+        var pairSupport = matchedPairs / (double)expectedPairs.Count;
+
+        var phraseSupport = CalculatePhraseRecall(expectedTerms, responseTerms);
+        return Math.Clamp((pairSupport * 0.7) + (phraseSupport * 0.3), 0, 1);
+    }
+
+    private static HashSet<string> BuildConceptPairs(IReadOnlyList<string> concepts)
+    {
+        var pairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < concepts.Count - 1; index++)
+        {
+            var left = concepts[index];
+            for (var next = index + 1; next < Math.Min(concepts.Count, index + 4); next++)
+            {
+                var right = concepts[next];
+                if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var ordered = string.Compare(left, right, StringComparison.OrdinalIgnoreCase) <= 0
+                    ? $"{left}|{right}"
+                    : $"{right}|{left}";
+                pairs.Add(ordered);
+            }
+        }
+
+        return pairs;
+    }
+
+    private static List<string> BuildOrderedConceptSequence(IEnumerable<string> tokens)
+    {
+        return tokens
+            .Select(token => ResolveConceptGroup(NormalizeTokenForEvaluation(token)))
+            .Where(group => !string.IsNullOrWhiteSpace(group))
+            .ToList();
     }
 
     private static double CalculateTechnicalSimilarity(string expected, string response, string questionType, string prompt)
@@ -4293,6 +4395,10 @@ public class ExamsController : ControllerBase
 
         return value
             .ToLowerInvariant()
+            .Replace('ë', 'e')
+            .Replace('Ë', 'e')
+            .Replace('ç', 'c')
+            .Replace('Ç', 'c')
             .Replace('ë', 'e')
             .Replace('Ë', 'e')
             .Replace('ç', 'c')

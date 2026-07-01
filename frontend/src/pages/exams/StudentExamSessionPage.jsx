@@ -1122,10 +1122,10 @@ export default function StudentExamSessionPage() {
                   <button
                     className="btn btnDanger btnBlock examNavigatorSubmit"
                     type="button"
-                    onClick={() => setShowSubmitReview(true)}
+                    onClick={() => submit("manual")}
                     disabled={submitting || questions.length === 0 || interactionLocked}
                   >
-                    Submit exam
+                    {submitting ? "Submitting..." : "Submit exam"}
                   </button>
                 </div>
               </aside>

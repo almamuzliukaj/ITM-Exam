@@ -68,6 +68,20 @@ export default function StudentExamSessionPage() {
     return examId ? `online-exam-session:${userKey}:${examId}` : "";
   }, [examId, user?.email, user?.id]);
 
+  const clientSessionStorageKey = useMemo(() => (storageKey ? `${storageKey}:client-session` : ""), [storageKey]);
+
+  useEffect(() => {
+    if (!clientSessionStorageKey) return;
+
+    const existing = localStorage.getItem(clientSessionStorageKey);
+    if (existing) {
+      clientSessionIdRef.current = existing;
+      return;
+    }
+
+    localStorage.setItem(clientSessionStorageKey, clientSessionIdRef.current);
+  }, [clientSessionStorageKey]);
+
   useEffect(() => {
     if (!examId || !user || user.role !== "Student") return;
 
@@ -289,7 +303,8 @@ export default function StudentExamSessionPage() {
     if (!examId || result || submittedRef.current) return;
 
     const nowMs = Date.now();
-    const key = eventType;
+    const normalizedType = normalizeIntegrityEventType(eventType);
+    const key = normalizedType;
     if (lastViolationRef.current.key === key && nowMs - lastViolationRef.current.at < 2500) {
       return;
     }
@@ -299,7 +314,7 @@ export default function StudentExamSessionPage() {
       const nextCount = current.length + 1;
       const occurredAt = new Date().toISOString();
       const nextEvent = {
-        eventType,
+        eventType: normalizedType,
         message,
         createdAt: occurredAt,
         violationCount: nextCount,
@@ -309,7 +324,7 @@ export default function StudentExamSessionPage() {
 
       recordExamIntegrityEvent(examId, {
         examAttemptId: attemptId || null,
-        eventType,
+        eventType: normalizedType,
         occurredAt,
         clientSessionId: clientSessionIdRef.current,
         metadata: {
@@ -403,6 +418,12 @@ export default function StudentExamSessionPage() {
       const eventType =
         key === "p" || key === "printscreen"
           ? "PRINT_ATTEMPT"
+          : key === "c" && (event.ctrlKey || event.metaKey) && !event.shiftKey
+            ? "COPY_ATTEMPT"
+            : key === "v" && (event.ctrlKey || event.metaKey) && !event.shiftKey
+              ? "PASTE_ATTEMPT"
+              : key === "x" && (event.ctrlKey || event.metaKey) && !event.shiftKey
+                ? "CUT_ATTEMPT"
           : blockedDevtoolsCombo || key === "f12" || key === "u"
             ? "DEVTOOLS_ATTEMPT"
             : blockedBackCombo
@@ -465,7 +486,7 @@ export default function StudentExamSessionPage() {
     };
   }, [isLiveSession, loading, recordViolation, result]);
 
-  const submit = useCallback(async (reason = "manual") => {
+  const submit = useCallback(async (reason = "manual", options = {}) => {
     if (!examId || submittedRef.current) return false;
 
     try {
@@ -484,6 +505,9 @@ export default function StudentExamSessionPage() {
         await document.exitFullscreen().catch(() => {});
       }
       localStorage.removeItem(storageKey);
+      if (clientSessionStorageKey) {
+        localStorage.removeItem(clientSessionStorageKey);
+      }
       setQuestions([]);
       setAnswers({});
       setFlaggedQuestions({});
@@ -498,6 +522,9 @@ export default function StudentExamSessionPage() {
       setAutoSubmitFailed(false);
       const nextResult = { ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null };
       setResult(nextResult);
+      if (options.redirectToExams) {
+        window.setTimeout(() => navigate("/exams", { state: { submitted: true, reason } }), 1200);
+      }
       return true;
     } catch (err) {
       submittedRef.current = false;
@@ -512,13 +539,13 @@ export default function StudentExamSessionPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [answers, examId, navigate, storageKey]);
+  }, [answers, clientSessionStorageKey, examId, navigate, storageKey]);
 
   const runIntegrityAutoSubmit = useCallback(async () => {
     if (autoSubmitAttemptedRef.current || submittedRef.current) return;
     autoSubmitAttemptedRef.current = true;
     persistDraft("saved");
-    const submitted = await submit("integrity-policy");
+    const submitted = await submit("integrity-policy", { redirectToExams: true });
     if (!submitted) {
       autoSubmitAttemptedRef.current = false;
     }
@@ -608,6 +635,10 @@ export default function StudentExamSessionPage() {
           if (document.fullscreenElement && document.exitFullscreen) {
             await document.exitFullscreen().catch(() => {});
           }
+          if (updated.accessStatus === "Removed" || updated.accessStatus === "Rejected") {
+            persistDraft("saved");
+            await submit("access-revoked", { redirectToExams: true });
+          }
         }
       } catch (err) {
         if (!active) return;
@@ -625,7 +656,7 @@ export default function StudentExamSessionPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [examId, isLiveSession, result, sessionControlState, submitting]);
+  }, [examId, isLiveSession, persistDraft, result, sessionControlState, submit, submitting]);
 
   useEffect(() => {
     if (!examId || isLiveSession || !accessStatus?.requiresCode || accessStatus?.hasAccess) return;
@@ -1296,17 +1327,19 @@ function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, run
   const editorValue = value || starterCode || "";
   const runDisabled = disabled || running || String(editorValue || "").trim().length === 0;
   const status = String(runResult?.status || "").toLowerCase();
+  const isSql = question.type === "SQL";
 
   return (
     <div className="technicalAnswerWorkspace">
       <div className="technicalEditorShell">
         <div className="technicalEditorToolbar">
           <div>
-            <span className="summaryLabel">{question.type === "SQL" ? "SQL editor" : "C# editor"}</span>
-            <strong>{question.type === "SQL" ? "Write a safe query" : "Write a focused C# solution"}</strong>
+            <span className="summaryLabel">{isSql ? "SQL editor" : "C# editor"}</span>
+            <strong>{isSql ? "Write and test a safe query" : "Write and test focused C# code"}</strong>
+            <small>Run saves this answer draft, but it does not submit the exam.</small>
           </div>
           <button className="btn btnPrimary btnCompact" type="button" onClick={onRun} disabled={runDisabled}>
-            {running ? "Running..." : "Run check"}
+            {running ? "Running..." : isSql ? "Run Query" : "Run Code"}
           </button>
         </div>
         <Editor
@@ -1335,8 +1368,35 @@ function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, run
         <div className="technicalRunHeader">
           <span className="summaryLabel">Run output</span>
           <strong>{runResult ? formatRunStatus(runResult.status) : "Not run yet"}</strong>
+          {runResult ? (
+            <small>
+              Run #{runResult.runNumber || 1}
+              {runResult.executionTimeMs ? ` · ${runResult.executionTimeMs} ms` : ""}
+              {runResult.executedAt ? ` · ${formatTimeOnly(runResult.executedAt)}` : ""}
+            </small>
+          ) : null}
         </div>
-        <pre>{runResult?.output || runResult?.errors || runResult?.notes || runResult?.message || "Use Run check to validate structure. This does not submit your answer."}</pre>
+        {runResult?.output ? (
+          <div className="technicalRunBlock">
+            <span>Output</span>
+            <pre>{runResult.output}</pre>
+          </div>
+        ) : null}
+        {runResult?.errors ? (
+          <div className="technicalRunBlock technicalRunErrorBlock">
+            <span>{isSql ? "Query error" : "Compilation/runtime error"}</span>
+            <pre>{runResult.errors}</pre>
+          </div>
+        ) : null}
+        {runResult?.notes ? (
+          <div className="technicalRunBlock">
+            <span>Execution note</span>
+            <pre>{runResult.notes}</pre>
+          </div>
+        ) : null}
+        {!runResult ? (
+          <pre>{isSql ? "Use Run Query to validate the draft. This does not submit your exam." : "Use Run Code to validate the draft. This does not submit your exam."}</pre>
+        ) : null}
         {Array.isArray(runResult?.testResults) && runResult.testResults.length > 0 ? (
           <div className="technicalTestList">
             {runResult.testResults.map((test, index) => (
@@ -1865,8 +1925,15 @@ function formatRunStatus(status) {
   if (normalized === "passed" || normalized === "success") return "Check passed";
   if (normalized === "warning" || normalized === "needsreview") return "Needs review";
   if (normalized === "failed" || normalized === "error") return "Check failed";
+  if (normalized === "timeout") return "Timed out";
   if (normalized === "running") return "Running";
   return "Not run yet";
+}
+
+function formatTimeOnly(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(date);
 }
 
 function createClientSessionId() {
@@ -1915,6 +1982,17 @@ function formatIntegrityType(eventType) {
     INTEGRITY_POLICY: "Integrity policy",
   };
   return labels[eventType] || String(eventType || "Integrity event").replace(/[_-]+/g, " ");
+}
+
+function normalizeIntegrityEventType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "COPYATTEMPT") return "COPY_ATTEMPT";
+  if (normalized === "PASTEATTEMPT") return "PASTE_ATTEMPT";
+  if (normalized === "CUTATTEMPT") return "CUT_ATTEMPT";
+  if (normalized === "FULLSCREENEXIT") return "EXIT_FULLSCREEN";
+  if (normalized === "TABHIDDEN") return "TAB_SWITCH";
+  if (normalized === "WINDOWBLUR") return "WINDOW_BLUR";
+  return normalized;
 }
 
 function formatPolicyAction(action) {

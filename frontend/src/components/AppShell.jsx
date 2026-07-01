@@ -110,9 +110,9 @@ export default function AppShell({
             ×
           </button>
 
-          <div className="sidebarIdentity">
+          <div className={`sidebarIdentity${user?.role === "Student" ? " sidebarIdentityStudent" : ""}`}>
             {user?.role === "Student" ? (
-              <StudentIdentityCard identity={user} compact />
+              <StudentIdentityCard identity={user} compact className="sidebarStudentIdentityCard" />
             ) : (
               <>
                 <div className="avatarCircle">{getInitials(user?.email)}</div>

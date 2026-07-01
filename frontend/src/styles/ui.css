@@ -138,11 +138,6 @@
   padding: 10px;
 }
 
-.sidebarIdentityStudent{
-  display: block;
-  padding: 12px;
-}
-
 .avatarCircle{
   width: 36px;
   height: 36px;
@@ -1426,38 +1421,45 @@ input[type="radio"]{
   color: rgba(255, 255, 255, .72);
 }
 
-.sidebarStudentIdentityCard{
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
+@media (min-width: 1025px){
+  .sidebarIdentityStudent{
+    display: block;
+    padding: 12px;
+  }
 
-.sidebarStudentIdentityCard .studentIdentityPhoto{
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
-}
+  .sidebarStudentIdentityCard{
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+  }
 
-.sidebarStudentIdentityCard .studentIdentityDetails{
-  gap: 3px;
-  min-width: 0;
-}
+  .sidebarStudentIdentityCard .studentIdentityPhoto{
+    width: 54px;
+    height: 54px;
+    border-radius: 14px;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.08);
+  }
 
-.sidebarStudentIdentityCard .studentIdentityDetails .summaryLabel{
-  max-width: 150px;
-  line-height: 1.15;
-}
+  .sidebarStudentIdentityCard .studentIdentityDetails{
+    gap: 3px;
+    min-width: 0;
+  }
 
-.sidebarStudentIdentityCard .studentIdentityDetails strong{
-  max-width: 150px;
-  line-height: 1.2;
-}
+  .sidebarStudentIdentityCard .studentIdentityDetails .summaryLabel{
+    max-width: 150px;
+    line-height: 1.15;
+  }
 
-.sidebarStudentIdentityCard .studentIdentityDetails small{
-  max-width: 150px;
+  .sidebarStudentIdentityCard .studentIdentityDetails strong{
+    max-width: 150px;
+    line-height: 1.2;
+  }
+
+  .sidebarStudentIdentityCard .studentIdentityDetails small{
+    max-width: 150px;
+  }
 }
 
 .officialPhotoUploadButton{

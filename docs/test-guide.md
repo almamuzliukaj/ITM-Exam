@@ -1,10 +1,10 @@
 # Manual Test Guide
 
-This guide is the baseline checklist for local verification before opening or merging sprint pull requests.
+This guide is the baseline checklist for local verification before opening or merging pull requests.
 
 ## 1. Start Local Services
 
-From the project root:
+From the repository root:
 
 ```powershell
 docker compose up -d db
@@ -24,7 +24,7 @@ Expected local URLs:
 - Backend Swagger: `http://localhost:5045/swagger`
 - Frontend: `http://localhost:5173`
 
-## 2. Demo Accounts
+## 2. Development Accounts
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -33,164 +33,120 @@ Expected local URLs:
 | Assistant | `assistant@onlineexam.com` | `Password123!` |
 | Student | `student@onlineexam.com` | `Password123!` |
 
-## 3. Student Exam Flow
+The login UI does not show preset buttons; enter credentials manually.
 
-Use this flow for Agnesa's Sprint 24 student journey validation.
+## 3. Admin Flow
 
-### 3.1 Preconditions
+1. Log in as Admin.
+2. Open operational overview.
+3. Open user management and verify directory/filter/actions.
+4. Open academic structure and verify terms, courses, and offerings.
+5. Open enrollments and verify student eligibility/carry-over data.
+6. Open SMU sync and confirm source-of-truth explanation.
+7. Open reports and verify report cards/tables load.
 
-Before testing as a student, confirm:
+## 4. Professor Flow
 
-- The student has active semester/course eligibility for the exam offering.
-- The exam is published.
-- The exam has at least one question.
-- If lockdown is required, the configured client rule matches the browser/client being used.
+1. Log in as Professor.
+2. Confirm only assigned offerings are visible.
+3. Open question bank and create or review MCQ, Text, C#, and SQL items.
+4. Create an exam from an assigned offering.
+5. Confirm academic year/semester/title metadata.
+6. Attach questions manually or generate from question bank.
+7. Publish the exam after readiness validation.
+8. Generate an access code from exam details or live monitor.
+9. Open gradebook after a student submits.
+10. Review answers, adjust points, save review, export CSV if needed, and publish results.
 
-### 3.2 Attempt and Autosave
+## 5. Assistant Flow
 
-1. Log in as `student@onlineexam.com`.
-2. Open the student exams area.
-3. Start an allowed published exam.
-4. Confirm the attempt page shows the `Student journey validation` panel.
-5. Confirm these checkpoints are ready or understandable:
-   - Attempt access
-   - Questions
-   - Timer
-   - Draft safety
-   - Integrity
-6. Answer MCQ, text, code, and SQL questions when they are present.
-7. Confirm the autosave card changes from waiting/saving to saved.
-8. Refresh the page.
-9. Confirm the restored draft banner appears and answers are still present.
-10. Flag and unflag at least one question.
-11. Confirm the question navigator updates answered/flagged states.
+1. Log in as Assistant.
+2. Confirm only assigned/support offerings are visible.
+3. Open assigned exams or question bank where allowed.
+4. Confirm admin-only pages and unrelated offerings are not accessible.
+5. Confirm monitor/review support behaves according to assignment rules.
 
-### 3.3 Submit Safety
+## 6. Student Exam Flow
 
-1. Click `Submit exam`.
-2. Confirm the final review panel shows answered, unanswered, flagged, and time remaining.
-3. Cancel once and confirm the student can continue editing.
-4. Click `Submit exam` again and confirm submit.
-5. Confirm the submission result card appears.
-6. Confirm the local draft is cleared after successful submission.
-7. Try opening/submitting the same exam again and confirm duplicate submit is rejected or the existing attempt state is shown.
+### Preconditions
 
-### 3.4 Result Visibility
+- Student has active eligibility for the exam offering.
+- Exam is published.
+- Exam has at least one question.
+- Staff has generated an access code or is ready to approve entry.
 
-1. Open `/results` from the submitted state or navigation.
-2. Confirm the `Result validation checkpoint` panel is visible.
-3. Confirm unpublished/pending attempts do not show scores.
-4. Log in as professor and publish the graded result.
-5. Log back in as student.
-6. Open `/results`.
-7. Confirm the published score, auto score, notes, and published date are visible.
+### Attempt
 
-Expected result:
+1. Log in as Student.
+2. Open Available exams.
+3. Start an eligible published exam.
+4. Enter the active access code or request approval.
+5. Confirm rules appear before the timer starts.
+6. Continue into the attempt.
+7. Confirm timer, progress, autosave, and integrity status are visible.
+8. Answer MCQ/text questions.
+9. For SQL/C#, use Run Query / Run Code and confirm output/status appears without submitting.
+10. Refresh and confirm draft restore behavior where applicable.
+11. Submit with the main submit button.
 
-- Student can open, answer, refresh, restore, submit, and later view the published result.
-- Pending results remain hidden until staff publication.
-- Duplicate submit is prevented.
-- The UI gives enough visible state for a demo tester to know what passed.
+### Expected Result
 
-## 4. Professor and Assistant Flow
+- Attempt is submitted once.
+- Draft is not lost before submit.
+- Duplicate submit is prevented or existing attempt state is shown.
+- Attempt appears in staff gradebook.
 
-1. Log in as `prof@onlineexam.com` or `assistant@onlineexam.com`.
-2. Confirm only assigned course offerings are visible.
-3. Create or review question-bank questions for an assigned offering.
-4. Create or review an exam draft.
-5. Attach questions manually or generate from the question bank.
-6. Publish an exam only after readiness checks pass.
-7. Review submitted attempts and publish results when grading is complete.
+## 7. Integrity and Access Checks
 
-## 5. Admin Flow
+1. During a student attempt, exit fullscreen or switch tabs.
+2. Confirm integrity event/warning is recorded.
+3. In monitor, verify the event appears in the stream.
+4. Test staff revoke access.
+5. Confirm the student receives a clear message and the attempt is submitted/closed according to policy.
 
-1. Log in as `admin@onlineexam.com`.
-2. Confirm users, terms, courses, offerings, staff assignments, and enrollments load correctly.
-3. Confirm student eligibility is connected to semester and course enrollment.
-4. Review carry-over records when testing progression rules.
-5. Confirm audit logs capture critical actions.
+## 8. Grading and Results
 
-## 6. Integrity and Safety Checks
+1. Log in as Professor.
+2. Open exam gradebook.
+3. Open a submitted attempt.
+4. Review AI suggestions and student answers.
+5. Change at least one per-question score.
+6. Save review.
+7. Publish graded results.
+8. Log in as Student.
+9. Open My Results.
+10. Confirm final score, percentage, grade, notes, and published date match professor-published values.
 
-During a student attempt:
+## 9. Build Verification
 
-1. Enter fullscreen when prompted.
-2. Switch tabs or leave the exam window and confirm a warning/event is recorded.
-3. Try copy, paste, print, and right-click actions and confirm they are blocked or tracked.
-4. Exit fullscreen and confirm the attempt page shows a clear warning.
-5. Confirm the exam remains usable on desktop and mobile viewport sizes.
-
-## 7. Build Verification
-
-From the project root:
+Backend:
 
 ```powershell
 dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj
 ```
 
-From the frontend folder:
+If the local API executable is locked:
 
 ```powershell
+$buildOut = Join-Path $env:TEMP 'OnlineExamApiBuildCheck'
+dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj -o $buildOut
+```
+
+Frontend:
+
+```powershell
+cd frontend
 npm run build
 ```
 
-Generated folders such as `bin/`, `obj/`, `dist/`, and `temp_build*/` must not be committed.
+Generated folders such as `bin/`, `obj/`, `dist/`, `tmp/backend-build/`, `publish/`, and `artifacts/` must not be committed.
 
-## 8. University Demo Readiness
-
-Before a final presentation:
-
-1. Open the dashboard as Admin, Professor, Assistant, and Student.
-2. Confirm each dashboard shows `University demo readiness`.
-3. Confirm any `Review` checkpoint has a clear reason and can be explained.
-4. Use `docs/demo-readiness-checklist.md` as the role-by-role walkthrough.
-5. Confirm the student flow still passes Section 3 after any setup changes.
-
-## 9. Pull Request Handoff
+## 10. Pull Request Handoff
 
 Before opening a pull request:
 
-1. Confirm the branch name describes the sprint outcome.
-2. Confirm the commit message is written professionally.
-3. Confirm the PR description lists summary, testing, notes, and dependencies.
-4. Use `docs/professional-change-workflow.md` as the source of truth for Git handoff.
-
-## 10. Release QA Evidence
-
-Before final demo or release:
-
-1. Complete the role walkthroughs in `docs/release-qa-evidence.md`.
-2. Capture the required screenshots listed there.
-3. Record frontend/backend build results in the PR notes.
-4. Confirm any known limitation is written clearly instead of being hidden.
-
-## 11. Demo Operations Smoke Check
-
-Before presenting the project live:
-
-1. Follow `docs/demo-operations-runbook.md` from startup through port checks.
-2. Confirm PostgreSQL, backend, and frontend are running from clean terminals.
-3. Confirm `git status` is clean on the branch being demonstrated.
-4. Confirm common failures have a known fix before the demo starts.
-5. Do not switch branches, pull, or rebase during the presentation.
-
-## 12. University UI Consistency
-
-Before opening a frontend demo pull request:
-
-1. Review `docs/university-ui-consistency-review.md`.
-2. Confirm dropdowns have labels, placeholders, readable spacing, and disabled states.
-3. Confirm tables stay inside their wrappers on mobile.
-4. Confirm empty states explain the missing data and next valid action.
-5. Confirm the screen language is professional enough for a university workflow.
-
-## 13. Student Exam Focus Layout
-
-When testing the student attempt screen:
-
-1. Review `docs/student-exam-focus-layout.md`.
-2. Confirm the focused workspace panel shows progress, attempt state, autosave, safety, and policy status.
-3. Answer and flag questions, then confirm progress and flagged counts update.
-4. Confirm the navigator legend matches open, answered, and flagged states.
-5. Confirm `Review and submit` opens the same submit review flow as the top submit action.
-6. Confirm mobile layout remains readable without overlapping controls.
+1. Confirm branch name describes the feature/fix.
+2. Confirm `git status --short` includes only intended files.
+3. Add build/manual testing notes to the PR.
+4. Add screenshots for UI changes.
+5. Mention known limitations clearly.

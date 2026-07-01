@@ -1,100 +1,87 @@
 # Professional Change Workflow
 
-This guide defines how sprint work should be prepared, committed, pushed, and handed off for review.
+Use this workflow for every sprint branch, bug fix, documentation update, or UI polish change.
 
-## Branch Naming
+## 1. Before Editing
 
-Use one branch per sprint or feature.
+1. Check the current branch:
 
-Recommended pattern:
+   ```powershell
+   git status -sb
+   git branch --show-current
+   ```
 
-```text
-feature/<owner>-<clear-feature-name>
+2. Confirm whether the task should be on a new branch.
+3. Pull/rebase only when the workspace is clean or local work is safely stashed.
+4. Do not use `git reset --hard` or force push for normal sprint work.
+
+## 2. While Editing
+
+- Modify only files related to the current task.
+- Do not create build artifacts inside the repository.
+- Keep source changes separate from generated files.
+- Update documentation when behavior changes.
+- Prefer small, reviewable commits.
+
+## 3. Verification
+
+Use the relevant checks:
+
+```powershell
+dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj
+cd frontend
+npm run build
 ```
 
-Examples:
+If backend build fails because `OnlineExam.Api.exe` is locked, build to a temporary output folder outside normal `bin`:
 
-- `feature/agnesa-student-journey-validation`
-- `feature/agnesa-university-demo-readiness`
-- `feature/albiona-result-publication-hardening`
-- `feature/alma-final-ui-polish`
-
-Avoid vague names:
-
-- `sprint-next`
-- `fix`
-- `changes`
-- `new-work`
-
-## Commit Message Style
-
-Use a short professional sentence that explains the outcome, not the activity.
-
-Recommended pattern:
-
-```text
-<Verb> <area> <outcome>
+```powershell
+$buildOut = Join-Path $env:TEMP 'OnlineExamApiBuildCheck'
+dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj -o $buildOut
 ```
 
-Good examples:
+## 4. Before Commit
 
-- `Add student journey validation checkpoints`
-- `Improve SMU-managed admin data handling`
-- `Document university demo readiness workflow`
-- `Harden result publication validation`
+1. Run:
 
-Avoid:
+   ```powershell
+   git status --short
+   git diff --stat
+   ```
 
-- `done`
-- `fix stuff`
-- `changes`
-- `sprint`
-- `final final`
+2. Confirm no generated files are staged:
+   - `.dll`
+   - `.pdb`
+   - `.deps.json`
+   - `.runtimeconfig.json`
+   - `dist/`
+   - `bin/`
+   - `obj/`
+   - `tmp/backend-build/`
+   - copied `appsettings*.json`
 
-## Pull Request Description
+3. Use a professional commit message:
+   - `Refresh project documentation`
+   - `Align student result totals`
+   - `Polish admin overview layout`
+   - `Document exam access workflow`
+
+## 5. Pull Request Notes
 
 Each PR should include:
 
-- Sprint or task name.
-- What changed.
-- How it was tested.
-- Any known limitation.
-- Whether it depends on another branch or PR.
+- Summary of what changed.
+- Testing performed.
+- Screenshots for UI changes.
+- Known limitations.
+- Dependencies or merge order if another PR must merge first.
 
-Suggested PR template:
+## 6. Conflict Handling
 
-```markdown
-## Summary
-- 
+If a conflict appears:
 
-## Testing
-- [ ] npm run build
-- [ ] dotnet build
-- [ ] Manual flow checked
-
-## Notes
-- 
-```
-
-## Handoff Checklist
-
-Before asking for review:
-
-1. Confirm `git status` is clean after commit.
-2. Confirm the branch contains only the current sprint.
-3. Run the relevant build/test command.
-4. Update `docs/work-log.md`.
-5. Push the branch.
-6. Open a PR with a clear title.
-7. Do not start the next sprint in the same branch after pushing.
-
-## When a Sprint Depends on a Previous Sprint
-
-If Sprint B depends on Sprint A and Sprint A is not merged yet:
-
-1. Create Sprint B from Sprint A's branch.
-2. Mention the dependency in the PR.
-3. Merge Sprint A first.
-4. Rebase or update Sprint B onto `main` after Sprint A is merged.
-
-This keeps review history understandable and prevents duplicated commits.
+1. Stop and inspect the conflicted file.
+2. Keep the newest correct behavior, not just one side blindly.
+3. Remove conflict markers.
+4. Run build/test again.
+5. Continue rebase/merge only after the file is valid.

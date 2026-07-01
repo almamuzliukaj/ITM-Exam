@@ -29,7 +29,7 @@ The interface should feel operational, academic, and stable. Pages should suppor
 - Empty states should explain why no data is visible and what the next valid action is.
 - Error states should state the failing workflow, not only show a generic technical message.
 - Loading states should preserve page structure where possible so the screen does not jump.
-- Demo-critical pages must never look broken when the database has no matching records.
+- Review-critical pages must never look broken when the database has no matching records.
 
 ### Academic Tone
 
@@ -89,9 +89,9 @@ Before opening a frontend pull request, confirm:
 - [ ] Dropdowns have labels, placeholders, disabled states, and readable spacing.
 - [ ] Tables have empty states or clear fallback copy.
 - [ ] Mobile layout does not overflow horizontally outside table wrappers.
-- [ ] Demo-critical text is professional and consistent.
+- [ ] Review-critical text is professional and consistent.
 - [ ] The manual test guide and release evidence are updated when the change affects demo flow.
 
 ## 6. Known Follow-Up
 
-This sprint improves consistency standards and shared styling. Future UI work should apply the same review to each major page individually with screenshots from desktop and mobile.
+Future UI work should apply the same review to each major page individually with screenshots from desktop and mobile.

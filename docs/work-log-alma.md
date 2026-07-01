@@ -18,8 +18,8 @@
 - Published results show score cards, submitted/published timestamps, grading notes, and pending review status.
 - Student dashboard and sidebar navigation link to results.
 
-## Sprint 18: Security, Cleanup, and Demo Readiness
-- Polished demo-critical UI for attempt, gradebook, student results, and sidebar navigation.
+## Sprint 18: Security, Cleanup, and Delivery Readiness
+- Polished review-critical UI for attempt, gradebook, student results, and sidebar navigation.
 - Tuned sidebar sizing so navigation, operational note, and logout remain visible without sidebar scrolling.
 - Verified frontend lint/build and backend build during the final sprint pass.
 

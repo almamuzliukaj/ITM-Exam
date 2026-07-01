@@ -2,25 +2,33 @@
 
 ## 8.1 Components
 
-- **Frontend:** React and Vite application with role-based routes and reusable UI components.
-- **Backend:** ASP.NET Core Web API using controllers, DTOs, models, and Entity Framework Core.
-- **Database:** PostgreSQL for users, academic structure, exams, questions, attempts, and enrollments.
-- **Authentication:** JWT-based login flow.
-- **Documentation:** Markdown files aligned with the Notion sprint board.
+- **Frontend:** React/Vite application with role-based routes, shared AppShell, i18n, Monaco Editor, and exam/gradebook workflows.
+- **Backend:** ASP.NET Core Web API using controllers, DTOs, services, filters, and Entity Framework Core.
+- **Database:** PostgreSQL for identity, academic structure, exams, attempts, grading, integrity events, reports, and audit logs.
+- **Authentication:** JWT Bearer authentication with role authorization.
+- **External Integration:** SMU integration services for academic data contract, preview, and sync readiness.
 
 ## 8.2 Request Flow
 
 1. User logs in through the frontend.
-2. Backend validates credentials and returns a token.
+2. Backend validates credentials and returns JWT plus user profile.
 3. Frontend sends authenticated API requests.
-4. Backend applies role and ownership rules.
-5. Data is stored or queried through Entity Framework Core.
-6. Frontend renders role-specific workspaces.
+4. Backend enforces role and ownership rules.
+5. EF Core reads/writes PostgreSQL data.
+6. Frontend renders role-specific state and actions.
 
-## 8.3 Architecture Principles
+## 8.3 Important Boundaries
 
-- Keep admin workflows separate from academic authoring workflows.
-- Tie staff access to assigned offerings.
-- Tie student access to eligibility records.
-- Keep question bank logic separate from normal exam records.
-- Prefer explicit validation over implicit UI-only restrictions.
+- Admin manages academic structure but does not own professor grading decisions.
+- Staff exam access is scoped by course offering assignments.
+- Student exam visibility is scoped by published exams plus eligibility.
+- Technical Run actions are safe previews; real arbitrary code execution requires an isolated runner.
+- Result publication is a staff-controlled workflow, not automatic student visibility.
+
+## 8.4 Cross-Cutting Services
+
+- Audit logging for traceability.
+- API error response filter for consistent error payloads.
+- Student photo storage for protected identity images.
+- SMU mapping and sync services.
+- Runtime schema compatibility checks during startup.

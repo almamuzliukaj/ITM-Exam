@@ -4500,10 +4500,10 @@ public class ExamsController : ControllerBase
 
     private static double ResolveExamMaximumPoints(Exam exam, double currentQuestionTotal)
     {
-        if (exam.MaximumPoints > 0)
-            return exam.MaximumPoints;
+        if (currentQuestionTotal > 0)
+            return currentQuestionTotal;
 
-        return currentQuestionTotal > 0 ? currentQuestionTotal : 100;
+        return exam.MaximumPoints > 0 ? exam.MaximumPoints : 100;
     }
 
     private static List<Question> SelectBestQuestionSubset(IReadOnlyList<Question> candidates, int targetPoints, int requestedQuestions)

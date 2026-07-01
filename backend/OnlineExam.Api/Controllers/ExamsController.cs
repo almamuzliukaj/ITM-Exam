@@ -3819,9 +3819,7 @@ public class ExamsController : ControllerBase
 
         var rationale = keywordOnlyMatch
             ? "Only isolated terminology matched the expected answer. The answer does not demonstrate the required concept, so no credit is suggested."
-
-        var rationale = guidanceMatch != null
-
+            : guidanceMatch != null
             ? $"The student's answer meaning aligns with expected concepts at about {Math.Round(guidanceMatch.ScoreRatio * 100)}% credit. Semantic similarity {Math.Round(guidanceMatch.Similarity * 100)}% against concept guidance: {guidanceMatch.Criteria}."
             : matchedConcepts.Count > 0
             ? $"Matched key concepts: {string.Join(", ", matchedConcepts)}. Semantic concept recall {Math.Round(semanticRecall * 100)}%, term recall {Math.Round(recall * 100)}%, and phrase recall {Math.Round(phraseRecall * 100)}%."

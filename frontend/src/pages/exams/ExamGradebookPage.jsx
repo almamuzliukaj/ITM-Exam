@@ -193,15 +193,7 @@ export default function ExamGradebookPage() {
         manualScore: parseNumberOrNull(draft.manualScore),
         finalScore,
         notes: draft.notes || null,
-
-        questionScores: Object.values(draft.questionScores || {}).map((score) => ({
-          questionId: score.questionId,
-          pointsAwarded: parseNumberOrNull(score.pointsAwarded) ?? 0,
-          notes: score.notes || null,
-        })),
-
         questionScores,
-
       });
 
       setAttempts((current) =>
@@ -223,7 +215,6 @@ export default function ExamGradebookPage() {
         [attempt.attemptId]: {
           manualScore: String(updated.manualScore ?? 0),
           finalScore: String(updated.finalScore ?? updated.autoScore ?? 0),
-          questionScores: buildQuestionScoresDraft(updated),
           notes: updated.gradingNotes || "",
           questionScores: normalizeQuestionScoreDrafts({
             ...attempt,
@@ -588,18 +579,19 @@ function normalizeGradebookRows(value) {
 
 function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disabled, onClose, onDraftChange, onAiReview, onSaveGrade }) {
   const violationCount = Number(attempt.integrityViolationCount || 0);
-  const questionScoreDrafts = draft.questionScores || normalizeQuestionScoreDrafts(attempt);
-  const currentFinalScore = questionScoreDrafts.length > 0
-    ? questionScoreDrafts.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0)
+  const questionScoreDrafts = toQuestionScoreList(draft.questionScores);
+  const safeQuestionScoreDrafts = questionScoreDrafts.length > 0 ? questionScoreDrafts : normalizeQuestionScoreDrafts(attempt);
+  const currentFinalScore = safeQuestionScoreDrafts.length > 0
+    ? safeQuestionScoreDrafts.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0)
     : Number(draft.finalScore ?? attempt.finalScore ?? 0);
 
   const scoreDelta = currentFinalScore - Number(attempt.autoScore || 0);
   const currentPercentage = attempt.examMaxPoints ? (currentFinalScore / Number(attempt.examMaxPoints || 0)) * 100 : 0;
   const currentGrade = calculateGrade(currentPercentage);
-  const reviewedQuestions = questionScoreDrafts.filter((score) => String(score.pointsAwarded ?? "").trim() !== "").length;
+  const reviewedQuestions = safeQuestionScoreDrafts.filter((score) => String(score.pointsAwarded ?? "").trim() !== "").length;
 
   function onQuestionScoreChange(questionId, changes) {
-    const nextScores = updateQuestionScoreDraft(questionScoreDrafts, questionId, changes);
+    const nextScores = updateQuestionScoreDraft(safeQuestionScoreDrafts, questionId, changes);
     const nextFinalScore = nextScores.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0);
     onDraftChange({
       ...draft,
@@ -654,7 +646,7 @@ function AttemptReviewModal({ attempt, draft, aiReview, reviewing, saving, disab
 
         <AttemptAnswersPanel
           attempt={attempt}
-          questionScores={questionScoreDrafts}
+          questionScores={safeQuestionScoreDrafts}
           disabled={disabled || saving}
           onQuestionScoreChange={onQuestionScoreChange}
         />
@@ -850,13 +842,14 @@ function QuestionScoreReview({ answer, score, aiSuggestion, disabled, onChange }
   const autoPoints = Number(score?.autoPointsAwarded ?? answer.autoPointsAwarded ?? 0);
   const finalPoints = score?.pointsAwarded ?? score?.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints;
   const changed = Math.abs(Number(finalPoints || 0) - autoPoints) > 0.009;
+  const suggestionPoints = score?.pointsAwarded ?? answer.finalPointsAwarded ?? aiSuggestion?.suggestedPoints ?? autoPoints;
 
   return (
     <div className="questionScoreReview">
       <div className="questionScoreReviewHeader">
         <div>
           <span className="summaryLabel">AI-assisted grading suggestion</span>
-          <strong>{formatScore(autoPoints)} / {formatScore(maxPoints)} pts</strong>
+          <strong>{formatScore(suggestionPoints)} / {formatScore(maxPoints)} pts</strong>
           <small>
             {aiSuggestion?.rationale ||
               answer.gradingNotes ||
@@ -864,7 +857,7 @@ function QuestionScoreReview({ answer, score, aiSuggestion, disabled, onChange }
           </small>
         </div>
         <span className={`statusPill ${changed ? "statusWarn" : "statusDraft"}`}>
-          {changed ? "Adjusted by professor" : "Default suggestion"}
+          {changed ? "Suggested adjustment" : "Default suggestion"}
         </span>
       </div>
       <div className="questionScoreControls">
@@ -901,8 +894,8 @@ function isTechnicalAnswer(answer) {
 }
 
 function IntegrityReviewPanel({ attempt }) {
-  const events = Array.isArray(attempt.integrityEvents) ? attempt.integrityEvents : [];
   const violationCount = Number(attempt.integrityViolationCount || 0);
+  const events = buildVisibleIntegrityEvents(attempt.integrityEvents, violationCount);
 
   return (
     <div className={`integrityReview ${violationCount > 0 ? "integrityReviewWarn" : ""}`}>
@@ -920,7 +913,7 @@ function IntegrityReviewPanel({ attempt }) {
       </div>
       {events.length > 0 ? (
         <ol>
-          {events.slice(0, 4).map((event, index) => (
+          {events.map((event, index) => (
             <li key={`${event.eventType}-${event.createdAt}-${index}`}>
               <span>{formatIntegrityEvent(event.eventType)}</span>
               <small>{event.message || "Recorded during exam session."}</small>
@@ -932,6 +925,26 @@ function IntegrityReviewPanel({ attempt }) {
       )}
     </div>
   );
+}
+
+function buildVisibleIntegrityEvents(events, violationCount) {
+  const uniqueEvents = [];
+  const seen = new Set();
+
+  for (const event of Array.isArray(events) ? events : []) {
+    const key = [
+      String(event.eventType || "").toLowerCase(),
+      String(event.message || "").toLowerCase(),
+      Number(event.violationCount || 0),
+    ].join("|");
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueEvents.push(event);
+  }
+
+  const visibleLimit = violationCount > 0 ? Math.min(violationCount, 4) : 4;
+  return uniqueEvents.slice(0, visibleLimit);
 }
 
 function formatIntegrityEvent(value) {
@@ -1026,7 +1039,6 @@ function buildDrafts(attempts) {
       manualScore: String(roundScore(finalScore - Number(attempt.autoScore || 0))),
       finalScore: String(roundScore(finalScore)),
       notes: attempt.gradingNotes || "",
-      questionScores: normalizeQuestionScoreDrafts(attempt),
     };
     return acc;
   }, {});
@@ -1043,7 +1055,7 @@ function buildQuestionScoresDraft(attempt, aiReview = null) {
     return acc;
   }, {});
 
-  return (attempt?.answers || []).reduce((acc, answer) => {
+  return (attempt?.answers || []).map((answer) => {
     const existing = existingByQuestion[answer.questionId] || {};
     const aiSuggestion = aiByQuestion[answer.questionId];
     const maxPoints = Number(existing.maxPoints ?? answer.points ?? aiSuggestion?.maxPoints ?? 0);
@@ -1052,19 +1064,24 @@ function buildQuestionScoresDraft(attempt, aiReview = null) {
       ? Number(aiSuggestion.suggestedPoints ?? autoPoints)
       : Number(existing.finalPointsAwarded ?? answer.finalPointsAwarded ?? autoPoints);
 
-    acc[answer.questionId] = {
+    return {
       questionId: answer.questionId,
       maxPoints,
       autoPointsAwarded: roundScore(autoPoints),
       pointsAwarded: String(roundScore(Math.max(0, Math.min(finalPoints, maxPoints)))),
       notes: existing.gradingNotes || aiSuggestion?.rationale || answer.gradingNotes || "",
     };
-    return acc;
-  }, {});
+  });
 }
 
 function sumQuestionScoreDraft(questionScores) {
-  return roundScore(Object.values(questionScores || {}).reduce((total, score) => total + Number(score.pointsAwarded || 0), 0));
+  return roundScore(toQuestionScoreList(questionScores).reduce((total, score) => total + Number(score.pointsAwarded || 0), 0));
+}
+
+function toQuestionScoreList(questionScores) {
+  if (Array.isArray(questionScores)) return questionScores;
+  if (questionScores && typeof questionScores === "object") return Object.values(questionScores);
+  return [];
 }
 
 function normalizeQuestionScoreDrafts(attempt) {
@@ -1089,7 +1106,7 @@ function normalizeQuestionScoreDrafts(attempt) {
 }
 
 function updateQuestionScoreDraft(scores, questionId, changes) {
-  return scores.map((score) => {
+  return toQuestionScoreList(scores).map((score) => {
     if (score.questionId !== questionId) return score;
 
     const nextPoints = Object.prototype.hasOwnProperty.call(changes, "pointsAwarded")
@@ -1105,7 +1122,8 @@ function updateQuestionScoreDraft(scores, questionId, changes) {
 }
 
 function buildQuestionScorePayload(draft, attempt) {
-  const scores = draft.questionScores || normalizeQuestionScoreDrafts(attempt);
+  const draftScores = toQuestionScoreList(draft.questionScores);
+  const scores = draftScores.length > 0 ? draftScores : normalizeQuestionScoreDrafts(attempt);
   return scores.map((score) => ({
     questionId: score.questionId,
     pointsAwarded: clampScore(score.pointsAwarded, score.maxPoints),

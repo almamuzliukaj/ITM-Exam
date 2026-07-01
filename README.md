@@ -418,6 +418,6 @@ Recommended starting points:
 
 ## Team
 
-- Agnesa
-- Albiona
-- Alma
+- Agnesa Maxhuni
+- Albiona Maxhuni
+- Alma Muzliukaj

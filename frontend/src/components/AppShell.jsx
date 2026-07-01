@@ -5,6 +5,27 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import StudentIdentityCard from "./StudentIdentityCard";
 import { logout } from "../lib/auth";
 
+const teachingNavigation = [
+  {
+    titleKey: "shell.sections.overview",
+    items: [{ to: "/dashboard", labelKey: "shell.nav.professorOverview", icon: "OV" }],
+  },
+  {
+    titleKey: "shell.sections.account",
+    items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
+  },
+  {
+    titleKey: "shell.sections.teaching",
+    items: [
+      { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
+      { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
+      { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
+      { to: "/gradebook", labelKey: "shell.nav.professorGradebook", icon: "GB", fallbackLabel: "Gradebook" },
+      { to: "/reports", labelKey: "shell.nav.professorReports", icon: "RP" },
+    ],
+  },
+];
+
 const navigationByRole = {
   Admin: [
     {
@@ -26,46 +47,8 @@ const navigationByRole = {
       ],
     },
   ],
-  Professor: [
-    {
-      titleKey: "shell.sections.overview",
-      items: [{ to: "/dashboard", labelKey: "shell.nav.professorOverview", icon: "OV" }],
-    },
-    {
-      titleKey: "shell.sections.account",
-      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
-    },
-    {
-      titleKey: "shell.sections.teaching",
-      items: [
-        { to: "/exams", labelKey: "shell.nav.professorExams", icon: "EX" },
-        { to: "/exams/new", labelKey: "shell.nav.professorCreateExam", icon: "NE" },
-        { to: "/question-bank", labelKey: "shell.nav.professorQuestionBank", icon: "QB" },
-        { to: "/gradebook", labelKey: "shell.nav.professorGradebook", icon: "GB", fallbackLabel: "Gradebook" },
-        { to: "/reports", labelKey: "shell.nav.professorReports", icon: "RP" },
-      ],
-    },
-  ],
-  Assistant: [
-    {
-      titleKey: "shell.sections.overview",
-      items: [{ to: "/dashboard", labelKey: "shell.nav.assistantOverview", icon: "OV" }],
-    },
-    {
-      titleKey: "shell.sections.account",
-      items: [{ to: "/settings", labelKey: "shell.nav.settings", icon: "ST", fallbackLabel: "Settings" }],
-    },
-    {
-      titleKey: "shell.sections.teachingSupport",
-      items: [
-        { to: "/exams", labelKey: "shell.nav.assistantExams", icon: "EX" },
-        { to: "/exams/new", labelKey: "shell.nav.assistantCreateExam", icon: "NE", fallbackLabel: "Create exam" },
-        { to: "/question-bank", labelKey: "shell.nav.assistantQuestionBank", icon: "QB" },
-        { to: "/gradebook", labelKey: "shell.nav.assistantGradebook", icon: "GB", fallbackLabel: "Gradebook" },
-        { to: "/reports", labelKey: "shell.nav.assistantReports", icon: "RP" },
-      ],
-    },
-  ],
+  Professor: teachingNavigation,
+  Assistant: teachingNavigation,
   Student: [
     {
       titleKey: "shell.sections.overview",
@@ -95,6 +78,7 @@ export default function AppShell({
 }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  // Navigation is role-derived on the client for clarity, while backend authorization remains the final authority.
   const groups = navigationByRole[user?.role] || navigationByRole.Student;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 

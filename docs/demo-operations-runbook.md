@@ -209,6 +209,9 @@ Generated output must not be committed:
 - `backend/**/obj/`
 - `frontend/dist/`
 - `temp_build*/`
+- `tmp/backend-build/`
+- `publish/`
+- `artifacts/`
 
 If generated files appear in `git status`, remove them from the working tree before committing.
 
@@ -270,4 +273,4 @@ For demo-critical pull requests, capture:
 
 ## 9. Ownership
 
-Agnesa owns this operations runbook for the frontend/demo readiness track. Backend-specific failures should be confirmed with the teammate responsible for the API change before they are presented as resolved.
+This operations runbook supports local QA and presentation readiness. Backend-specific failures should be confirmed with the teammate responsible for the API change before they are presented as resolved.

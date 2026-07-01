@@ -1,32 +1,35 @@
 # 7. Data Model
 
-## 7.1 Core Entities
+## 7.1 Main Entities
 
-- `User`: platform account with role and activation status.
-- `Term`: academic delivery period.
-- `Course`: catalog course definition.
-- `CourseOffering`: term-specific course delivery with year, semester, section, and staff assignments.
-- `CourseOfferingStaffAssignment`: professor or assistant assignment history for an offering.
-- `SemesterEnrollment`: student's academic placement for a term.
-- `StudentCourseEnrollment`: student's eligibility for a specific offering.
-- `CarryOverCourse`: controlled record for previous-semester eligibility.
-- `Exam`: assessment record linked to a course offering.
-- `Question`: question record linked either to an exam or a question bank container.
-- `ExamAttempt`: submitted student attempt and score summary.
+- `User`: account, role, activation state, student number, and identity fields.
+- `Term`: academic period.
+- `Course`: course catalog record.
+- `CourseOffering`: course instance for a term/year/semester/section.
+- `CourseOfferingStaffAssignment`: professor/assistant assignment history.
+- `SemesterEnrollment`: student's enrollment in a term.
+- `StudentCourseEnrollment`: student's eligibility for a course offering.
+- `CarryOverCourse`: previous-semester course obligation and assignment.
+- `Exam`: exam metadata, offering link, schedule, duration, max points, status, and access settings.
+- `Question`: exam question or question-bank item, including options and technical metadata.
+- `ExamAttempt`: student attempt, draft/submitted state, answers, scores, grading, publication state.
+- `ExamIntegrityEvent`: fullscreen, blur, device, and policy events linked to attempts.
+- `AuditLog`: auditable system actions.
 
 ## 7.2 Key Relationships
 
-- `Term` has many `CourseOfferings`.
-- `Course` has many `CourseOfferings`.
-- `CourseOffering` has many staff assignments, enrollments, exams, and question bank records.
-- `User` may be an admin, professor, assistant, or student.
-- `Exam` has many `Questions`.
-- `Exam` has many `ExamAttempts`.
-- `StudentCourseEnrollment` controls exam visibility for students.
+- A `Term` has many `CourseOfferings`.
+- A `Course` has many `CourseOfferings`.
+- A `CourseOffering` has staff assignments, enrollments, exams, and question-bank questions.
+- An `Exam` belongs to a course offering and has many questions and attempts.
+- A `StudentCourseEnrollment` controls student exam visibility.
+- An `ExamAttempt` belongs to one exam and one student.
+- Integrity events and grading records are connected to attempts.
 
 ## 7.3 Data Rules
 
-- Historical academic records should not be hard-deleted when referenced by exams or attempts.
-- Staff assignments should preserve history when staff changes.
-- Students should not see exams without eligible enrollment.
-- Question bank container records should not appear as normal exams.
+- Referenced academic records should not be hard-deleted.
+- Draft exams are hidden from students.
+- Question-bank records are reusable and should not appear as ordinary student exams.
+- Published result values must be derived from the approved attempt grading state.
+- Audit logs should preserve action context for important workflow events.

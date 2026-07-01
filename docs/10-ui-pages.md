@@ -1,60 +1,63 @@
 # 10. UI Pages
 
-## 10.1 Shared Pages
+## 10.1 Shared UI
 
-- Login
-- Dashboard
-- Protected route handling
-- Role-specific navigation
-- Language switcher
+- Login without exposed demo preset buttons.
+- AppShell with role-aware sidebar navigation.
+- Sticky top actions and compact language switcher.
+- Settings page for password change.
+- Runtime English/Albanian language support.
 
 ## 10.2 Admin Pages
 
-- User management
-- Academic structure management
-- Enrollment management
-- Course offering and staff assignment management
+- Dashboard / operational overview.
+- User management.
+- Academic structure management.
+- Enrollment management.
+- SMU integration readiness.
+- Reports.
 
-Admin pages focus on operational setup and do not expose academic exam authoring content.
+Admin pages focus on institutional setup, eligibility, reporting, and operational controls.
 
 ## 10.3 Professor Pages
 
-- Assigned offerings dashboard
-- Exams list
-- Exam create page
-- Exam details and authoring page
-- Question creation page
-- Question bank pages
+- Dashboard with assigned offering visibility.
+- Exams list.
+- Create/edit exam.
+- Exam details and authoring.
+- Question bank.
+- Offering roster.
+- Live monitor.
+- Gradebook index and exam gradebook.
+- Reports.
 
-Professor pages focus on assigned offerings, question authoring, exam preparation, and publish readiness.
+Professor pages focus on assigned offerings, assessment authoring, access control, monitoring, review, and publication.
 
 ## 10.4 Assistant Pages
 
-- Assigned support workspace
-- Assigned exams view
-- Question authoring where allowed
-- Draft exam support where allowed
+- Assigned/support exam workspace.
+- Question bank access for assigned contexts.
+- Exam support and monitor pages where role rules allow.
+- Assistant gradebook/review support where permitted.
 
-Assistant visibility must remain limited to assigned offerings.
+Assistant pages must remain scoped to assigned offerings and must not expose admin-only controls.
 
 ## 10.5 Student Pages
 
-- Eligible exams list
-- Exam details
-- Attempt submission flow
-- Future result visibility pages
+- Dashboard.
+- Available exams.
+- Exam briefing/rules/access entry.
+- Secure exam session.
+- My results.
+- Settings.
 
-Student pages must show only eligible published academic content.
-The student attempt page should expose progress, autosave state, safety status, flagged questions, and submit review without requiring the student to search across the page.
+Student pages must show only eligible exams and published results.
 
 ## 10.6 UI Quality Rules
 
-- Every major page should include loading, error, and empty states.
-- Buttons should reflect real workflow state, such as draft versus published.
-- Draft exam actions should not be shown after publication unless explicitly supported.
-- UI labels should use consistent English terminology.
-- Demo-critical dashboards should show role-specific readiness checkpoints before final presentation.
-- Controlled choices should use labeled dropdowns with professional placeholders and disabled states.
-- Staff and admin tables should remain scannable on desktop and contained inside horizontal wrappers on mobile.
-- UI consistency should be reviewed against `docs/university-ui-consistency-review.md` before demo-critical frontend pull requests.
-- Student exam focus layout should be reviewed against `docs/student-exam-focus-layout.md` before changing the attempt screen.
+- Use compact institutional layouts.
+- Avoid oversized header/action areas on desktop.
+- Keep tables scannable with clear empty/loading/error states.
+- Keep critical exam actions visible and unambiguous.
+- Do not show removed demo-only panels or mock account presets in production-facing UI.
+- Keep English and Albanian UI text consistent.

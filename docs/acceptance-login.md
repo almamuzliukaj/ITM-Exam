@@ -11,9 +11,9 @@
 
 - [ ] Backend starts successfully.
 - [ ] Swagger or API documentation is reachable.
-- [ ] `POST /api/auth/login` returns a token for valid credentials.
+- [ ] `POST /auth/login` returns a token for valid credentials.
 - [ ] Invalid credentials return a clear error.
-- [ ] `GET /api/auth/me` returns the current user when a valid bearer token is provided.
+- [ ] `GET /auth/me` returns the current user when a valid bearer token is provided.
 - [ ] Protected endpoints reject unauthenticated requests.
 - [ ] Admin-only endpoints reject non-admin users.
 - [ ] Frontend login stores the token and redirects by role.

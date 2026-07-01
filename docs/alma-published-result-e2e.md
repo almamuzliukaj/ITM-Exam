@@ -39,5 +39,6 @@ npm run build
 ```
 
 ```powershell
-dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj -p:UseAppHost=false -o .build-check\OnlineExam.Api
+$buildOut = Join-Path $env:TEMP 'OnlineExamApiBuildCheck'
+dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj -o $buildOut
 ```

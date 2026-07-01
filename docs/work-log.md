@@ -1,61 +1,32 @@
-# Work Log (Agnesa14)
+# General Work Log
 
-## 2026-06-08 - Sprint 30
-- Improved the student exam attempt screen with a focused workspace summary panel.
-- Added progress, autosave, safety, policy, unanswered, and flagged question indicators.
-- Added a question navigator progress bar, status legend, and secondary review-submit action.
-- Documented the student exam focus layout and manual validation checklist.
+This document summarizes the main project-level work completed in the repository. Individual owner notes are kept in `work-log-albiona.md` and `work-log-alma.md`.
 
-## 2026-06-08 - Sprint 29
-- Added a university UI consistency review for professional frontend quality checks.
-- Added frontend standards for dropdowns, tables, empty states, academic tone, and responsive behavior.
-- Improved shared dropdown, table, and empty-state styling for clearer desktop and mobile presentation.
+## Current Delivery Summary
 
-## 2026-06-08 - Sprint 28
-- Added a demo operations runbook for startup, port checks, troubleshooting, and demo-day control.
-- Documented fixes for PostgreSQL connection failures, locked backend executables, Vite dependency issues, rejected Git pushes, and generated build artifacts.
-- Linked the runbook from the master documentation and manual test guide.
+- Built the role-based application shell for Admin, Professor, Assistant, and Student.
+- Implemented authentication, protected routes, and settings/password workflow.
+- Added admin management for users, academic structure, enrollments, carry-over records, SMU readiness, and reports.
+- Added professor/assistant assigned-offering workspaces.
+- Added question bank workflows for MCQ, Text, C#, and SQL.
+- Added simplified exam creation with offering-derived metadata.
+- Added exam details, manual question attachment, random generation, replacement, publish/unpublish, and access-code management.
+- Added student exam entry, rules, attempt workspace, autosave, technical Run preview, integrity signals, and submit behavior.
+- Added live monitor with attempt state, student access actions, device request handling, and integrity stream.
+- Added gradebook review, AI-assisted suggestions, manual scoring override, CSV export, result publication, and student results.
+- Added audit logging, SMU integration readiness, English/Albanian UI support, and institutional UI polish.
+- Refreshed README and documentation to match the current implementation.
 
-## 2026-06-08 - Sprint 27
-- Added release QA evidence documentation for final demo and release review.
-- Added required screenshot, command evidence, role walkthrough, and known release notes.
-- Linked the release evidence guide from the master documentation and manual test guide.
+## Verification Practices
 
-## 2026-06-08 - Sprint 26
-- Added professional branch, commit, PR, and handoff workflow documentation.
-- Added a pull request handoff section to the manual test guide.
-- Linked the change workflow from the documentation master index.
+- Backend changes should be verified with `dotnet build backend\OnlineExam.Api\OnlineExam.Api.csproj`.
+- Frontend changes should be verified with `cd frontend; npm run build`.
+- UI changes should include screenshots in PR notes.
+- Grading/result changes must be checked from both professor gradebook and student My Results.
+- Generated files and build artifacts must stay out of Git.
 
-## 2026-06-08 - Sprint 25
-- Added a university demo readiness panel to role dashboards.
-- Documented role-by-role presentation checks in `docs/demo-readiness-checklist.md`.
-- Connected the demo readiness checklist from the master docs and manual test guide.
+## Known Boundaries
 
-## 2026-05-29 - Sprint 24
-- Completed Agnesa's student journey validation pass.
-- Added visible validation checkpoints to the student exam session and result pages.
-- Expanded the manual test guide with repeatable student attempt, autosave, submit, duplicate-submit, and result visibility checks.
-
-## 2026-05-29
-- Completed Sprint 23 frontend task for SMU synced data usage.
-- Added source-aware admin behavior for users, academic structure, and enrollment screens.
-- Locked manual creation, import, edit, and cohort actions for SMU-owned records when integration is configured.
-- Kept synced records visible for review and dropdown selection while preserving Online Exam carry-over controls.
-
-## 2026-05-09
-- Completed Sprint 13 baseline task: added AI-assisted text-answer evaluation with required human review.
-- Added backend endpoint for text-answer evaluation suggestions and connected it to the staff gradebook workflow.
-- Added frontend gradebook review page where staff can request AI suggestions, adjust manual/final scores, save grades, and publish graded results.
-- Verified Sprint 13 baseline with `dotnet build` and `npm run build`.
-- Updated repository planning documentation to match the Notion task board screenshots.
-- Replaced the old six-sprint delivery model with the current Sprint 1 through Sprint 14 board structure.
-- Documented Agnesa-owned tasks across Sprint 1 through Sprint 14 in `docs/12-roadmap-and-mvp.md`.
-- Noted that Sprint 15 was not visible in the provided screenshots and should be added later if it exists in Notion.
-- Confirmed Sprint 12 manual exam authoring work is now represented in Git documentation after implementation.
-
-## 2026-04-03
-- Set up local development environment on Windows.
-- Added Docker Compose PostgreSQL for local development (onlineexam-postgres).
-- Verified DB connectivity with psql SELECT 1.
-- Verified backend API runs locally (http://localhost:5045) and Swagger route.
-- Added frontend env example (VITE_API_BASE_URL) and acceptance checklist for MVP login.
+- SQL/C# Run is a safe preview and not a production code-execution sandbox.
+- Browser integrity signals are advisory and auditable but not equivalent to a secure browser.
+- SMU production behavior depends on final external API contract and data ownership rules.

@@ -4,60 +4,49 @@
 
 The repository currently includes:
 
-- JWT authentication and role-based frontend routing.
-- Admin user management.
-- Academic terms, courses, course offerings, staff assignments, and enrollment foundations.
-- Professor and assistant assigned-offering visibility.
-- Question bank APIs and frontend pages.
-- Monaco-based technical question authoring.
-- Manual exam draft creation and question attachment.
-- Random question generation and replacement from the offering question bank.
-- Exam publish workflow with readiness checks.
-- Student visibility rules for eligible published exams.
-- Student attempt screen with draft save, restore after refresh, final submit, and duplicate-submit protection.
-- Grading and result publication flow.
-- Student result visibility page with pending and published states.
-- Baseline exam-integrity event tracking and lockdown readiness configuration.
-- SMU integration contract, readiness page, and source-aware admin review mode for synced academic data.
-- Student journey validation checkpoints for attempt readiness, autosave, submit safety, and result visibility.
-- Role dashboard demo-readiness checkpoints for university presentation flow.
-- Professional branch, commit, pull request, and sprint handoff workflow documentation.
-- Release QA evidence checklist for screenshots, role walkthroughs, build evidence, and known limitations.
-- Demo operations runbook for local startup, troubleshooting, port checks, and presentation control.
-- University UI consistency review for dropdowns, tables, empty states, academic tone, and responsive behavior.
-- Student exam focus layout with visible progress, autosave, safety, policy, flagged question, and submit review signals.
+- ASP.NET Core Web API with PostgreSQL and EF Core migrations.
+- React/Vite frontend with protected role routes.
+- JWT authentication and password change.
+- Admin user, academic, enrollment, carry-over, SMU, and report pages.
+- Professor/assistant offering-scoped question bank and exam workflows.
+- Exam details, question attachment, generation, replacement, publish/unpublish.
+- Student exam entry, rules screen, timer, autosave, technical answer run preview, and submit.
+- Live monitor with access code, approval/reject/revoke/remove, device request, heartbeat, and integrity stream.
+- Gradebook with attempt review, AI-assisted suggestions, manual overrides, final score, percentage, grade, CSV export, and result publication.
+- Student results page using professor-published grading values.
+- Audit logs and institutional UI polish.
 
-## 13.2 Completed or Mostly Completed Areas
+## 13.2 Completed Areas
 
-- Sprint 1 through Sprint 10 baseline planning and implementation areas are represented in the repository.
-- Sprint 11 has implemented assistant workspace, question bank, and code authoring foundations.
-- Sprint 12 has implemented manual exam authoring, random generation, exam delivery, and integration foundations.
-- Sprint 13 has implemented AI-assisted review and result publication foundations.
-- Sprint 14 has implemented carry-over progression foundation, security stabilization, and final delivery planning.
-- Sprint 15 through Sprint 17 have implemented the student exam session UI, autosave safety, and student result visibility for Agnesa's track.
-- Sprint 22 through Sprint 23 have implemented SMU readiness and frontend source-of-truth handling for Agnesa's admin screens.
-- Sprint 24 has added a repeatable student journey validation guide and visible frontend checkpoints for demo testing.
-- Sprint 25 has added role-based university demo readiness checkpoints and a presentation checklist.
-- Sprint 26 has added a professional change workflow so each sprint can be reviewed and handed off cleanly.
-- Sprint 27 has added release QA evidence documentation for final demo and review readiness.
-- Sprint 28 has added a demo operations runbook for startup reliability and common local failure recovery.
-- Sprint 29 has added university UI consistency standards and shared styling improvements for professional presentation.
-- Sprint 30 has improved the student attempt screen with a focused workspace summary and navigator review controls.
+- Authentication and authorization foundation.
+- Academic data model and admin management.
+- Assigned offering visibility for professors and assistants.
+- Student eligibility filtering.
+- Question bank and technical question metadata.
+- Simplified exam creation and backend metadata validation.
+- Question generation cleanup.
+- Access-code exam entry and live monitoring.
+- Integrity event capture and policy messaging.
+- Gradebook review and result publication.
+- Student result visibility.
+- SMU readiness and sync endpoints.
+- English/Albanian UI support.
+- README and documentation refresh.
 
 ## 13.3 Remaining Risks
 
-- Sprint statuses in Notion may not always match implementation status after recent commits.
-- Text/code/SQL grading still needs additional polish and edge-case review.
-- Integrity features currently capture and display baseline events; stronger policy enforcement and Safe Exam Browser integration remain future work.
-- SMU integration still depends on final external API availability and team agreement on production sync scheduling.
+- SQL/C# Run is a safe preview, not a production execution sandbox.
+- Browser integrity controls are advisory without secure-browser enforcement.
+- Some legacy docs/work logs may describe historical sprint states rather than final behavior.
+- External SMU production behavior depends on final API availability and institutional rules.
+- Frontend bundle size may require code splitting before production deployment.
 
 ## 13.4 Recommended Next Steps
 
-1. Keep each sprint on its own branch and pull request.
-2. Use the manual test guide before opening or merging demo-critical pull requests.
-3. Use the professional change workflow before pushing sprint branches.
-4. Attach release QA evidence before final demo or delivery review.
-5. Run the demo operations checklist before presenting the application live.
-6. Apply the university UI consistency checklist to each remaining demo-critical page.
-7. Continue applying focused layout reviews to staff gradebook, exam authoring, and admin review screens.
-8. Validate the SMU sync with the external academic-management project before fully removing fallback admin operations.
+1. Run the manual QA guide before professor review.
+2. Verify published gradebook results match student results for multiple score totals.
+3. Test access-code expiry, approval, revoke, and auto-submit scenarios.
+4. Validate question bank SQL/C# metadata and student technical Run previews.
+5. Confirm all visible Albanian/English text on key pages.
+6. Prepare screenshots for login, admin, professor, assistant, student exam, gradebook, and results.
+7. Keep new changes in small branches with professional PR descriptions.

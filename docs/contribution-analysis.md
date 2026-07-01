@@ -42,7 +42,7 @@ Important: insertions/deletions include generated files such as EF migrations/sn
 - Backend and exam security: question/exam EF relationship fixes, DTO cleanup, secure exam access code lifecycle, secure exam session binding, student exam lifecycle security, and proctoring/access revocation fixes.
 - Academic and enrollment workflows: admin enrollment management, academic structure support, carry-over/progression unlock workflow.
 - Exam authoring and grading workflows: manual exam authoring workflow, professor assessment workflow, question generation workflow stabilization, grading review and result publication UI/workflow refinements.
-- Documentation and QA: documentation skeleton, intro/scope/NFR/security roadmap, work logs, release QA evidence, demo operations runbook, professional handoff workflow, demo readiness materials.
+- Documentation and QA: documentation skeleton, intro/scope/NFR/security roadmap, work logs, release QA evidence, operations runbook, professional handoff workflow, and presentation readiness materials.
 
 ### Most-Touched Files
 
@@ -106,7 +106,7 @@ Agnesa's work is spread across UI polish, academic/admin workflows, exam securit
 
 ### Representative Implementation Commits
 
-- `6328422`, `0bd57b3`, `2c673c8`, `b3044df` - frontend scaffold, mock auth, API helper, login/dashboard polish.
+- `6328422`, `0bd57b3`, `2c673c8`, `b3044df` - frontend scaffold, API helper, login/dashboard polish, and early authentication wiring.
 - `db881db`, `59391b9` - academic structure backend modules and login/CORS setup.
 - `677caef` - dashboard metrics from database.
 - `a9719bc`, `8661576`, `29ea4cd` - question bank workflow, random exam generation, question type changes.

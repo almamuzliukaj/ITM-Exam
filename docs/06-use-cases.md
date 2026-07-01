@@ -1,110 +1,100 @@
 # 6. Use Cases
 
-## UC-01: User Login
+## UC-01: Login and Role Routing
 
-**Primary actors:** Admin, Professor, Assistant, Student
+**Actors:** Admin, Professor, Assistant, Student
 
-**Preconditions:** The user account exists and is active.
+1. User enters email and password.
+2. API validates credentials and account status.
+3. API returns JWT and user profile.
+4. Frontend stores auth data and redirects to the role workspace.
 
-**Main flow:**
+**Result:** User sees only routes allowed by role guards.
 
-1. The user opens the login page.
-2. The user enters credentials.
-3. The backend validates the credentials.
-4. The system returns an authentication token and user role.
-5. The frontend redirects the user to the correct workspace.
+## UC-02: Admin Maintains Academic Structure
 
-**Postcondition:** The user is authenticated and can access role-appropriate pages.
+**Actor:** Admin
 
-## UC-02: Admin Creates Academic Structure
+1. Admin creates or updates terms and courses.
+2. Admin creates course offerings with academic year, semester, year of study, section, and capacity.
+3. Admin assigns professor and assistant staff.
+4. Admin publishes or closes offerings.
 
-**Primary actor:** Admin
+**Result:** Staff and students can use offering-linked workflows.
 
-**Main flow:**
+## UC-03: Admin Manages Eligibility
 
-1. Admin creates or updates an academic term.
-2. Admin creates or updates catalog courses.
-3. Admin creates course offerings for a term.
-4. Admin assigns professor and assistant staff.
-5. Admin publishes the offering when ready.
+**Actor:** Admin
 
-**Postcondition:** The offering is available for staff assignment and enrollment workflows.
+1. Admin creates semester enrollment.
+2. Admin creates or regularizes student course enrollments.
+3. Admin manages carry-over records when needed.
+4. System uses these records to calculate student visibility.
 
-## UC-03: Admin Manages Student Eligibility
+**Result:** Students see only eligible exams.
 
-**Primary actor:** Admin
+## UC-04: Staff Creates Technical Question
 
-**Main flow:**
+**Actors:** Professor, Assistant
 
-1. Admin creates semester enrollment for a student.
-2. Admin links the student to eligible course offerings.
-3. Admin marks whether the student is eligible for exams.
-4. Admin manages carry-over eligibility when needed.
+1. Staff opens question bank for an assigned offering.
+2. Staff selects MCQ, Text, C#, or SQL.
+3. For SQL/C#, staff enters prompt, schema or starter code, expected output, model answer, and grading notes.
+4. Backend validates role, offering access, and question type.
 
-**Postcondition:** Student exam visibility can be calculated from enrollment records.
+**Result:** Question is stored and can be reused in exams.
 
-## UC-04: Staff Manages Question Bank
+## UC-05: Professor Creates and Publishes Exam
 
-**Primary actors:** Professor, Assistant
+**Actor:** Professor
 
-**Main flow:**
+1. Professor selects an assigned course offering.
+2. System fills academic metadata and generates a title fallback if needed.
+3. Professor attaches questions manually or generates a random set.
+4. Professor publishes the exam after readiness validation.
 
-1. Staff opens the question bank for an assigned offering.
-2. Staff creates or edits MCQ, text, C#, or SQL questions.
-3. The system validates options, correct answers, type, and ownership.
-4. The question is stored for that offering context.
+**Result:** Eligible students can see the exam.
 
-**Postcondition:** The question can be used in exam authoring.
+## UC-06: Student Starts Exam
 
-## UC-05: Staff Builds Manual Exam
-
-**Primary actors:** Professor, Assistant
-
-**Main flow:**
-
-1. Staff creates an exam draft.
-2. Staff opens the exam details page.
-3. Staff manually adds questions.
-4. The system keeps the exam as draft until it is published.
-
-**Postcondition:** The exam draft contains selected questions and can move toward publication.
-
-## UC-06: Staff Generates Random Exam Questions
-
-**Primary actors:** Professor, Assistant
-
-**Main flow:**
-
-1. Staff selects a draft exam linked to an offering.
-2. Staff chooses count and optional question type.
-3. The system selects compatible questions from the offering question bank.
-4. Staff reviews or replaces generated questions.
-
-**Postcondition:** The draft exam has generated questions ready for review.
-
-## UC-07: Staff Publishes Exam
-
-**Primary actors:** Professor, Assistant
-
-**Main flow:**
-
-1. Staff clicks publish on a draft exam.
-2. The backend validates ownership, offering link, and question presence.
-3. The system marks the exam as published.
-
-**Alternative flow:** If the exam has no questions or no offering, publication is rejected.
-
-**Postcondition:** Eligible students can see the published exam.
-
-## UC-08: Student Submits Exam Attempt
-
-**Primary actor:** Student
-
-**Main flow:**
+**Actor:** Student
 
 1. Student opens an eligible published exam.
-2. Student answers available questions.
-3. Student submits the attempt.
-4. The system stores answers and score details.
+2. Student enters the active access code or requests staff approval.
+3. System displays rules before starting the timer.
+4. Student continues into the attempt workspace.
 
-**Postcondition:** The attempt is available for grading or result workflows.
+**Result:** Timer starts only after approved entry.
+
+## UC-07: Student Answers and Submits Exam
+
+**Actor:** Student
+
+1. Student answers MCQ/text/SQL/C# questions.
+2. Technical Run validates the current draft without submitting.
+3. Autosave stores progress.
+4. Student submits manually or system auto-submits by policy.
+
+**Result:** Attempt is stored for grading.
+
+## UC-08: Staff Monitors Exam
+
+**Actors:** Professor, Assistant
+
+1. Staff opens live monitor.
+2. Staff generates an entry code.
+3. Staff reviews student status, approvals, device requests, and integrity events.
+4. Staff can allow, reject, revoke, or remove access.
+
+**Result:** Classroom entry and attempt state remain visible.
+
+## UC-09: Professor Grades and Publishes Results
+
+**Actor:** Professor
+
+1. Professor opens gradebook for a submitted attempt.
+2. Professor reviews answers, AI suggestions, and integrity flags.
+3. Professor adjusts per-question points and feedback.
+4. Professor saves review and publishes results.
+
+**Result:** Student sees the published score, percentage, and grade exactly as approved.

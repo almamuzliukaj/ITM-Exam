@@ -263,10 +263,6 @@ function ResultCard({ result, t }) {
         <p>{formatCourseLabel(result)} · {result.instructorType || "Professor"} {result.instructorName || ""}</p>
         <p>Exam taken {formatDateTime(result.examTakenAt || result.submittedAt)}</p>
       </div>
-      <div className="resultScoreBlock">
-        <strong>{formatScore(result.finalScore)}</strong>
-        <span>{t("studentResults.finalScore")}</span>
-      </div>
       <dl className="resultMetaList">
         <div>
           <dt>{t("studentResults.grade")}</dt>

@@ -126,7 +126,7 @@ export default function AppShell({
             ×
           </button>
 
-          <div className="sidebarIdentity">
+          <div className={`sidebarIdentity${user?.role === "Student" ? " sidebarIdentityStudent" : ""}`}>
             {user?.role === "Student" ? (
               <StudentIdentityCard identity={user} compact />
             ) : (

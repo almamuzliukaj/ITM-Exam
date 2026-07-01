@@ -138,6 +138,10 @@
   padding: 10px;
 }
 
+.sidebarIdentityStudent{
+  display: block;
+}
+
 .avatarCircle{
   width: 36px;
   height: 36px;
@@ -1419,6 +1423,26 @@ input[type="radio"]{
 
 .sidebarIdentity .studentIdentityDetails .summaryLabel{
   color: rgba(255, 255, 255, .72);
+}
+
+.sidebarIdentityStudent .studentIdentityCard{
+  align-items: center;
+  width: 100%;
+}
+
+.sidebarIdentityStudent .studentIdentityPhoto{
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+}
+
+.sidebarIdentityStudent .studentIdentityDetails{
+  gap: 1px;
+}
+
+.sidebarIdentityStudent .studentIdentityDetails .summaryLabel{
+  max-width: 140px;
+  line-height: 1.15;
 }
 
 .officialPhotoUploadButton{
@@ -4219,7 +4243,7 @@ input[type="radio"]{
 
 .resultCard{
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, .22fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   padding: 18px;
   border: 1px solid var(--border);

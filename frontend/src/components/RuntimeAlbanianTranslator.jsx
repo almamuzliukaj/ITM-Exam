@@ -782,6 +782,7 @@ const ATTRIBUTE_TRANSLATIONS = {
 };
 
 const textOriginals = new WeakMap();
+const textTranslations = new WeakMap();
 const attributeNames = ["placeholder", "aria-label", "title"];
 
 export default function RuntimeAlbanianTranslator() {
@@ -952,9 +953,16 @@ export default function RuntimeAlbanianTranslator() {
 
       textNodes.forEach((node) => {
         if (!textOriginals.has(node)) textOriginals.set(node, node.nodeValue);
+        const previousTranslation = textTranslations.get(node);
+        if (previousTranslation !== undefined && node.nodeValue !== previousTranslation) {
+          textOriginals.set(node, node.nodeValue);
+        }
         const original = textOriginals.get(node);
         const nextValue = useAlbanian ? translateText(original) : original;
-        if (node.nodeValue !== nextValue) node.nodeValue = nextValue;
+        textTranslations.set(node, nextValue);
+        if (node.nodeValue !== nextValue) {
+          node.nodeValue = nextValue;
+        }
       });
 
       root.querySelectorAll("*").forEach((element) => {

@@ -522,9 +522,12 @@ export default function StudentExamSessionPage() {
       setAutoSubmitFailed(false);
       const nextResult = { ...submission, reason, integritySummary: reason === "integrity-policy" ? autoSubmitSummaryRef.current : null };
       setResult(nextResult);
+
       if (options.redirectToExams) {
         window.setTimeout(() => navigate("/exams", { state: { submitted: true, reason } }), 1200);
       }
+
+
       return true;
     } catch (err) {
       submittedRef.current = false;

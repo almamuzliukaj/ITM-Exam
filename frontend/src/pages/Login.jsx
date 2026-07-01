@@ -9,16 +9,9 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const returnTo = searchParams.get("returnTo");
-  const isExamAttemptLogin = Boolean(returnTo?.includes("/attempt"));
-  const presets = [
-    { label: t("login.presets.admin"), email: "admin@onlineexam.com", password: "Password123!" },
-    { label: t("login.presets.professor"), email: "prof@onlineexam.com", password: "Password123!" },
-    { label: t("login.presets.assistant"), email: "assistant@onlineexam.com", password: "Password123!" },
-    { label: t("login.presets.student"), email: "student@onlineexam.com", password: "Password123!" },
-  ];
 
-  const [email, setEmail] = useState(isExamAttemptLogin ? "student@onlineexam.com" : "admin@onlineexam.com");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -82,22 +75,6 @@ export default function Login() {
             <div>
               <h2 className="panelTitle">{t("login.signIn")}</h2>
               <p className="panelText">{t("login.signInText")}</p>
-            </div>
-
-            <div className="presetRow">
-              {presets.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className="presetChip"
-                  onClick={() => {
-                    setEmail(preset.email);
-                    setPassword(preset.password);
-                  }}
-                >
-                  {preset.label}
-                </button>
-              ))}
             </div>
 
             <form className="stackLg" onSubmit={onSubmit}>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { getSmuContract, getSmuLivePreview, runSmuSync } from "../../lib/smuApi";
 
@@ -17,6 +18,7 @@ export default function AdminSmuIntegrationPage() {
   const [syncing, setSyncing] = useState(false);
   const [pageError, setPageError] = useState("");
   const [pageSuccess, setPageSuccess] = useState("");
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
 
   const previewCounts = useMemo(() => {
     if (!preview) return null;
@@ -63,9 +65,10 @@ export default function AdminSmuIntegrationPage() {
   }
 
   async function handleSync() {
-    const confirmed = window.confirm(tx("syncConfirm"));
-    if (!confirmed) return;
+    setSyncConfirmOpen(true);
+  }
 
+  async function confirmSync() {
     try {
       setSyncing(true);
       setPageError("");
@@ -73,6 +76,7 @@ export default function AdminSmuIntegrationPage() {
       const result = await runSmuSync();
       setSyncResult(result);
       setPageSuccess(tx("syncCompleted"));
+      setSyncConfirmOpen(false);
     } catch (error) {
       setPageError(readError(error, tx("errors.sync")));
     } finally {
@@ -103,6 +107,17 @@ export default function AdminSmuIntegrationPage() {
       <div className="stackXl">
         {pageError ? <div className="alert">{pageError}</div> : null}
         {pageSuccess ? <div className="successBanner">{pageSuccess}</div> : null}
+        {syncConfirmOpen ? (
+          <ConfirmDialog
+            title="Run academic data synchronization?"
+            confirmLabel={syncing ? tx("syncing") : tx("runSync")}
+            confirmDisabled={syncing}
+            onCancel={() => setSyncConfirmOpen(false)}
+            onConfirm={confirmSync}
+          >
+            <p>{tx("syncConfirm")}</p>
+          </ConfirmDialog>
+        ) : null}
 
         <section className="adminDashboardHero adminDashboardHeroCompact">
           <div className="adminDashboardHeroCopy">

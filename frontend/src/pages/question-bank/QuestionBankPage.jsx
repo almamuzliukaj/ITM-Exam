@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import AppShell from "../../components/AppShell";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { listMyOfferings } from "../../lib/academicApi";
 import {
@@ -68,6 +69,7 @@ export default function QuestionBankPage() {
   const [questionForm, setQuestionForm] = useState(initialQuestionForm);
   const [formErrors, setFormErrors] = useState({});
   const [savingQuestion, setSavingQuestion] = useState(false);
+  const [pendingDeleteQuestion, setPendingDeleteQuestion] = useState(null);
 
   const selectedOfferingId = searchParams.get("offeringId") || "";
 
@@ -266,15 +268,19 @@ export default function QuestionBankPage() {
   }
 
   async function handleDelete(questionId) {
-    if (!window.confirm(t("questionBank.deleteConfirm"))) {
-      return;
-    }
+    const question = questions.find((item) => item.id === questionId);
+    setPendingDeleteQuestion(question || { id: questionId });
+  }
+
+  async function confirmDeleteQuestion() {
+    if (!pendingDeleteQuestion?.id) return;
 
     try {
       setError("");
       setSuccess("");
-      await deleteQuestionBankQuestion(questionId);
-      setQuestions((current) => current.filter((item) => item.id !== questionId));
+      await deleteQuestionBankQuestion(pendingDeleteQuestion.id);
+      setQuestions((current) => current.filter((item) => item.id !== pendingDeleteQuestion.id));
+      setPendingDeleteQuestion(null);
     } catch {
       setError(t("questionBank.deleteError"));
     }
@@ -298,6 +304,23 @@ export default function QuestionBankPage() {
       <div className="stackXl questionBankWorkspace">
         {error ? <div className="alert">{error}</div> : null}
         {success ? <div className="successBanner">{success}</div> : null}
+        {pendingDeleteQuestion ? (
+          <ConfirmDialog
+            title="Delete question from bank?"
+            tone="danger"
+            confirmLabel="Delete question"
+            onCancel={() => setPendingDeleteQuestion(null)}
+            onConfirm={confirmDeleteQuestion}
+          >
+            <p>{t("questionBank.deleteConfirm")}</p>
+            {pendingDeleteQuestion.text ? (
+              <div className="confirmationSubject">
+                <strong>{pendingDeleteQuestion.type || "Question"}</strong>
+                <span>{pendingDeleteQuestion.text}</span>
+              </div>
+            ) : null}
+          </ConfirmDialog>
+        ) : null}
 
         <section className="surfaceCard listControlPanel">
           <div className="sectionHeader">

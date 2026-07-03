@@ -415,29 +415,65 @@ public class ExamsController : ControllerBase
     [Authorize(Roles = "Professor,Assistant")]
     public async Task<IActionResult> DeleteExam(Guid id)
     {
-        var exam = await _context.Exams.FindAsync(id);
+        var exam = await _context.Exams
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (exam == null)
             return NotFound();
 
         if (exam.Description.StartsWith(QuestionBankMarker))
             return NotFound();
 
-        if (exam.IsPublished || exam.Status == "Published")
-            return BadRequest(new { message = "Published exams cannot be deleted. Only draft exams can be deleted." });
-
         var userId = GetCurrentUserId();
         if (userId == null)
             return Unauthorized();
 
-        if (exam.CreatedByUserId != userId.Value)
+        if (!await CanManageExamAsync(exam))
             return Forbid();
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        var integrityEvents = await _context.ExamIntegrityEvents
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+        var sessionBindings = await _context.ExamSessionBindings
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+        var accessCodes = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+        var studentAccesses = await _context.ExamStudentAccesses
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+        var questions = await _context.Questions
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+        var attempts = await _context.ExamAttempts
+            .Where(x => x.ExamId == id)
+            .ToListAsync();
+
+        _context.ExamIntegrityEvents.RemoveRange(integrityEvents);
+        _context.ExamSessionBindings.RemoveRange(sessionBindings);
+        _context.ExamAccessCodes.RemoveRange(accessCodes);
+        _context.ExamStudentAccesses.RemoveRange(studentAccesses);
+        _context.Questions.RemoveRange(questions);
+        _context.ExamAttempts.RemoveRange(attempts);
         _context.Exams.Remove(exam);
         await _context.SaveChangesAsync();
+
         await _auditLogService.LogAsync("Exam.Deleted", "Exam", id, new
         {
-            exam.Title
+            exam.Title,
+            exam.Status,
+            exam.IsPublished,
+            removedQuestions = questions.Count,
+            removedAttempts = attempts.Count,
+            removedAccessCodes = accessCodes.Count,
+            removedStudentAccesses = studentAccesses.Count,
+            removedSessionBindings = sessionBindings.Count,
+            removedIntegrityEvents = integrityEvents.Count
         }, "ExamAuthoring");
+
+        await transaction.CommitAsync();
 
         return NoContent();
     }
@@ -1224,11 +1260,15 @@ public class ExamsController : ControllerBase
 
         var now = DateTime.UtcNow;
         var access = await GetOrCreateStudentAccessAsync(exam.Id, userId.Value);
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        if (requiresCode && access.VerifiedAt == null)
+            return BadRequest(new { message = "Enter and verify the exam access code before requesting physical approval." });
+
         if (IsStudentAccessGranted(access))
         {
             return Ok(new ExamAccessStatusDto
             {
-                RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+                RequiresCode = requiresCode,
                 HasAccess = true,
                 AccessStatus = access.AccessStatus,
                 VerifiedAt = access.VerifiedAt,
@@ -1241,7 +1281,7 @@ public class ExamsController : ControllerBase
         }
 
         access.AccessStatus = StudentAccessStatusApprovalRequested;
-        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested professor approval.";
+        access.ApprovalReason = NormalizeOptionalValue(dto?.Reason) ?? "Student requested exam staff approval.";
         access.LastActivityAt = now;
 
         await _context.SaveChangesAsync();
@@ -1255,7 +1295,7 @@ public class ExamsController : ControllerBase
 
         return Ok(new ExamAccessStatusDto
         {
-            RequiresCode = await RequiresEntryCodeAsync(exam.Id),
+            RequiresCode = requiresCode,
             HasAccess = false,
             AccessStatus = access.AccessStatus,
             VerifiedAt = access.VerifiedAt,
@@ -1354,7 +1394,7 @@ public class ExamsController : ControllerBase
             StudentIdentity = await BuildStudentIdentityDtoAsync(userId.Value),
             ServerTimeUtc = now,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            Message = "Access code verified. Please wait for the professor to approve your physical identity before the rules screen opens."
+            Message = "Access code verified. Please wait for the professor or assistant to approve your physical identity before the rules screen opens."
         });
     }
 
@@ -1460,6 +1500,10 @@ public class ExamsController : ControllerBase
 
         var now = DateTime.UtcNow;
         var access = await GetOrCreateStudentAccessAsync(exam.Id, studentId);
+        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
+        if (requiresCode && access.VerifiedAt == null)
+            return BadRequest(new { message = "The student must verify the active exam access code before physical approval." });
+
         var wasRemoved = access.AccessStatus == StudentAccessStatusRemoved;
         access.AccessStatus = StudentAccessStatusManuallyApproved;
         access.ApprovedByUserId = userId.Value;
@@ -1490,14 +1534,14 @@ public class ExamsController : ControllerBase
             integrityPolicyReset = wasRemoved && attempt != null && attempt.Status != ExamAttemptSubmittedStatus
         }, "ExamDelivery");
 
-        var requiresCode = await RequiresEntryCodeAsync(exam.Id);
         var activeCode = requiresCode ? await GetActiveExamAccessCodeAsync(exam.Id) : null;
+        var hasAccess = IsStudentAccessGranted(access);
 
         return Ok(new ExamAccessStatusDto
         {
             RequiresCode = requiresCode,
             HasActiveCode = activeCode != null,
-            HasAccess = true,
+            HasAccess = hasAccess,
             AccessStatus = access.AccessStatus,
             ActiveCodeExpiresAt = activeCode?.ExpiresAt,
             VerifiedAt = access.VerifiedAt,
@@ -1506,7 +1550,7 @@ public class ExamsController : ControllerBase
             ServerTimeUtc = now,
             ApprovalReason = access.ApprovalReason,
             CodeLifetimeSeconds = ExamAccessCodeLifetimeMinutes * 60,
-            Message = "Student access approved."
+            Message = BuildAccessStatusMessage(hasAccess, access.AccessStatus, requiresCode)
         });
     }
 
@@ -2014,7 +2058,7 @@ public class ExamsController : ControllerBase
                 return "Device change approval is required before continuing this exam.";
 
             if (access?.AccessStatus == StudentAccessStatusWaitingForPhysicalVerification)
-                return "Physical professor approval is required before starting this exam.";
+                return "Physical staff approval is required before starting this exam.";
 
             if (!IsStudentAccessGranted(access))
                 return "Enter the exam access code before starting this exam.";
@@ -2025,7 +2069,8 @@ public class ExamsController : ControllerBase
 
     private async Task<bool> RequiresEntryCodeAsync(Guid examId)
     {
-        return await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == examId);
+        return await _context.ExamAccessCodes.AnyAsync(x => x.ExamId == examId) ||
+               await _context.Exams.AnyAsync(x => x.Id == examId && x.IsPublished && x.Status == "Published");
     }
 
     private async Task<ExamAccessCode?> GetActiveExamAccessCodeAsync(Guid examId, DateTime? at = null)
@@ -2128,7 +2173,16 @@ public class ExamsController : ControllerBase
 
     private static bool IsStudentAccessGranted(ExamStudentAccess? access)
     {
-        return access?.AccessStatus is StudentAccessStatusManuallyApproved or StudentAccessStatusStarted or StudentAccessStatusSubmitted;
+        if (access == null)
+            return false;
+
+        return access.AccessStatus switch
+        {
+            StudentAccessStatusManuallyApproved => access.VerifiedAt.HasValue && access.ApprovedAt.HasValue,
+            StudentAccessStatusStarted => access.VerifiedAt.HasValue && access.ApprovedAt.HasValue,
+            StudentAccessStatusSubmitted => true,
+            _ => false
+        };
     }
 
     private static string BuildAccessStatusMessage(bool hasAccess, string? accessStatus, bool requiresCode)
@@ -2138,12 +2192,12 @@ public class ExamsController : ControllerBase
 
         return accessStatus switch
         {
-            StudentAccessStatusWaitingForPhysicalVerification => "Access code verified. Wait for physical identity approval from your professor before starting.",
-            StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor before starting the exam.",
-            StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or enter a valid code.",
+            StudentAccessStatusWaitingForPhysicalVerification => "Access code verified. Wait for physical identity approval from your professor or assistant before starting.",
+            StudentAccessStatusApprovalRequested => "Approval request sent. Wait for your professor or assistant before starting the exam.",
+            StudentAccessStatusRejected => "Your manual admission request was rejected. Contact your professor or assistant, or enter a valid code.",
             StudentAccessStatusRemoved => "You were removed from this live exam session by staff.",
             StudentAccessStatusDeviceChangeRequested => "Device change request sent. Wait for staff approval before continuing.",
-            _ when requiresCode => "Enter the exam access code provided by the professor or request manual approval.",
+            _ when requiresCode => "Enter the exam access code provided by the professor or assistant, or request manual approval.",
             _ => "Access is available."
         };
     }
@@ -2422,6 +2476,33 @@ public class ExamsController : ControllerBase
         exam.PublishedAt = DateTime.UtcNow;
         exam.UnpublishedAt = null;
         exam.UpdatedAt = DateTime.UtcNow;
+
+        var now = DateTime.UtcNow;
+        await DeactivateExpiredAccessCodesAsync(exam.Id, now);
+        var activeCodes = await _context.ExamAccessCodes
+            .Where(x => x.ExamId == exam.Id && x.IsActive && x.RevokedAt == null)
+            .ToListAsync();
+
+        foreach (var accessCode in activeCodes)
+        {
+            accessCode.IsActive = false;
+            accessCode.RevokedAt = now;
+            accessCode.RevokedByUserId = userId.Value;
+        }
+
+        var plainCode = GenerateAccessCode();
+        var createdCode = new ExamAccessCode
+        {
+            Id = Guid.NewGuid(),
+            ExamId = exam.Id,
+            CodeHash = HashAccessCode(plainCode, exam.Id),
+            GeneratedByUserId = userId.Value,
+            GeneratedAt = now,
+            ExpiresAt = now.AddMinutes(ExamAccessCodeLifetimeMinutes),
+            IsActive = true
+        };
+
+        _context.ExamAccessCodes.Add(createdCode);
         await _context.SaveChangesAsync();
         await _auditLogService.LogAsync("Exam.Published", "Exam", exam.Id, new
         {
@@ -2431,10 +2512,27 @@ public class ExamsController : ControllerBase
             exam.PublishedAt,
             exam.RequiresLockdown,
             exam.AllowedClient,
-            exam.LockdownMode
+            exam.LockdownMode,
+            accessCodeExpiresAt = createdCode.ExpiresAt,
+            replacedAccessCodeCount = activeCodes.Count
         }, "ExamAuthoring");
 
-        return Ok(new { message = "Exam published!", examId = id });
+        await _auditLogService.LogAsync("ExamAccess.CodeGeneratedOnPublish", "Exam", exam.Id, new
+        {
+            examId = exam.Id,
+            createdCode.GeneratedAt,
+            createdCode.ExpiresAt,
+            revokedCodeCount = activeCodes.Count
+        }, "ExamDelivery");
+
+        return Ok(new
+        {
+            message = "Exam published!",
+            examId = id,
+            accessCode = plainCode,
+            accessCodeGeneratedAt = createdCode.GeneratedAt,
+            accessCodeExpiresAt = createdCode.ExpiresAt
+        });
     }
 
     [HttpPost("{id:guid}/unpublish")]

@@ -24,6 +24,8 @@ export default function StudentExamSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitReview, setShowSubmitReview] = useState(false);
   const [showFinalWarning, setShowFinalWarning] = useState(false);
+  const [showCameraPermissionIntro, setShowCameraPermissionIntro] = useState(false);
+  const [startingSecureSession, setStartingSecureSession] = useState(false);
   const [autoActionCountdown, setAutoActionCountdown] = useState(null);
   const [autoSubmitNotice, setAutoSubmitNotice] = useState(null);
   const [autoSubmitFailed, setAutoSubmitFailed] = useState(false);
@@ -33,7 +35,6 @@ export default function StudentExamSessionPage() {
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [accessStatus, setAccessStatus] = useState(null);
   const [entryCode, setEntryCode] = useState("");
-  const [entryPromptStarted, setEntryPromptStarted] = useState(false);
   const [verifyingEntryCode, setVerifyingEntryCode] = useState(false);
   const [requestingApproval, setRequestingApproval] = useState(false);
   const [integrityEvents, setIntegrityEvents] = useState([]);
@@ -62,6 +63,7 @@ export default function StudentExamSessionPage() {
   const approvalRejected = accessStatus?.accessStatus === "Rejected";
   const sessionRemoved = sessionControlState?.accessStatus === "Removed";
   const sessionRejected = sessionControlState?.accessStatus === "Rejected";
+  const canStartLiveSession = canEnterLiveExamSession(accessStatus);
 
   const storageKey = useMemo(() => {
     const userKey = user?.id || user?.email || "student";
@@ -107,6 +109,11 @@ export default function StudentExamSessionPage() {
           setTimeRemaining(0);
           setResult({ reason: "submitted-lock", examAttemptId: "" });
           setLoading(false);
+          return;
+        }
+
+        if (isLiveSession && !canEnterLiveExamSession(accessData)) {
+          await leaveBlockedLiveSession();
           return;
         }
 
@@ -174,6 +181,8 @@ export default function StudentExamSessionPage() {
           setQuestions([]);
           setResult({ reason: "submitted-lock", examAttemptId: "" });
           setError("");
+        } else if (active && isLiveSession && isExamAccessBlockMessage(message)) {
+          await leaveBlockedLiveSession(message);
         } else if (active) {
           setError(message);
         }
@@ -182,11 +191,29 @@ export default function StudentExamSessionPage() {
       }
     }
 
+    async function leaveBlockedLiveSession(message = "Verify the exam access code and wait for physical approval before starting.") {
+      setQuestions([]);
+      setSessionTiming(null);
+      setTimeRemaining(0);
+      setAttemptId("");
+      setError("");
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen().catch(() => {});
+      }
+      navigate(`/exams/${examId}/attempt`, {
+        replace: true,
+        state: {
+          accessRequired: true,
+          accessMessage: message,
+        },
+      });
+    }
+
     loadSession();
     return () => {
       active = false;
     };
-  }, [examId, isLiveSession, storageKey, user]);
+  }, [examId, isLiveSession, navigate, storageKey, user]);
 
   useEffect(() => {
     if (isLiveSession) return;
@@ -696,21 +723,38 @@ export default function StudentExamSessionPage() {
 
   async function startLiveSession() {
     setError("");
-    if (accessStatus?.requiresCode && !accessStatus?.hasAccess) {
-      setEntryPromptStarted(true);
+    if (!canEnterLiveExamSession(accessStatus)) {
       if (waitingForApproval) {
-        setError("Wait for professor approval before starting this exam. The timer has not started.");
+        setError("Wait for professor or assistant approval before starting this exam. The timer has not started.");
+      } else if (accessStatus?.hasActiveCode) {
+        setError("Enter the exam access code and wait for physical approval before starting.");
+      } else {
+        setError("The exam access code is not active yet. Ask the professor or assistant to generate the code before starting.");
       }
       return;
     }
 
+    setShowCameraPermissionIntro(true);
+  }
+
+  async function continueLiveSessionWithCamera() {
+    if (startingSecureSession) return;
+
     try {
+      setStartingSecureSession(true);
+      setShowCameraPermissionIntro(false);
+      setError("");
+
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         stream.getTracks().forEach((track) => track.stop());
+      } else {
+        setError("Camera access is not available in this browser. The exam can start, but this will be recorded as an integrity warning.");
       }
     } catch {
       setError("Camera permission was not granted. The exam can start, but this will be recorded as an integrity warning.");
+    } finally {
+      setStartingSecureSession(false);
     }
 
     await enterFullscreen();
@@ -738,7 +782,6 @@ export default function StudentExamSessionPage() {
       setError("");
       const updatedAccess = await verifyExamEntryCode(examId, entryCode);
       setAccessStatus(updatedAccess);
-      setEntryPromptStarted(true);
       setEntryCode("");
     } catch (err) {
       setError(getApiMessage(err, "The entry code could not be verified."));
@@ -749,6 +792,10 @@ export default function StudentExamSessionPage() {
 
   async function requestProfessorApproval() {
     if (!examId || requestingApproval) return;
+    if (!accessStatus?.verifiedAt) {
+      setError("Verify the exam access code before requesting physical approval.");
+      return;
+    }
 
     try {
       setRequestingApproval(true);
@@ -830,6 +877,11 @@ export default function StudentExamSessionPage() {
       >
         <div className="stackXl">
           {error ? <div className="alert">{error}</div> : null}
+          {location.state?.accessRequired ? (
+            <div className="alert">
+              {location.state?.accessMessage || "Verify the exam access code and wait for physical approval before starting."}
+            </div>
+          ) : null}
           {location.state?.submitted ? (
             <div className="successBanner">
               Exam submitted successfully. You are back in the normal application view.
@@ -846,24 +898,29 @@ export default function StudentExamSessionPage() {
             <div className="pageStateCard">Loading exam information...</div>
           ) : (
             <>
-              {accessStatus?.requiresCode ? (
-                entryPromptStarted || waitingForApproval || approvalRejected || accessStatus?.hasAccess ? (
-                  <ExamEntryCodePanel
-                    accessStatus={accessStatus}
-                    entryCode={entryCode}
-                    verifying={verifyingEntryCode}
-                    requestingApproval={requestingApproval}
-                    onEntryCodeChange={setEntryCode}
-                    onVerify={verifyEntryCode}
-                    onRequestApproval={requestProfessorApproval}
-                  />
-                ) : null
+              {!canStartLiveSession ? (
+                <ExamEntryCodePanel
+                  accessStatus={accessStatus}
+                  entryCode={entryCode}
+                  verifying={verifyingEntryCode}
+                  requestingApproval={requestingApproval}
+                  onEntryCodeChange={setEntryCode}
+                  onVerify={verifyEntryCode}
+                  onRequestApproval={requestProfessorApproval}
+                />
               ) : null}
               {waitingForApproval ? (
                 <ApprovalWaitingPanel accessStatus={accessStatus} />
               ) : null}
               {approvalRejected ? (
                 <ApprovalRejectedPanel accessStatus={accessStatus} onRequestAgain={requestProfessorApproval} requesting={requestingApproval} />
+              ) : null}
+              {showCameraPermissionIntro ? (
+                <CameraPermissionIntroModal
+                  starting={startingSecureSession}
+                  onCancel={() => setShowCameraPermissionIntro(false)}
+                  onContinue={continueLiveSessionWithCamera}
+                />
               ) : null}
               <section className="examBriefingHero">
                 <div>
@@ -874,12 +931,21 @@ export default function StudentExamSessionPage() {
                     monitors integrity events, and automatically submits if the violation limit is reached.
                   </p>
                 </div>
-                <button className="btn btnPrimary examStartButton" type="button" onClick={startLiveSession} disabled={waitingForApproval}>
-                  {accessStatus?.requiresCode && !accessStatus?.hasAccess
-                    ? "Start"
-                    : accessStatus?.hasAccess
-                      ? "Start exam"
-                      : "Start exam"}
+                <button
+                  className="btn btnPrimary examStartButton"
+                  type="button"
+                  onClick={startLiveSession}
+                  disabled={!canStartLiveSession || startingSecureSession}
+                >
+                  {startingSecureSession
+                    ? "Preparing secure session..."
+                    : canStartLiveSession
+                    ? "Start exam"
+                    : waitingForApproval
+                      ? "Waiting for approval"
+                      : accessStatus?.hasActiveCode
+                        ? "Verify code first"
+                        : "Waiting for access code"}
                 </button>
               </section>
 
@@ -981,9 +1047,9 @@ export default function StudentExamSessionPage() {
         {sessionControlState ? (
           <LiveSessionStatePanel
             tone={sessionRemoved || sessionRejected ? "danger" : "warning"}
-            title={sessionRemoved ? "Removed by professor" : sessionRejected ? "Admission rejected" : sessionControlState.accessStatus === "DeviceChangeRequested" ? "Device change pending" : "Session paused"}
+            title={sessionRemoved ? "Removed by exam staff" : sessionRejected ? "Admission rejected" : sessionControlState.accessStatus === "DeviceChangeRequested" ? "Device change pending" : "Session paused"}
             message={sessionControlState.message || "Your live exam access changed. The exam workspace has been closed for review."}
-            detail={sessionControlState.approvalReason || "Contact your professor before trying to re-enter."}
+            detail={sessionControlState.approvalReason || "Contact your professor or assistant before trying to re-enter."}
             actionLabel={sessionRemoved || sessionRejected ? "Return to exams" : "Request device change"}
             onAction={sessionRemoved || sessionRejected ? () => navigate("/exams") : requestDeviceChangeApproval}
           />
@@ -1123,7 +1189,7 @@ export default function StudentExamSessionPage() {
                     className="btn btnDanger btnBlock examNavigatorSubmit"
                     type="button"
                     onClick={() => submit("manual")}
-                    disabled={submitting || questions.length === 0 || interactionLocked}
+                    disabled={submitting || questions.length === 0}
                   >
                     {submitting ? "Submitting..." : "Submit exam"}
                   </button>
@@ -1346,7 +1412,7 @@ function TechnicalAnswerWorkspace({ question, value, starterCode, runResult, run
           </button>
         </div>
         <Editor
-          height="260px"
+          height="100%"
           defaultLanguage={language}
           language={language}
           value={editorValue}
@@ -1468,6 +1534,33 @@ function FinalWarningModal({ violationCount, locked, finalWarningThreshold, auto
   );
 }
 
+function CameraPermissionIntroModal({ starting, onCancel, onContinue }) {
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="camera-permission-title">
+      <section className="modalCard cameraPermissionModal">
+        <span className="summaryLabel">Secure camera check</span>
+        <h3 id="camera-permission-title">Enable camera monitoring</h3>
+        <p>
+          This exam uses the camera only during the active exam session to confirm student presence. Video frames are not stored by the application.
+        </p>
+        <div className="cameraPermissionChecklist" aria-label="Camera permission information">
+          <span>Keep your face visible during the exam.</span>
+          <span>Missing, blocked, or multiple faces may be logged as integrity warnings.</span>
+          <span>Your browser will show one final security permission prompt.</span>
+        </div>
+        <div className="modalFooter">
+          <button className="btn" type="button" onClick={onCancel} disabled={starting}>
+            Cancel
+          </button>
+          <button className="btn btnPrimary" type="button" onClick={onContinue} disabled={starting}>
+            {starting ? "Opening camera..." : "Enable camera and continue"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AutoSubmitNoticeModal({ notice, countdown, submitting }) {
   return (
     <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="auto-submit-title">
@@ -1492,30 +1585,34 @@ function AutoSubmitNoticeModal({ notice, countdown, submitting }) {
 }
 
 function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingApproval, onEntryCodeChange, onVerify, onRequestApproval }) {
-  const verified = Boolean(accessStatus?.hasAccess);
+  const verified = canEnterLiveExamSession(accessStatus);
   const waiting = ["ApprovalRequested", "WaitingForPhysicalVerification", "DeviceChangeRequested"].includes(accessStatus?.accessStatus);
   const rejected = accessStatus?.accessStatus === "Rejected";
+  const hasActiveCode = Boolean(accessStatus?.hasActiveCode);
+  const hasVerifiedCode = Boolean(accessStatus?.verifiedAt);
 
   return (
     <section className={`surfaceCard examEntryCodePanel ${verified ? "examEntryCodePanelReady" : ""}`}>
       <div className="sectionHeader">
         <div>
-          <h3>{verified ? "Physical admission approved" : waiting ? "Waiting for physical verification" : "Enter exam access code"}</h3>
+          <h3>{verified ? "Physical admission approved" : waiting ? "Waiting for physical verification" : hasActiveCode ? "Enter exam access code" : "Waiting for access code"}</h3>
           <span className="small">
             {verified
               ? "You can now continue to the rules screen and start the monitored exam session."
               : waiting
                 ? "Your identity must be approved by the professor or assistant before the exam can start."
-              : "Use the short code from the professor, or request manual admission if you cannot use the active code."}
+                : hasActiveCode
+                  ? "Use the short code from the professor or assistant, then wait for physical approval."
+                  : "The professor or assistant must generate an active access code before any student can start this exam."}
           </span>
         </div>
         <span className={`statusPill ${verified ? "statusPublished" : rejected ? "statusWarn" : waiting ? "statusDraft" : "statusDraft"}`}>
-          {verified ? "Approved" : waiting ? "Physical check" : rejected ? "Rejected" : "Code required"}
+          {verified ? "Approved" : waiting ? "Physical check" : rejected ? "Rejected" : hasActiveCode ? "Code required" : "Code pending"}
         </span>
       </div>
       {!verified ? (
         <div className="sectionBody stackLg">
-          {!waiting ? (
+          {!waiting && hasActiveCode ? (
             <div className="examEntryCodeForm">
               <label className="field">
                 <span>Access code</span>
@@ -1533,12 +1630,23 @@ function ExamEntryCodePanel({ accessStatus, entryCode, verifying, requestingAppr
               </button>
             </div>
           ) : null}
+          {!waiting && !hasActiveCode ? (
+            <div className="alert">
+              Access code is not active yet. Ask the professor or assistant to generate the code from the exam page.
+            </div>
+          ) : null}
           <div className="manualAdmissionActions">
             <div>
               <strong>Need manual admission?</strong>
-              <span>{waiting ? "Your admission is visible to the professor. This page refreshes the status automatically." : "Ask the professor to approve your entry from the live monitor."}</span>
+              <span>
+                {waiting
+                  ? "Your admission is visible to exam staff. This page refreshes the status automatically."
+                  : hasVerifiedCode
+                    ? "Ask the professor or assistant to approve your entry from the live monitor."
+                    : "Physical approval becomes available only after the access code is verified."}
+              </span>
             </div>
-            <button className="btn" type="button" onClick={onRequestApproval} disabled={requestingApproval || waiting}>
+            <button className="btn" type="button" onClick={onRequestApproval} disabled={requestingApproval || waiting || !hasVerifiedCode}>
               {requestingApproval ? "Sending..." : waiting ? "Request sent" : rejected ? "Request again" : "Request approval"}
             </button>
           </div>
@@ -1560,7 +1668,7 @@ function ApprovalWaitingPanel({ accessStatus }) {
       </div>
       <div className="sectionBody">
         <StudentIdentityCard identity={accessStatus?.studentIdentity} />
-        <p>{accessStatus?.message || "Your manual admission request has been sent to the professor."}</p>
+        <p>{accessStatus?.message || "Your manual admission request has been sent to exam staff."}</p>
         <div className="manualAdmissionTimeline">
           <span>Request sent</span>
           <strong>{formatSavedAt(accessStatus?.requestedAt)}</strong>
@@ -1672,7 +1780,7 @@ function ApprovalRejectedPanel({ accessStatus, requesting, onRequestAgain }) {
         <span className="statusPill statusWarn">Rejected</span>
       </div>
       <div className="sectionBody manualAdmissionRejectedBody">
-        <p>{accessStatus?.approvalReason || accessStatus?.message || "Your professor rejected this manual admission request."}</p>
+        <p>{accessStatus?.approvalReason || accessStatus?.message || "Exam staff rejected this manual admission request."}</p>
         <button className="btn" type="button" onClick={onRequestAgain} disabled={requesting}>
           {requesting ? "Sending..." : "Request approval again"}
         </button>
@@ -1867,6 +1975,26 @@ function getApiMessage(err, fallback) {
     (typeof err?.response?.data === "string" ? err.response.data : null) ||
     err?.message ||
     fallback;
+}
+
+function canEnterLiveExamSession(accessStatus) {
+  if (accessStatus?.accessStatus === "Submitted") return true;
+  if (!accessStatus?.requiresCode) return false;
+  if (!accessStatus?.hasAccess) return false;
+  if (!accessStatus?.verifiedAt) return false;
+  if (!accessStatus?.approvedAt) return false;
+
+  return ["ManuallyApproved", "Started"].includes(accessStatus?.accessStatus);
+}
+
+function isExamAccessBlockMessage(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("access code") ||
+    normalized.includes("physical") ||
+    normalized.includes("approval") ||
+    normalized.includes("admission") ||
+    normalized.includes("starting this exam") ||
+    normalized.includes("before starting");
 }
 
 function formatQuestionType(type) {

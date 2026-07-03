@@ -73,6 +73,8 @@ export default function ExamDetailsPage() {
   });
   const [selectedReplacementId, setSelectedReplacementId] = useState("");
   const [error, setError] = useState("");
+  const [accessDecision, setAccessDecision] = useState(null);
+  const [questionRemovalPrompt, setQuestionRemovalPrompt] = useState(null);
   const [generator, setGenerator] = useState({
     numberOfQuestions: 3,
     type: "",
@@ -236,7 +238,16 @@ export default function ExamDetailsPage() {
     try {
       setPublishing(true);
       setError("");
-      await publishExam(examId, selectedOfferingId ? { courseOfferingId: selectedOfferingId } : {});
+      const publishResult = await publishExam(examId, selectedOfferingId ? { courseOfferingId: selectedOfferingId } : {});
+      if (publishResult?.accessCode) {
+        setAccessCode({
+          code: publishResult.accessCode,
+          generatedAt: publishResult.accessCodeGeneratedAt || new Date().toISOString(),
+          expiresAt: publishResult.accessCodeExpiresAt,
+          serverTimeUtc: publishResult.accessCodeGeneratedAt || new Date().toISOString(),
+          isActive: true,
+        });
+      }
       const updated = await getExam(examId);
       setExam(updated);
       setSelectedOfferingId(updated?.courseOfferingId || "");
@@ -316,48 +327,40 @@ export default function ExamDetailsPage() {
 
   async function onAllowStudentAccess(student) {
     if (!examId || !student?.studentId) return;
+    setAccessDecision({ type: "approve", student });
+  }
 
-    const confirmed = window.confirm(`Allow ${student.fullName || student.email} to enter this exam without the active code?`);
-    if (!confirmed) return;
+  async function confirmAccessDecision() {
+    if (!examId || !accessDecision?.student?.studentId) return;
 
     try {
-      setApprovingStudentId(student.studentId);
+      const { type, student } = accessDecision;
+      if (type === "approve") setApprovingStudentId(student.studentId);
+      if (type === "reject") setRejectingStudentId(student.studentId);
       setError("");
-      await allowExamStudentAccess(examId, student.studentId, "Professor approval");
+      if (type === "approve") {
+        await allowExamStudentAccess(examId, student.studentId, "Physical identity approved by staff.");
+      } else {
+        await rejectExamStudentAccess(examId, student.studentId, "Exam staff rejected physical admission.");
+      }
       const monitor = await getExamLiveMonitor(examId);
       setLiveMonitor(monitor);
+      setAccessDecision(null);
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
         (typeof err?.response?.data === "string" ? err.response.data : null) ||
         err?.message;
-      setError(apiMessage || "Failed to approve student access.");
+      setError(apiMessage || "Failed to update student access.");
     } finally {
       setApprovingStudentId("");
+      setRejectingStudentId("");
     }
   }
 
   async function onRejectStudentAccess(student) {
     if (!examId || !student?.studentId) return;
-
-    const confirmed = window.confirm(`Reject manual admission for ${student.fullName || student.email}?`);
-    if (!confirmed) return;
-
-    try {
-      setRejectingStudentId(student.studentId);
-      setError("");
-      await rejectExamStudentAccess(examId, student.studentId, "Professor rejected manual admission.");
-      const monitor = await getExamLiveMonitor(examId);
-      setLiveMonitor(monitor);
-    } catch (err) {
-      const apiMessage =
-        err?.response?.data?.message ||
-        (typeof err?.response?.data === "string" ? err.response.data : null) ||
-        err?.message;
-      setError(apiMessage || "Failed to reject student access.");
-    } finally {
-      setRejectingStudentId("");
-    }
+    setAccessDecision({ type: "reject", student });
   }
 
   async function onGenerateRandomQuestions() {
@@ -484,19 +487,23 @@ export default function ExamDetailsPage() {
   }
 
   async function onRemoveQuestion(question) {
-    const confirmed = window.confirm("Remove this question from the exam? The question bank entry will not be deleted.");
-    if (!confirmed) return;
+    setQuestionRemovalPrompt(question);
+  }
+
+  async function confirmRemoveQuestion() {
+    if (!questionRemovalPrompt?.id) return;
 
     try {
-      setRemovingId(question.id);
+      setRemovingId(questionRemovalPrompt.id);
       setError("");
-      await deleteExamQuestion(question.id);
-      setQuestions((current) => current.filter((item) => item.id !== question.id));
+      await deleteExamQuestion(questionRemovalPrompt.id);
+      setQuestions((current) => current.filter((item) => item.id !== questionRemovalPrompt.id));
       setPointDrafts((current) => {
         const next = { ...current };
-        delete next[question.id];
+        delete next[questionRemovalPrompt.id];
         return next;
       });
+      setQuestionRemovalPrompt(null);
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -639,6 +646,48 @@ export default function ExamDetailsPage() {
             onCancel={() => setPublishConfirmOpen(false)}
             onConfirm={onPublish}
           />
+        ) : null}
+        {accessDecision ? (
+          <ProfessionalConfirmationModal
+            title={accessDecision.type === "approve" ? "Approve physical admission?" : "Reject exam admission?"}
+            tone={accessDecision.type === "reject" ? "danger" : "default"}
+            confirmLabel={
+              accessDecision.type === "approve"
+                ? approvingStudentId === accessDecision.student.studentId ? "Approving..." : "Approve student"
+                : rejectingStudentId === accessDecision.student.studentId ? "Rejecting..." : "Reject admission"
+            }
+            confirmDisabled={Boolean(approvingStudentId || rejectingStudentId)}
+            onCancel={() => setAccessDecision(null)}
+            onConfirm={confirmAccessDecision}
+          >
+            <p>
+              {accessDecision.type === "approve"
+                ? "Confirm that this student's identity has been checked in person and their access code was already verified."
+                : "Reject this student's physical admission request. The student will not be able to enter the exam session."}
+            </p>
+            <div className="confirmationSubject">
+              <strong>{accessDecision.student.fullName || accessDecision.student.email}</strong>
+              <span>{accessDecision.student.email}</span>
+            </div>
+          </ProfessionalConfirmationModal>
+        ) : null}
+        {questionRemovalPrompt ? (
+          <ProfessionalConfirmationModal
+            title="Remove question from exam?"
+            tone="danger"
+            confirmLabel={removingId === questionRemovalPrompt.id ? "Removing..." : "Remove question"}
+            confirmDisabled={removingId === questionRemovalPrompt.id}
+            onCancel={() => setQuestionRemovalPrompt(null)}
+            onConfirm={confirmRemoveQuestion}
+          >
+            <p>
+              This removes the question from the current exam only. The question bank entry will stay available for future exams.
+            </p>
+            <div className="confirmationSubject">
+              <strong>{questionRemovalPrompt.type || "Question"}</strong>
+              <span>{questionRemovalPrompt.text}</span>
+            </div>
+          </ProfessionalConfirmationModal>
         ) : null}
 
         {loading ? (
@@ -1157,6 +1206,30 @@ function QuestionBankSelectorModal({
   );
 }
 
+function ProfessionalConfirmationModal({ title, children, tone = "default", confirmLabel, confirmDisabled, onCancel, onConfirm }) {
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="professional-confirm-title">
+      <section className={`modalCard confirmationDialog ${tone === "danger" ? "confirmationDialogDanger" : ""}`}>
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">Confirmation</span>
+            <h3 id="professional-confirm-title">{title}</h3>
+          </div>
+        </div>
+        <div className="sectionBody">
+          {children}
+        </div>
+        <div className="modalFooter">
+          <button className="btn" type="button" onClick={onCancel} disabled={confirmDisabled}>Cancel</button>
+          <button className={tone === "danger" ? "btn btnDanger" : "btn btnPrimary"} type="button" onClick={onConfirm} disabled={confirmDisabled}>
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints, publishing, onCancel, onConfirm }) {
   const questionCount = questions.length;
   return (
@@ -1166,7 +1239,7 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
           <div>
             <span className="summaryLabel">Publish confirmation</span>
             <h3>Publish this assessment?</h3>
-            <span className="sectionMeta">Students will see this assessment according to the scheduled time and eligibility rules.</span>
+            <span className="sectionMeta">Students will see this assessment according to eligibility and access control rules.</span>
           </div>
           <span className="statusPill statusWarn">Review required</span>
         </div>
@@ -1185,10 +1258,6 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
             <strong>{formatAssessmentType(exam?.assessmentType)} / {formatExamPeriod(exam?.examPeriod)}</strong>
           </article>
           <article>
-            <span>Schedule</span>
-            <strong>{formatDateTime(exam?.startsAt)} - {formatDateTime(exam?.endsAt)}</strong>
-          </article>
-          <article>
             <span>Questions / points</span>
             <strong>{questionCount} questions / {totalPoints} pts</strong>
           </article>
@@ -1199,7 +1268,7 @@ function PublishAssessmentModal({ exam, questions, selectedOffering, totalPoints
         </div>
 
         <div className="publishAssessmentWarning">
-          Publishing should happen only after questions, timing, and security settings are ready.
+          Publishing should happen only after questions, points, access code, and security settings are ready.
         </div>
 
         <div className="formActionsBar">

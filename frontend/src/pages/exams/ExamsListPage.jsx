@@ -31,6 +31,7 @@ export default function ExamsListPage() {
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
   const [examStatusFilter, setExamStatusFilter] = useState("all");
+  const [pendingDeleteExam, setPendingDeleteExam] = useState(null);
   const [filters, setFilters] = useState({
     search: "",
     assessmentType: "",
@@ -141,23 +142,26 @@ export default function ExamsListPage() {
     return <div className="pageState">{userError || t("examsList.userError")}</div>;
   }
 
-  async function onDeleteDraft(exam) {
-    if (!exam?.id || exam.isPublished) return;
+  async function onDeleteExam(exam) {
+    if (!exam?.id) return;
+    setPendingDeleteExam(exam);
+  }
 
-    const confirmed = window.confirm(`Delete draft "${exam.title}"? This cannot be undone.`);
-    if (!confirmed) return;
+  async function confirmDeleteExam() {
+    if (!pendingDeleteExam?.id) return;
 
     try {
-      setDeletingId(exam.id);
+      setDeletingId(pendingDeleteExam.id);
       setError("");
-      await deleteExam(exam.id);
-      setExams((current) => current.filter((item) => item.id !== exam.id));
+      await deleteExam(pendingDeleteExam.id);
+      setExams((current) => current.filter((item) => item.id !== pendingDeleteExam.id));
+      setPendingDeleteExam(null);
     } catch (err) {
       const apiMessage =
         err?.response?.data?.message ||
         (typeof err?.response?.data === "string" ? err.response.data : null) ||
         err?.message;
-      setError(apiMessage || "Failed to delete draft exam.");
+      setError(apiMessage || "Failed to delete exam.");
     } finally {
       setDeletingId("");
     }
@@ -343,14 +347,14 @@ export default function ExamsListPage() {
                       {canCreate && !exam.isPublished ? (
                         <Link className="btn btnPrimary" to={`/exams/${exam.id}`}>Continue setup</Link>
                       ) : null}
-                      {canCreate && !exam.isPublished ? (
+                      {canCreate ? (
                         <button
                           className="btn btnDanger"
                           type="button"
-                          onClick={() => onDeleteDraft(exam)}
+                          onClick={() => onDeleteExam(exam)}
                           disabled={deletingId === exam.id}
                         >
-                          {deletingId === exam.id ? "Deleting..." : "Delete draft"}
+                          {deletingId === exam.id ? "Deleting..." : "Delete exam"}
                         </button>
                       ) : null}
 
@@ -443,14 +447,14 @@ export default function ExamsListPage() {
                                   <Link className="btn btnTiny" to="/reports">Reports</Link>
                                 </>
                               ) : null}
-                              {canCreate && !exam.isPublished ? (
+                              {canCreate ? (
                                 <button
                                   className="btn btnTiny btnDanger"
                                   type="button"
-                                  onClick={() => onDeleteDraft(exam)}
+                                  onClick={() => onDeleteExam(exam)}
                                   disabled={deletingId === exam.id}
                                 >
-                                  {deletingId === exam.id ? "Deleting..." : "Delete draft"}
+                                  {deletingId === exam.id ? "Deleting..." : "Delete"}
                                 </button>
                               ) : null}
                             </div>
@@ -472,8 +476,47 @@ export default function ExamsListPage() {
             </div>
           </section>
         )}
+        {pendingDeleteExam ? (
+          <ConfirmationModal
+            title="Delete assessment?"
+            tone="danger"
+            confirmLabel={deletingId === pendingDeleteExam.id ? "Deleting..." : "Delete assessment"}
+            confirmDisabled={deletingId === pendingDeleteExam.id}
+            onCancel={() => setPendingDeleteExam(null)}
+            onConfirm={confirmDeleteExam}
+          >
+            <p>
+              This will permanently remove <strong>{pendingDeleteExam.title}</strong>, attached questions, access code,
+              attempts, and integrity records. This action cannot be undone.
+            </p>
+          </ConfirmationModal>
+        ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function ConfirmationModal({ title, children, tone = "default", confirmLabel, confirmDisabled, onCancel, onConfirm }) {
+  return (
+    <div className="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+      <section className={`modalCard confirmationDialog ${tone === "danger" ? "confirmationDialogDanger" : ""}`}>
+        <div className="modalHeader">
+          <div>
+            <span className="summaryLabel">Confirmation</span>
+            <h3 id="confirmation-title">{title}</h3>
+          </div>
+        </div>
+        <div className="sectionBody">
+          {children}
+        </div>
+        <div className="modalFooter">
+          <button className="btn" type="button" onClick={onCancel} disabled={confirmDisabled}>Cancel</button>
+          <button className={tone === "danger" ? "btn btnDanger" : "btn btnPrimary"} type="button" onClick={onConfirm} disabled={confirmDisabled}>
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
